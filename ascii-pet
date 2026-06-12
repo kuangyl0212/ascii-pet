@@ -175,6 +175,7 @@ def get_screen_size():
 
 # ─── Terminal ──────────────────────────────────────────────────────────────────
 def clear_screen(): sys.stdout.write('\033[2J\033[H'); sys.stdout.flush()
+def move_cursor_top(): sys.stdout.write('\033[H'); sys.stdout.flush()
 def hide_cursor(): sys.stdout.write('\033[?25l'); sys.stdout.flush()
 def show_cursor(): sys.stdout.write('\033[?25h'); sys.stdout.flush()
 def get_key():
@@ -340,56 +341,75 @@ def main():
     show_help = False; last_tick = time.time(); message = None; message_time = 0
     layout_compact()
 
+    prev_display = None; prev_mode = None; need_redraw = True
+
     try:
         while True:
             now = time.time()
             if now - last_tick >= 0.5:
                 frame_idx += 1; state = update_state_over_time(state)
                 save_state(uid, state); last_tick = now
+                need_redraw = True
 
-            clear_screen()
-            if mode == 'compact':
-                display = build_compact(bones, frame_idx, state)
-            elif mode == 'expanded':
-                display = build_expanded(state, bones, frame_idx, show_help)
-            else:
-                display = build_info(state, bones, frame_idx)
-            print(display)
-            if message and time.time() - message_time < 2:
-                print(f'\n  \033[33m{message}\033[0m')
+            if mode != prev_mode:
+                if mode == 'compact': layout_compact()
+                elif mode == 'expanded': layout_expanded()
+                else: layout_info()
+                prev_mode = mode; need_redraw = True
+                time.sleep(0.15)  # let window resize settle
+
+            if need_redraw:
+                if mode == 'compact':
+                    display = build_compact(bones, frame_idx, state)
+                elif mode == 'expanded':
+                    display = build_expanded(state, bones, frame_idx, show_help)
+                else:
+                    display = build_info(state, bones, frame_idx)
+                if message and time.time() - message_time < 2:
+                    display += f'\n  \033[33m{message}\033[0m'
+
+                if display != prev_display:
+                    clear_screen()
+                    print(display, end='', flush=True)
+                    prev_display = display
+                need_redraw = False
 
             key = get_key()
             if key == 'q': break
             elif key in ('\r','\n'):
                 if mode == 'compact':
-                    mode = 'expanded'; show_help = False; layout_expanded()
+                    mode = 'expanded'; show_help = False
                 elif mode == 'info':
-                    mode = 'expanded'; show_help = False; layout_expanded()
+                    mode = 'expanded'; show_help = False
             elif key == '?':
                 if mode == 'compact':
-                    mode = 'expanded'; show_help = True; layout_expanded()
+                    mode = 'expanded'; show_help = True
                 else:
-                    show_help = not show_help
+                    show_help = not show_help; need_redraw = True
             elif key == '\x1b':  # Escape
                 if mode != 'compact':
-                    mode = 'compact'; show_help = False; layout_compact()
+                    mode = 'compact'; show_help = False
             elif key == 'i':
                 if mode == 'info':
-                    mode = 'expanded'; layout_expanded()
+                    mode = 'expanded'
                 elif mode == 'expanded':
-                    mode = 'info'; layout_info()
+                    mode = 'info'
                 else:
-                    mode = 'info'; layout_info()
+                    mode = 'info'
             elif key == 'f' and mode != 'compact':
-                message = feed_pet(state); message_time = time.time(); save_state(uid, state)
+                message = feed_pet(state); message_time = time.time()
+                save_state(uid, state); need_redraw = True
             elif key == 'p' and mode != 'compact':
-                message = play_pet(state); message_time = time.time(); save_state(uid, state)
+                message = play_pet(state); message_time = time.time()
+                save_state(uid, state); need_redraw = True
             elif key == 's' and mode != 'compact':
-                message = sleep_pet(state); message_time = time.time(); save_state(uid, state)
+                message = sleep_pet(state); message_time = time.time()
+                save_state(uid, state); need_redraw = True
             elif key == 'r' and mode != 'compact':
                 bones = generate_companion(uid); name = generate_name(uid)
                 state = init_state(uid, bones, name); save_state(uid, state)
                 message = 'Regenerated!'; message_time = time.time()
+                need_redraw = True
     finally:
         show_cursor(); clear_screen()
         print(f'\n  {render_face(bones)}  Bye!\n')
