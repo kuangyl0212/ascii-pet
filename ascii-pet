@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""ASCII Desktop Pet - Terminal Companion"""
+
+import os, sys, json, time, random, hashlib, signal, subprocess
+import termios, tty, select
+from pathlib import Path
+from datetime import datetime
+
+def mulberry32(seed):
+    a = seed & 0xFFFFFFFF
+    def rng():
+        nonlocal a
+        a = (a + 0x6D2B79F5) & 0xFFFFFFFF
+        t = a; t = (t ^ (t >> 15)) & 0xFFFFFFFF; t = (t * (1 | t)) & 0xFFFFFFFF
+        t = (t ^ (t >> 7)) & 0xFFFFFFFF; t = (t * 61 | t) & 0xFFFFFFFF
+        t = (t ^ (t >> 14)) & 0xFFFFFFFF
+        return (t & 0xFFFFFFFF) / 0x100000000
+    return rng
+
+def hash_string(s):
+    h = 2166136261
+    for c in s: h ^= ord(c); h = (h * 16777619) & 0xFFFFFFFF
+    return h
+
+def pick(rng, arr): return arr[int(rng() * len(arr))]
+
+SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin',
+           'turtle','snail','ghost','axolotl','capybara','cactus','robot','rabbit','mushroom','chonk']
+EYES = ['·','✦','×','◉','@','°']
+RARITIES = ['common','uncommon','rare','epic','legendary']
+RARITY_WEIGHTS = {'common':60,'uncommon':25,'rare':10,'epic':4,'legendary':1}
+RARITY_STARS = {'common':'★','uncommon':'★★','rare':'★★★','epic':'★★★★','legendary':'★★★★★'}
+RARITY_COLORS = {'common':'\033[90m','uncommon':'\033[32m','rare':'\033[36m','epic':'\033[35m','legendary':'\033[33m'}
+RARITY_FLOOR = {'common':5,'uncommon':15,'rare':25,'epic':35,'legendary':50}
+STAT_NAMES = ['HUNGER','HAPPY','ENERGY','WISDOM','CHAOS']
+MOODS = {'happy':{'emoji':'♪','color':'\033[33m'},'normal':{'emoji':'~','color':'\033[0m'},
+         'sleepy':{'emoji':'z','color':'\033[90m'},'hungry':{'emoji':'!','color':'\033[31m'},
+         'excited':{'emoji':'★','color':'\033[35m'}}
+SALT = 'ascii-pet-2026'
+
+BODIES = {
+    'duck':[['            ','    __      ','  <({E} )___  ','   (  ._>   ','    `--´    '],['            ','    __      ','  <({E} )___  ','   (  ._>   ','    `--´~   '],['            ','    __      ','  <({E} )___  ','   (  .__>  ','    `--´    ']],
+    'goose':[['            ','     ({E}>    ','     ||     ','   _(__)_   ','    ^^^^    '],['            ','    ({E}>     ','     ||     ','   _(__)_   ','    ^^^^    '],['            ','     ({E}>>   ','     ||     ','   _(__)_   ','    ^^^^    ']],
+    'blob':[['            ','   .----.   ','  ( {E}  {E} )  ','  (      )  ','   `----´   '],['            ','  .------.  ',' (  {E}  {E}  ) ',' (        ) ','  `------´  '],['            ','    .--.    ','   ({E}  {E})   ','   (    )   ','    `--´    ']],
+    'cat':[['            ','   /\\_/\\    ','  ( {E}   {E})  ','  (  ω  )   ','  (")_(")   '],['            ','   /\\_/\\    ','  ( {E}   {E})  ','  (  ω  )   ','  (")_(")~  '],['            ','   /\\-/\\    ','  ( {E}   {E})  ','  (  ω  )   ','  (")_(")   ']],
+    'dragon':[['            ','  /^\\  /^\\  ',' <  {E}  {E}  > ',' (   ~~   ) ','  `-vvvv-´  '],['            ','  /^\\  /^\\  ',' <  {E}  {E}  > ',' (        ) ','  `-vvvv-´  '],['   ~    ~   ','  /^\\  /^\\  ',' <  {E}  {E}  > ',' (   ~~   ) ','  `-vvvv-´  ']],
+    'octopus':[['            ','   .----.   ','  ( {E}  {E} )  ','  (______)  ','  /\\/\\/\\/\\  '],['            ','   .----.   ','  ( {E}  {E} )  ','  (______)  ','  \\/\\/\\/\\/  '],['     o      ','   .----.   ','  ( {E}  {E} )  ','  (______)  ','  /\\/\\/\\/\\  ']],
+    'owl':[['            ','   /\\  /\\   ','  (({E})({E}))  ','  (  ><  )  ','   `----´   '],['            ','   /\\  /\\   ','  (({E})({E}))  ','  (  ><  )  ','   .----.   '],['            ','   /\\  /\\   ','  (({E})(-))  ','  (  ><  )  ','   `----´   ']],
+    'penguin':[['            ','  .---.     ','  ({E}>{E})     ',' /(   )\\    ','  `---´     '],['            ','  .---.     ','  ({E}>{E})     ',' |(   )|    ','  `---´     '],['  .---.     ','  ({E}>{E})     ',' /(   )\\    ','  `---´     ','   ~ ~      ']],
+    'turtle':[['            ','   _,--._   ','  ( {E}  {E} )  ',' /[______]\\ ','  ``    ``  '],['            ','   _,--._   ','  ( {E}  {E} )  ',' /[______]\\ ','   ``  ``   '],['            ','   _,--._   ','  ( {E}  {E} )  ',' /[======]\\ ','  ``    ``  ']],
+    'snail':[['            ',' {E}    .--.  ','  \\  ( @ )  ','   \\_`--´   ','  ~~~~~~~   '],['            ','  {E}   .--.  ','  |  ( @ )  ','   \\_`--´   ','  ~~~~~~~   '],['            ',' {E}    .--.  ','  \\  ( @  ) ','   \\_`--´   ','   ~~~~~~   ']],
+    'ghost':[['            ','   .----.   ','  / {E}  {E} \\  ','  |      |  ','  ~`~``~`~  '],['            ','   .----.   ','  / {E}  {E} \\  ','  |      |  ','  `~`~~`~`  '],['    ~  ~    ','   .----.   ','  / {E}  {E} \\  ','  |      |  ','  ~~`~~`~~  ']],
+    'axolotl':[['            ','}~(______)~{','}~({E} .. {E})~{','  ( .--. )  ','  (_/  \\_)  '],['            ','~}(______){~','~}({E} .. {E}){~','  ( .--. )  ','  (_/  \\_)  '],['            ','}~(______)~{','}~({E} .. {E})~{','  (  --  )  ','  ~_/  \\_~  ']],
+    'capybara':[['            ','  n______n  ',' ( {E}    {E} ) ',' (   oo   ) ','  `------´  '],['            ','  n______n  ',' ( {E}    {E} ) ',' (   Oo   ) ','  `------´  '],['    ~  ~    ','  u______n  ',' ( {E}    {E} ) ',' (   oo   ) ','  `------´  ']],
+    'cactus':[['            ',' n  ____  n ',' | |{E}  {E}| | ',' |_|    |_| ','   |    |   '],['            ','    ____    ',' n |{E}  {E}| n ',' |_|    |_| ','   |    |   '],[' n        n ',' |  ____  | ',' | |{E}  {E}| | ',' |_|    |_| ','   |    |   ']],
+    'robot':[['            ','   .[||].   ','  [ {E}  {E} ]  ','  [ ==== ]  ','  `------´  '],['            ','   .[||].   ','  [ {E}  {E} ]  ','  [ -==- ]  ','  `------´  '],['     *      ','   .[||].   ','  [ {E}  {E} ]  ','  [ ==== ]  ','  `------´  ']],
+    'rabbit':[['            ','   (\\__/)   ','  ( {E}  {E} )  ',' =(  ..  )= ','  (")__(")  '],['            ','   (|__/)   ','  ( {E}  {E} )  ',' =(  ..  )= ','  (")__(")  '],['            ','   (\\__/)   ','  ( {E}  {E} )  ',' =( .  . )= ','  (")__(")  ']],
+    'mushroom':[['            ',' .-o-OO-o-. ','(__________)','   |{E}  {E}|   ','   |____|   '],['            ',' .-O-oo-O-. ','(__________)','   |{E}  {E}|   ','   |____|   '],['   . o  .   ',' .-o-OO-o-. ','(__________)','   |{E}  {E}|   ','   |____|   ']],
+    'chonk':[['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /|  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´~ ']],
+}
+HAT_LINES = {'none':'','crown':'   \\^^^/    ','tophat':'   [___]    ','propeller':'    -+-     ','halo':'   (   )    ','wizard':'    /^\\     ','beanie':'   (___)    ','tinyduck':'    ,>      '}
+IDLE_SEQUENCE = [0,0,0,0,1,0,0,0,-1,0,0,2,0,0,0]
+ADJECTIVES = ['Tiny','Fluffy','Brave','Sneaky','Cosmic','Dizzy','Fuzzy','Mighty','Wobbly','Crispy','Sparkly','Grumpy','Sleepy','Zippy','Bouncy','Spooky','Jolly','Rusty','Stormy','Lucky','Peppy','Zany','Quirky','Sassy']
+NOUNS = ['Bean','Nugget','Sprout','Biscuit','Noodle','Pebble','Pickle','Muffin','Waffle','Squish','Pudding','Crumble','Tater','Dumpling','Scraps','Widget','Pixel','Nibble','Scooter','Snickers','Wobbles','Patches','Buttons','Pip']
+
+def roll_rarity(rng):
+    total = sum(RARITY_WEIGHTS.values()); roll = rng() * total
+    for r in RARITIES:
+        roll -= RARITY_WEIGHTS[r]
+        if roll < 0: return r
+    return 'common'
+
+def roll_stats(rng, rarity):
+    floor = RARITY_FLOOR[rarity]; peak = pick(rng, STAT_NAMES); dump = pick(rng, STAT_NAMES)
+    while dump == peak: dump = pick(rng, STAT_NAMES)
+    stats = {}
+    for n in STAT_NAMES:
+        if n == peak: stats[n] = min(100, floor + 50 + int(rng()*30))
+        elif n == dump: stats[n] = max(1, floor - 10 + int(rng()*15))
+        else: stats[n] = floor + int(rng()*40)
+    return stats
+
+def generate_companion(uid):
+    rng = mulberry32(hash_string(uid + SALT)); rarity = roll_rarity(rng)
+    return {'rarity':rarity,'species':pick(rng,SPECIES),'eye':pick(rng,EYES),
+            'hat':'none' if rarity=='common' else pick(rng,list(HAT_LINES.keys())),
+            'shiny':rng()<0.01,'stats':roll_stats(rng,rarity)}
+
+def generate_name(uid):
+    rng = mulberry32(hash_string(uid + SALT + '-name'))
+    return pick(rng, ADJECTIVES) + ' ' + pick(rng, NOUNS)
+
+def render_sprite(bones, frame=0):
+    frames = BODIES[bones['species']]
+    body = [l.replace('{E}', bones['eye']) for l in frames[frame % len(frames)]]
+    if bones['hat'] != 'none' and not body[0].strip(): body[0] = HAT_LINES[bones['hat']]
+    if not body[0].strip() and all(not f[0].strip() for f in frames): body.pop(0)
+    return body
+
+def render_face(bones):
+    e = bones['eye']
+    faces = {'duck':f'({e}>','goose':f'({e}>','blob':f'({e}{e})','cat':f'={e}ω{e}=',
+        'dragon':f'<{e}~{e}>','octopus':f'~({e}{e})~','owl':f'({e})({e})',
+        'penguin':f'({e}>)','turtle':f'[{e}_{e}]','snail':f'{e}(@)',
+        'ghost':f'/{e}{e}\\','axolotl':f'}}{e}.{e}{{','capybara':f'({e}oo{e})',
+        'cactus':f'|{e}  {e}|','robot':f'[{e}{e}]','rabbit':f'({e}..{e})',
+        'mushroom':f'|{e}  {e}|','chonk':f'({e}.{e})'}
+    return faces.get(bones['species'], f'({e}{e})')
+
+def stat_bar(value, width=15):
+    filled = round((value / 100) * width)
+    return '\033[90m\033[32m' + '█'*filled + '\033[90m' + '░'*(width-filled) + '\033[0m'
+
+DATA_DIR = Path.home() / '.local' / 'share' / 'ascii-pet'
+def get_state_path(uid):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return DATA_DIR / f'{hash_string(uid) & 0xFFFFFFFF:08x}.json'
+def load_state(uid):
+    p = get_state_path(uid)
+    return json.load(open(p)) if p.exists() else None
+def save_state(uid, state):
+    json.dump(state, open(get_state_path(uid), 'w'), indent=2)
+def init_state(uid, bones, name):
+    now = datetime.now().isoformat()
+    return {'user_id':uid,'name':name,'species':bones['species'],'rarity':bones['rarity'],
+            'eye':bones['eye'],'hat':bones['hat'],'shiny':bones['shiny'],'stats':bones['stats'],
+            'mood':'normal','created_at':now,'last_fed':now,'last_played':now,'last_slept':now,
+            'level':1,'xp':0,'total_interactions':0}
+
+def update_state_over_time(state):
+    now = datetime.now()
+    for key, decay, rate in [('last_fed',4,5),('last_played',2,3),('last_slept',6,4)]:
+        hours = (now - datetime.fromisoformat(state[key])).total_seconds() / 3600
+        if hours > decay:
+            stat = {'last_fed':'HUNGER','last_played':'HAPPY','last_slept':'ENERGY'}[key]
+            state['stats'][stat] = max(0, state['stats'][stat] - int(hours * rate))
+    h, e, p = state['stats']['HUNGER'], state['stats']['ENERGY'], state['stats']['HAPPY']
+    state['mood'] = 'hungry' if h<20 else 'sleepy' if e<20 else 'excited' if p>80 else 'happy' if p>50 else 'normal'
+    return state
+
+# ─── Window control via xdotool ───────────────────────────────────────────────
+FONT_W = 8   # approximate char width for monospace 11pt
+FONT_H = 17  # approximate char height for monospace 11pt
+
+def get_win_id():
+    for _ in range(5):
+        try:
+            out = subprocess.check_output(['xdotool','search','--class','ascii-pet'], timeout=2).decode().strip()
+            if out: return out.split('\n')[0]
+        except: pass
+        time.sleep(0.2)
+    return None
+
+def set_window_geometry(cols, rows, pos_x, pos_y):
+    wid = get_win_id()
+    if not wid: return
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    try:
+        subprocess.run(['xdotool','windowsize',wid,str(px_w),str(px_h)], timeout=2)
+        subprocess.run(['xdotool','windowmove',wid,str(pos_x),str(pos_y)], timeout=2)
+    except: pass
+
+def set_window_opacity(wid, opacity_hex):
+    if not wid: return
+    try:
+        subprocess.run(['xprop','-id',wid,'-f','_NET_WM_WINDOW_OPACITY','32c','-set','_NET_WM_WINDOW_OPACITY',opacity_hex], timeout=2)
+    except: pass
+
+def get_screen_size():
+    try:
+        out = subprocess.check_output(['xdotool','getdisplaygeometry'], timeout=2).decode().strip().split()
+        return int(out[0]), int(out[1])
+    except: return 1920, 1080
+
+# ─── Terminal ──────────────────────────────────────────────────────────────────
+def clear_screen(): sys.stdout.write('\033[2J\033[H'); sys.stdout.flush()
+def hide_cursor(): sys.stdout.write('\033[?25l'); sys.stdout.flush()
+def show_cursor(): sys.stdout.write('\033[?25h'); sys.stdout.flush()
+def get_key():
+    fd = sys.stdin.fileno()
+    try: old = termios.tcgetattr(fd)
+    except: return None
+    try:
+        tty.setraw(fd)
+        dr,_,_ = select.select([sys.stdin],[],[],0.1)
+        return sys.stdin.read(1) if dr else None
+    finally:
+        try: termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except: pass
+
+# ─── Display ───────────────────────────────────────────────────────────────────
+def render_frame(bones, frame_idx):
+    step = IDLE_SEQUENCE[frame_idx % len(IDLE_SEQUENCE)]
+    if step == -1:
+        f = render_sprite(bones, 0)
+        return [l.replace(bones['eye'], '-') for l in f]
+    return render_sprite(bones, step)
+
+def build_compact(bones, frame_idx, state):
+    lines = render_frame(bones, frame_idx)
+    return '\n'.join(lines)
+
+def build_expanded(state, bones, frame_idx, show_help=False):
+    RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
+    color = RARITY_COLORS[state['rarity']]; stars = RARITY_STARS[state['rarity']]
+    shiny = f' {BOLD}\033[33mSHINY{RST}' if state['shiny'] else ''
+    mood = MOODS[state['mood']]
+    frame = render_frame(bones, frame_idx)
+
+    lines = []
+    lines.append(f'{color}{BOLD}{state["name"]}{RST} {color}{stars}{RST}{shiny}')
+    lines.append(f'{DIM}{state["species"]}·{state["rarity"]}{RST} {mood["color"]}[{mood["emoji"]}]{RST}')
+    lines.append(f'{DIM}Lv.{state["level"]} XP:{state["xp"]}/{state["level"]*100}{RST}')
+    for row in frame: lines.append(f' {row}')
+    lines.append(f'{DIM}face:{render_face(bones)}{RST}')
+    for s in STAT_NAMES:
+        v = state['stats'][s]
+        lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
+    if show_help:
+        lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [Esc]compact [q]quit{RST}')
+    else:
+        lines.append(f'{DIM}[?]help [Esc]compact [q]quit{RST}')
+    return '\n'.join(lines)
+
+def build_info(state, bones, frame_idx):
+    RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
+    color = RARITY_COLORS[state['rarity']]; stars = RARITY_STARS[state['rarity']]
+    shiny = f' SHINY' if state['shiny'] else ''
+    frame = render_frame(bones, frame_idx)
+
+    lines = [f'{BOLD}{state["name"]}{RST}{shiny} {color}{stars}{RST}']
+    lines.append(f'{state["species"]}·{state["rarity"]} Eye:{state["eye"]} Hat:{state["hat"]} Lv.{state["level"]}')
+    lines.append(f'Interactions:{state["total_interactions"]}')
+    for row in frame: lines.append(f' {row}')
+    for s in STAT_NAMES:
+        v = state['stats'][s]
+        lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
+    lines.append(f'{DIM}[i]back [q]quit{RST}')
+    return '\n'.join(lines)
+
+# ─── Actions ───────────────────────────────────────────────────────────────────
+def feed_pet(state):
+    if state['stats']['HUNGER'] >= 100: return 'Already full!'
+    state['stats']['HUNGER'] = min(100, state['stats']['HUNGER']+25)
+    state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+5)
+    state['last_fed'] = datetime.now().isoformat()
+    state['total_interactions'] += 1; state['xp'] += 10; check_level_up(state)
+    return '+25 Hunger, +5 Happy'
+
+def play_pet(state):
+    if state['stats']['ENERGY'] < 10: return 'Too tired!'
+    state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+30)
+    state['stats']['ENERGY'] = max(0, state['stats']['ENERGY']-15)
+    state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-10)
+    state['last_played'] = datetime.now().isoformat()
+    state['total_interactions'] += 1; state['xp'] += 15; check_level_up(state)
+    return '+30 Happy, -15 Energy'
+
+def sleep_pet(state):
+    if state['stats']['ENERGY'] >= 100: return 'Not sleepy!'
+    state['stats']['ENERGY'] = min(100, state['stats']['ENERGY']+40)
+    state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-5)
+    state['last_slept'] = datetime.now().isoformat()
+    state['total_interactions'] += 1; state['xp'] += 5; check_level_up(state)
+    return '+40 Energy'
+
+def check_level_up(state):
+    xp_need = state['level'] * 100
+    while state['xp'] >= xp_need:
+        state['xp'] -= xp_need; state['level'] += 1
+        state['stats']['WISDOM'] = min(100, state['stats']['WISDOM']+5)
+        xp_need = state['level'] * 100
+
+# ─── Window layout ─────────────────────────────────────────────────────────────
+STATUS_BAR_HEIGHT = 30
+
+def layout_compact():
+    sw, sh = get_screen_size()
+    cols, rows = 30, 12
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    px = sw - px_w - 20
+    py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
+def layout_expanded():
+    sw, sh = get_screen_size()
+    cols, rows = 50, 24
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    px = sw - px_w - 20
+    py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
+def layout_info():
+    sw, sh = get_screen_size()
+    cols, rows = 42, 18
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    px = sw - px_w - 20
+    py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
+# ─── Main ──────────────────────────────────────────────────────────────────────
+def main():
+    uid = os.environ.get('USER', os.environ.get('USERNAME', 'anon'))
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        if arg in ('--help','-h'):
+            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter/? to toggle)\n  Info mode: detailed info (i to toggle)\n  Commands: f feed, p play, s sleep, r reset, q quit')
+            sys.exit(0)
+        if arg == '--all':
+            print('\n  All 18 species:\n')
+            for sp in SPECIES:
+                fb = {'species':sp,'eye':'·','hat':'none','shiny':False,'stats':{},'rarity':'common'}
+                print(f'  {sp}  {render_face(fb)}')
+                for row in render_sprite(fb, 0): print(f'  {row}')
+                print()
+            sys.exit(0)
+        uid = arg
+
+    state = load_state(uid)
+    if state is None:
+        bones = generate_companion(uid); name = generate_name(uid)
+        state = init_state(uid, bones, name); save_state(uid, state)
+    else:
+        bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
+
+    state = update_state_over_time(state); save_state(uid, state)
+    signal.signal(signal.SIGINT, lambda *_: (show_cursor(), clear_screen(), sys.exit(0)))
+
+    clear_screen(); hide_cursor()
+
+    # Set initial opacity
+    wid = get_win_id()
+    set_window_opacity(wid, '0x66000000')  # ~40% opaque, very transparent
+
+    frame_idx = 0; mode = 'compact'  # compact / expanded / info
+    show_help = False; last_tick = time.time(); message = None; message_time = 0
+    layout_compact()
+
+    try:
+        while True:
+            now = time.time()
+            if now - last_tick >= 0.5:
+                frame_idx += 1; state = update_state_over_time(state)
+                save_state(uid, state); last_tick = now
+
+            clear_screen()
+            if mode == 'compact':
+                display = build_compact(bones, frame_idx, state)
+            elif mode == 'expanded':
+                display = build_expanded(state, bones, frame_idx, show_help)
+            else:
+                display = build_info(state, bones, frame_idx)
+            print(display)
+            if message and time.time() - message_time < 2:
+                print(f'\n  \033[33m{message}\033[0m')
+
+            key = get_key()
+            if key == 'q': break
+            elif key in ('\r','\n'):
+                if mode == 'compact':
+                    mode = 'expanded'; show_help = False; layout_expanded()
+                elif mode == 'info':
+                    mode = 'expanded'; show_help = False; layout_expanded()
+            elif key == '?':
+                if mode == 'compact':
+                    mode = 'expanded'; show_help = True; layout_expanded()
+                else:
+                    show_help = not show_help
+            elif key == '\x1b':  # Escape
+                if mode != 'compact':
+                    mode = 'compact'; show_help = False; layout_compact()
+            elif key == 'i':
+                if mode == 'info':
+                    mode = 'expanded'; layout_expanded()
+                elif mode == 'expanded':
+                    mode = 'info'; layout_info()
+                else:
+                    mode = 'info'; layout_info()
+            elif key == 'f' and mode != 'compact':
+                message = feed_pet(state); message_time = time.time(); save_state(uid, state)
+            elif key == 'p' and mode != 'compact':
+                message = play_pet(state); message_time = time.time(); save_state(uid, state)
+            elif key == 's' and mode != 'compact':
+                message = sleep_pet(state); message_time = time.time(); save_state(uid, state)
+            elif key == 'r' and mode != 'compact':
+                bones = generate_companion(uid); name = generate_name(uid)
+                state = init_state(uid, bones, name); save_state(uid, state)
+                message = 'Regenerated!'; message_time = time.time()
+    finally:
+        show_cursor(); clear_screen()
+        print(f'\n  {render_face(bones)}  Bye!\n')
+
+if __name__ == '__main__': main()

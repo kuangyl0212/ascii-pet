@@ -1,0 +1,8 @@
+#!/bin/bash
+# ASCII pet launcher
+
+i3-msg -q "[class=\"ascii-pet\"]" kill 2>/dev/null
+sleep 0.3
+
+# Launch without geometry, minimal borders - Python script handles sizing
+i3-msg 'exec --no-startup-id xterm -T "ASCII Pet" -class "ascii-pet" -bg black -fg green -fa monospace -fs 11 -bw 0 -b 2 -e python3 /home/forest/.local/bin/ascii-pet'
