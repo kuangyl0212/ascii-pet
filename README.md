@@ -48,14 +48,16 @@ ascii-pet-launcher
 | Key | Mode | Action |
 |-----|------|--------|
 | Enter | Compact | Expand to full view |
-| Enter | Expanded/Info | Show info panel |
-| Esc | Any | Return to compact |
+| Enter | Expanded | Return to compact |
+| Enter | Info | Back to expanded |
+| b | Expanded/Info | Previous pet |
+| n | Expanded/Info | Next pet (creates new at end) |
 | i | Expanded | Toggle info panel |
 | i | Info | Back to expanded |
 | f | Expanded/Info | Feed pet (+25 Hunger) |
 | p | Expanded/Info | Play with pet (+30 Happy) |
 | s | Expanded/Info | Put pet to sleep (+40 Energy) |
-| r | Expanded/Info | Regenerate pet |
+| r | Expanded/Info | Regenerate current pet |
 | q | Any | Quit |
 
 ## State

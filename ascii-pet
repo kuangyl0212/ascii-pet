@@ -80,14 +80,16 @@ def roll_stats(rng, rarity):
         else: stats[n] = floor + int(rng()*40)
     return stats
 
-def generate_companion(uid):
-    rng = mulberry32(hash_string(uid + SALT)); rarity = roll_rarity(rng)
+def generate_companion(uid, seed=None):
+    if seed is None: seed = str(time.time_ns())
+    rng = mulberry32(hash_string(uid + SALT + seed)); rarity = roll_rarity(rng)
     return {'rarity':rarity,'species':pick(rng,SPECIES),'eye':pick(rng,EYES),
             'hat':'none' if rarity=='common' else pick(rng,list(HAT_LINES.keys())),
             'shiny':rng()<0.01,'stats':roll_stats(rng,rarity)}
 
-def generate_name(uid):
-    rng = mulberry32(hash_string(uid + SALT + '-name'))
+def generate_name(uid, seed=None):
+    if seed is None: seed = str(time.time_ns())
+    rng = mulberry32(hash_string(uid + SALT + seed + '-name'))
     return pick(rng, ADJECTIVES) + ' ' + pick(rng, NOUNS)
 
 def render_sprite(bones, frame=0):
@@ -115,11 +117,24 @@ DATA_DIR = Path.home() / '.local' / 'share' / 'ascii-pet'
 def get_state_path(uid):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return DATA_DIR / f'{hash_string(uid) & 0xFFFFFFFF:08x}.json'
-def load_state(uid):
+def load_pets(uid):
     p = get_state_path(uid)
-    return json.load(open(p)) if p.exists() else None
-def save_state(uid, state):
-    json.dump(state, open(get_state_path(uid), 'w'), indent=2)
+    if not p.exists(): return None
+    data = json.load(open(p))
+    if isinstance(data, list): return {'pets': data, 'current': 0}
+    if 'pets' not in data: return {'pets': [data], 'current': 0}
+    return data
+def save_pets(uid, data):
+    json.dump(data, open(get_state_path(uid), 'w'), indent=2)
+def load_state(uid):
+    data = load_pets(uid)
+    if data is None: return None, None, 0
+    idx = data.get('current', 0)
+    if idx >= len(data['pets']): idx = 0
+    return data['pets'][idx], data, idx
+def save_state(uid, state, pets_data, idx):
+    pets_data['pets'][idx] = state
+    save_pets(uid, pets_data)
 def init_state(uid, bones, name):
     now = datetime.now().isoformat()
     return {'user_id':uid,'name':name,'species':bones['species'],'rarity':bones['rarity'],
@@ -219,12 +234,12 @@ def build_expanded(state, bones, frame_idx, show_help=False):
         v = state['stats'][s]
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
     if show_help:
-        lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [Esc]compact [q]quit{RST}')
+        lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [Enter]compact [q]quit{RST}')
     else:
-        lines.append(f'{DIM}[?]help [Esc]compact [q]quit{RST}')
+        lines.append(f'{DIM}[?]help [b]prev [n]next [Enter]compact [q]quit{RST}')
     return '\n'.join(lines)
 
-def build_info(state, bones, frame_idx):
+def build_info(state, bones, frame_idx, pet_idx=0, pet_count=1):
     RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
     color = RARITY_COLORS[state['rarity']]; stars = RARITY_STARS[state['rarity']]
     shiny = f' SHINY' if state['shiny'] else ''
@@ -232,7 +247,7 @@ def build_info(state, bones, frame_idx):
 
     lines = [f'{BOLD}{state["name"]}{RST}{shiny} {color}{stars}{RST}']
     lines.append(f'{state["species"]}·{state["rarity"]} Eye:{state["eye"]} Hat:{state["hat"]} Lv.{state["level"]}')
-    lines.append(f'Interactions:{state["total_interactions"]}')
+    lines.append(f'Interactions:{state["total_interactions"]} Pet:{pet_idx+1}/{pet_count}')
     for row in frame: lines.append(f' {row}')
     for s in STAT_NAMES:
         v = state['stats'][s]
@@ -309,7 +324,7 @@ def main():
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg in ('--help','-h'):
-            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter/? to toggle)\n  Info mode: detailed info (i to toggle)\n  Commands: f feed, p play, s sleep, r reset, q quit')
+            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Info mode: detailed info (i to toggle)\n  Commands: f feed, p play, s sleep, r reset, b prev, n next, q quit')
             sys.exit(0)
         if arg == '--all':
             print('\n  All 18 species:\n')
@@ -321,14 +336,16 @@ def main():
             sys.exit(0)
         uid = arg
 
-    state = load_state(uid)
+    state, pets_data, pet_idx = load_state(uid)
     if state is None:
         bones = generate_companion(uid); name = generate_name(uid)
-        state = init_state(uid, bones, name); save_state(uid, state)
+        state = init_state(uid, bones, name)
+        pets_data = {'pets': [state], 'current': 0}; pet_idx = 0
+        save_pets(uid, pets_data)
     else:
         bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
 
-    state = update_state_over_time(state); save_state(uid, state)
+    state = update_state_over_time(state); save_state(uid, state, pets_data, pet_idx)
     signal.signal(signal.SIGINT, lambda *_: (show_cursor(), clear_screen(), sys.exit(0)))
 
     clear_screen(); hide_cursor()
@@ -344,7 +361,7 @@ def main():
             now = time.time()
             if now - last_tick >= 0.5:
                 frame_idx += 1; state = update_state_over_time(state)
-                save_state(uid, state); last_tick = now
+                save_state(uid, state, pets_data, pet_idx); last_tick = now
                 need_redraw = True
 
             if mode != prev_mode:
@@ -360,7 +377,7 @@ def main():
                 elif mode == 'expanded':
                     display = build_expanded(state, bones, frame_idx, show_help)
                 else:
-                    display = build_info(state, bones, frame_idx)
+                    display = build_info(state, bones, frame_idx, pet_idx, len(pets_data['pets']))
                 if message and time.time() - message_time < 2:
                     display += f'\n  \033[33m{message}\033[0m'
 
@@ -375,6 +392,8 @@ def main():
             elif key in ('\r','\n'):
                 if mode == 'compact':
                     mode = 'expanded'; show_help = False
+                elif mode == 'expanded':
+                    mode = 'compact'; show_help = False
                 elif mode == 'info':
                     mode = 'expanded'; show_help = False
             elif key == '?':
@@ -382,9 +401,31 @@ def main():
                     mode = 'expanded'; show_help = True
                 else:
                     show_help = not show_help; need_redraw = True
-            elif key == '\x1b':  # Escape
+            elif key == 'esc':
                 if mode != 'compact':
                     mode = 'compact'; show_help = False
+            elif key == 'b':
+                if len(pets_data['pets']) > 1:
+                    pets_data['pets'][pet_idx] = state
+                    pet_idx = (pet_idx - 1) % len(pets_data['pets'])
+                    state = pets_data['pets'][pet_idx]
+                    bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
+                    pets_data['current'] = pet_idx; save_pets(uid, pets_data)
+                    message = f'Switched to {state["name"]}'; message_time = time.time()
+                    need_redraw = True
+            elif key == 'n':
+                pets_data['pets'][pet_idx] = state
+                if pet_idx < len(pets_data['pets']) - 1:
+                    pet_idx += 1
+                else:
+                    new_state = init_state(uid, generate_companion(uid), generate_name(uid))
+                    pets_data['pets'].append(new_state)
+                    pet_idx = len(pets_data['pets']) - 1
+                state = pets_data['pets'][pet_idx]
+                bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
+                pets_data['current'] = pet_idx; save_pets(uid, pets_data)
+                message = f'Switched to {state["name"]}'; message_time = time.time()
+                need_redraw = True
             elif key == 'i':
                 if mode == 'info':
                     mode = 'expanded'
@@ -394,17 +435,27 @@ def main():
                     mode = 'info'
             elif key == 'f' and mode != 'compact':
                 message = feed_pet(state); message_time = time.time()
-                save_state(uid, state); need_redraw = True
+                save_state(uid, state, pets_data, pet_idx); need_redraw = True
             elif key == 'p' and mode != 'compact':
                 message = play_pet(state); message_time = time.time()
-                save_state(uid, state); need_redraw = True
+                save_state(uid, state, pets_data, pet_idx); need_redraw = True
             elif key == 's' and mode != 'compact':
                 message = sleep_pet(state); message_time = time.time()
-                save_state(uid, state); need_redraw = True
+                save_state(uid, state, pets_data, pet_idx); need_redraw = True
             elif key == 'r' and mode != 'compact':
                 bones = generate_companion(uid); name = generate_name(uid)
-                state = init_state(uid, bones, name); save_state(uid, state)
+                state = init_state(uid, bones, name)
+                pets_data['pets'][pet_idx] = state; save_pets(uid, pets_data)
                 message = 'Regenerated!'; message_time = time.time()
+                need_redraw = True
+            elif key == 'n' and mode != 'compact':
+                bones = generate_companion(uid); name = generate_name(uid)
+                new_state = init_state(uid, bones, name)
+                pets_data['pets'].append(new_state)
+                pet_idx = len(pets_data['pets']) - 1
+                state = new_state; pets_data['current'] = pet_idx
+                save_pets(uid, pets_data)
+                message = f'New pet: {name}'; message_time = time.time()
                 need_redraw = True
     finally:
         show_cursor(); clear_screen()
