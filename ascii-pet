@@ -278,7 +278,7 @@ STATUS_BAR_HEIGHT = 30
 
 def layout_compact():
     sw, sh = get_screen_size()
-    cols, rows = 16, 7
+    cols, rows = 18, 8
     px_w = cols * FONT_W + 8
     px_h = rows * FONT_H + 4
     px = sw - px_w - 10
