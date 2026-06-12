@@ -1,0 +1,15 @@
+[window]
+decorations = "None"
+padding = { x = 2, y = 2 }
+startup_mode = "Windowed"
+opacity = 0.0
+
+[font]
+size = 11.0
+
+[font.normal]
+family = "monospace"
+
+[colors.primary]
+background = "#000000"
+foreground = "#00ff00"
