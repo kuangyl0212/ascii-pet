@@ -278,10 +278,10 @@ STATUS_BAR_HEIGHT = 30
 
 def layout_compact():
     sw, sh = get_screen_size()
-    cols, rows = 30, 12
-    px_w = cols * FONT_W + 20
-    px_h = rows * FONT_H + 10
-    px = sw - px_w - 20
+    cols, rows = 16, 7
+    px_w = cols * FONT_W + 8
+    px_h = rows * FONT_H + 4
+    px = sw - px_w - 10
     py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
