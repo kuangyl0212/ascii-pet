@@ -333,10 +333,6 @@ def main():
 
     clear_screen(); hide_cursor()
 
-    # Set initial opacity
-    wid = get_win_id()
-    set_window_opacity(wid, '0x66000000')  # ~40% opaque, very transparent
-
     frame_idx = 0; mode = 'compact'  # compact / expanded / info
     show_help = False; last_tick = time.time(); message = None; message_time = 0
     layout_compact()

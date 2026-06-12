@@ -1,8 +1,8 @@
 #!/bin/bash
-# ASCII pet launcher
+# ASCII pet launcher - alacritty with true transparent background
 
 i3-msg -q "[class=\"ascii-pet\"]" kill 2>/dev/null
 sleep 0.3
 
-# Launch without geometry, minimal borders - Python script handles sizing
-i3-msg 'exec --no-startup-id xterm -T "ASCII Pet" -class "ascii-pet" -bg black -fg green -fa monospace -fs 11 -bw 0 -b 2 -e python3 /home/forest/.local/bin/ascii-pet'
+# Launch alacritty with transparent background config
+i3-msg 'exec --no-startup-id alacritty --class "ascii-pet" --config-file ~/.config/alacritty/pet.toml -e python3 /home/forest/.local/bin/ascii-pet'
