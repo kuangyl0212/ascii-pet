@@ -68,7 +68,6 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
         lines.append(('★ Evolved', color))
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
-    lines.append((f'face:{render_face(bones)}', COLOR_DIM))
     for s in STAT_NAMES:
         v = state['stats'][s]
         filled, empty, val = stat_bar_text(v, 15)
@@ -89,6 +88,7 @@ def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
     lines = []
     lines.append((f'Stats for {state["name"]}', color))
     lines.append((f'Species: {state["species"]}', COLOR_DIM))
+    lines.append((f'Face: {render_face(bones)}', COLOR_DIM))
     lines.append((f'Eye: {state["eye"]}', COLOR_DIM))
     lines.append((f'Hat: {state["hat"]}', COLOR_DIM))
     lines.append((f'Pet: {pet_idx+1}/{pet_count}{evo}', COLOR_DIM))
