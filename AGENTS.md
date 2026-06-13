@@ -1,43 +1,39 @@
 # AGENTS.md
 
-## Project
+ASCII desktop pet: one Python file per platform, no external runtime deps, no tests, no lint.
 
-Terminal ASCII desktop pet for i3 (18 species, 5 rarities, 5 stats). Single file: `ascii-pet` (Python 3, ~660 lines) + `ascii-pet-launcher` (Bash, 8 lines). No build system, no tests, no dependencies beyond stdlib.
+## Files
+
+| File | Lines | Platform | Notes |
+|------|-------|----------|-------|
+| `ascii-pet` | 653 | Linux (also Win32 via `msvcrt`) | ANSI terminal via `termios`/`tty`, window control via `xdotool`/`xprop` |
+| `ascii-pet-win.py` | 1338 | Windows | Win32 GDI via `ctypes` + `windll` |
+| `ascii-pet-launcher` | 8 | Linux (i3) | Bash — kills old instance, launches alacritty with `config/pet.toml` |
+| `build.py` | 38 | — | PyInstaller → `dist/ascii-pet-win.exe` |
+| `config/pet.toml` | 15 | — | Alacritty config: transparent bg, monospace font, green-on-black |
 
 ## Run
 
-```bash
-./ascii-pet                  # Direct launch
-./ascii-pet --all            # Show all species
-./ascii-pet [username]       # Specific user profile
-./ascii-pet-launcher         # Via i3 + alacritty (kills existing instance first)
 ```
-
-Requires: `alacritty`, `i3`, `picom` (transparency), `python3`, `xdotool`, `xprop`.
-
-## Architecture
-
-- `ascii-pet` — single-file Python script. All logic (species, rendering, state, input, achievements) in one file. Uses `termios`/`tty` for raw input, `subprocess` for xprop/xdotool (window geometry, opacity, clipboard).
-- `ascii-pet-launcher` — kills existing instance via `i3-msg`, launches alacritty with `config/pet.toml`.
-- `config/pet.toml` — alacritty config (transparent bg, green-on-black, no decorations, opacity 0.0).
-
-## State
-
-Pet state persisted to `~/.local/share/ascii-pet/<hash>.json`. Multi-pet store: `{"pets": [...], "current": N}`. Pet deterministically generated from seed (FNV-1a hash of species+name+SALT). Regenerating with same params yields same pet.
-
-## Keybindings
-
-- `Enter`: toggle compact ↔ expanded (`c` collapses to compact)
-- `b` / `n`: previous / next pet (`n` creates new pet at end of list)
-- `h`: toggle help overlay
-- `i`: info panel, `t`: stats panel, `a`: achievements panel
-- `f` / `p` / `s`: feed / play / sleep (non-compact modes only)
-- `r`: regenerate current pet (non-compact only)
-- `e`: export pet to clipboard (non-compact only, needs xclip or xsel)
-- `q`: quit
+./ascii-pet                  # Linux direct
+./ascii-pet --all            # List all species with sprites
+./ascii-pet [username]       # Specific profile
+./ascii-pet-launcher         # i3 + alacritty (kills existing instance)
+python ascii-pet-win.py      # Windows (or dist/ascii-pet-win.exe)
+python build.py              # Build Windows exe (auto-installs PyInstaller if missing)
+```
 
 ## Conventions
 
-- Single-file architecture is intentional — keep changes in `ascii-pet` unless launcher needs updating.
-- No external dependencies. Do not add pip packages or requirements files.
-- Transparent background requires picom + alacritty (not xterm despite README listing it).
+- **Single-file is intentional** — keep all logic in the platform file. Do not split or extract modules.
+- **Zero pip dependencies** at runtime (stdlib only). PyInstaller is build-time only.
+- **Data constants are duplicated** across both `ascii-pet` and `ascii-pet-win.py` (SPECIES, BODIES, ACHIEVEMENTS, etc.). Mirror changes across both files.
+- **State path**: Linux → `~/.local/share/ascii-pet/`, Windows → `%APPDATA%\ascii-pet\`.
+- **Deterministic generation**: Custom FNV-1a hash (`hash_string()`) of uid+SALT (`'ascii-pet-2026'`) feeds a mulberry32 PRNG. Same uid = same pet.
+- **Linux runtime deps** (not pip): `xdotool`, `xprop`, `xterm`. `picom` optional for transparency.
+
+## What to skip
+
+- No test suite, no CI, no linter, no typechecker.
+- `.trae/` contains historical design specs; not needed for current work.
+- `build/` and `dist/` are gitignored PyInstaller artifacts.

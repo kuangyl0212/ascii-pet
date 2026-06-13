@@ -317,12 +317,12 @@ MOOD_RGB = {
     'excited': (200, 0, 200),
 }
 
-COLOR_DIM   = (128, 128, 128)
+COLOR_DIM   = (0, 220, 50)    # 荧光绿（稍暗）
 COLOR_MSG   = (255, 215, 0)
-COLOR_WHITE = (200, 200, 200)
+COLOR_WHITE = (0, 255, 65)    # 荧光绿
 COLOR_BAR_FILL = (0, 200, 0)
 COLOR_BAR_EMPTY = (80, 80, 80)
-COLOR_HOVER_BG = (15, 15, 45)  # 悬停时的背景色（配合 LWA_ALPHA 半透明）
+COLOR_HOVER_BG = (25, 25, 45)  # 悬停时的极浅半透明背景
 
 def rgb_to_colorref(r, g, b):
     """RGB 转 Win32 COLORREF (0x00BBGGRR)"""
@@ -379,29 +379,6 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
     # 帮助
     if show_help:
         lines.append(('[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit', COLOR_DIM))
-    else:
-        lines.append(('[h] [f] [p] [s]', COLOR_DIM))
-    return lines
-
-def render_info_lines(state, bones, frame_idx, pet_idx, pet_count):
-    """信息面板渲染"""
-    color = RARITY_RGB[state['rarity']]
-    stars = RARITY_STARS[state['rarity']]
-    shiny_str = ' SHINY' if state['shiny'] else ''
-    frame = render_frame(bones, frame_idx, state.get('mood','normal'))
-
-    lines = []
-    lines.append((f'{state["name"]}{shiny_str} {stars}', color))
-    evo = ' ★EVOLVED' if state.get('evolved') else ''
-    lines.append((f'{state["species"]}·{state["rarity"]} Eye:{state["eye"]} Hat:{state["hat"]} Lv.{state["level"]}{evo}', COLOR_DIM))
-    lines.append((f'Interactions:{state["total_interactions"]} Pet:{pet_idx+1}/{pet_count}', COLOR_DIM))
-    for row in frame:
-        lines.append((f' {row}', COLOR_WHITE))
-    for s in STAT_NAMES:
-        v = state['stats'][s]
-        filled, empty, val = stat_bar_text(v, 15)
-        lines.append((f'{s[:4]}', COLOR_DIM, filled, COLOR_BAR_FILL, empty, COLOR_BAR_EMPTY, f' {val}', COLOR_WHITE))
-    lines.append(('[i]back [q]quit', COLOR_DIM))
     return lines
 
 def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
@@ -413,9 +390,11 @@ def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
     days = (datetime.now() - created).days
     hours = (datetime.now() - created).total_seconds() / 3600
 
+    evo = ' ★Evolved' if state.get('evolved') else ''
+
     lines = []
     lines.append((f'Stats for {state["name"]}', color))
-    lines.append((f'Species: {state["species"]}  Pet: {pet_idx+1}/{pet_count}', COLOR_DIM))
+    lines.append((f'Species: {state["species"]}  Eye: {state["eye"]}  Hat: {state["hat"]}  Pet: {pet_idx+1}/{pet_count}{evo}', COLOR_DIM))
     lines.append(('', COLOR_DIM))
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
@@ -431,8 +410,6 @@ def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
     lines.append(('--- Growth ---', COLOR_DIM))
     lines.append((f'  Level: {state["level"]}  XP: {state["xp"]}/{state["level"]*100}', COLOR_DIM))
     lines.append((f'  Rarity: {state["rarity"]}  Shiny: {"Yes" if state["shiny"] else "No"}', COLOR_DIM))
-    lines.append(('', COLOR_DIM))
-    lines.append(('[t]back [q]quit', COLOR_DIM))
     return lines
 
 def render_achievements_lines(state, bones):
@@ -450,7 +427,6 @@ def render_achievements_lines(state, bones):
         else:
             lines.append(('  ??? Locked', COLOR_DIM))
     lines.append(('', COLOR_DIM))
-    lines.append(('[a]back [q]quit', COLOR_DIM))
     return lines
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -498,7 +474,6 @@ ID_NEXT_PET    = 1006
 ID_EXPORT      = 1007
 ID_COMPACT     = 1008
 ID_EXPANDED    = 1009
-ID_INFO        = 1010
 ID_STATS       = 1011
 ID_ACHIEVE     = 1012
 ID_QUIT        = 1013
@@ -524,7 +499,6 @@ PADDING = 8
 LAYOUT_SIZES = {
     'compact':      (18, 7),
     'expanded':     (38, 22),
-    'info':         (44, 16),
     'stats':        (44, 20),
     'achievements': (44, 20),
 }
@@ -739,6 +713,7 @@ class PetWindow:
         # 当前窗口尺寸
         self.win_w = 0
         self.win_h = 0
+        self._window_pos = None  # 保留用户拖拽位置，切换面板时不重置
 
     def calc_window_size(self, mode):
         """根据实际渲染内容计算窗口像素尺寸"""
@@ -768,15 +743,33 @@ class PetWindow:
         h = num_lines * CHAR_H + PADDING * 2 + 4
         return w, h
 
+    def get_window_pos(self):
+        """获取当前窗口位置"""
+        if not self.hwnd: return None
+        rect = RECT()
+        user32.GetWindowRect(self.hwnd, byref(rect))
+        return rect.left, rect.top
+
+    @staticmethod
+    def _clamp_pos(px, py, pw, ph, sw, sh):
+        px = max(0, min(px, sw - pw))
+        py = max(0, min(py, sh - ph))
+        return px, py
+
     def resize_window(self, mode):
         """调整窗口大小和位置"""
+        cur = self.get_window_pos()
+        if cur: self._window_pos = cur
         w, h = self.calc_window_size(mode)
         self.win_w = w
         self.win_h = h
         sw = user32.GetSystemMetrics(0)
         sh = user32.GetSystemMetrics(1)
-        x = sw - w - 20
-        y = sh - h - 60
+        if self._window_pos:
+            x, y = self._clamp_pos(self._window_pos[0], self._window_pos[1], w, h, sw, sh)
+        else:
+            x = sw - w - 20
+            y = sh - h - 60
         user32.MoveWindow(self.hwnd, x, y, w, h, True)
 
     def create_window(self):
@@ -845,7 +838,7 @@ class PetWindow:
         lf.lfCharSet = 1   # DEFAULT_CHARSET
         lf.lfOutPrecision = 0
         lf.lfClipPrecision = 0
-        lf.lfQuality = 1   # CLEARTYPE_QUALITY
+        lf.lfQuality = 3   # NONANTIALIASED_QUALITY — 纯色无抗锯齿
         lf.lfPitchAndFamily = 0x31  # FIXED_PITCH | FF_MODERN
         lf.lfFaceName = 'Consolas'
 
@@ -895,8 +888,8 @@ class PetWindow:
                 self.tracking_mouse = True
             if not self.hover:
                 self.hover = True
-                # 悬停时：色键透明 + 整体半透明，背景可见
-                user32.SetLayeredWindowAttributes(hwnd, rgb_to_colorref(0, 0, 0), 180, LWA_COLORKEY | LWA_ALPHA)
+                # 悬停时：极浅半透明背景
+                user32.SetLayeredWindowAttributes(hwnd, rgb_to_colorref(0, 0, 0), 100, LWA_COLORKEY | LWA_ALPHA)
                 user32.InvalidateRect(hwnd, None, False)
             return 0
         elif msg == WM_MOUSELEAVE:
@@ -985,7 +978,6 @@ class PetWindow:
         # 视图模式
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'compact' else 0), ID_COMPACT, '紧凑模式')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'expanded' else 0), ID_EXPANDED, '展开模式')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'info' else 0), ID_INFO, '信息面板 (I)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'stats' else 0), ID_STATS, '属性面板 (T)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'achievements' else 0), ID_ACHIEVE, '成就面板 (A)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
@@ -1062,8 +1054,6 @@ class PetWindow:
             self.mode = 'compact'; self.show_help = False; self.resize_window(self.mode)
         elif cmd == ID_EXPANDED:
             self.mode = 'expanded'; self.show_help = False; self.resize_window(self.mode)
-        elif cmd == ID_INFO:
-            self.mode = 'info'; self.resize_window(self.mode)
         elif cmd == ID_STATS:
             self.mode = 'stats'; self.resize_window(self.mode)
         elif cmd == ID_ACHIEVE:
@@ -1088,8 +1078,6 @@ class PetWindow:
                 self.mode = 'expanded'; self.show_help = False
             elif self.mode == 'expanded':
                 self.mode = 'compact'; self.show_help = False
-            elif self.mode == 'info':
-                self.mode = 'expanded'; self.show_help = False
             else:
                 self.mode = 'compact'; self.show_help = False
             self.resize_window(self.mode)
@@ -1136,19 +1124,10 @@ class PetWindow:
             if new_ach: self.message = f'Achievement: {new_ach[0]}!'
             self.message_time = now
 
-        elif ch == 'i':
-            if self.mode == 'info':
-                self.mode = 'expanded'
-            elif self.mode == 'expanded':
-                self.mode = 'info'
-            else:
-                self.mode = 'info'
-            self.resize_window(self.mode)
-
         elif ch == 't':
             if self.mode == 'stats':
                 self.mode = 'expanded'
-            elif self.mode in ('expanded', 'info'):
+            elif self.mode == 'expanded':
                 self.mode = 'stats'
             else:
                 self.mode = 'stats'
@@ -1157,7 +1136,7 @@ class PetWindow:
         elif ch == 'a':
             if self.mode == 'achievements':
                 self.mode = 'expanded'
-            elif self.mode in ('expanded', 'info', 'stats'):
+            elif self.mode in ('expanded', 'stats'):
                 self.mode = 'achievements'
             else:
                 self.mode = 'achievements'
@@ -1213,8 +1192,6 @@ class PetWindow:
             lines = render_compact_lines(self.bones, self.frame_idx, self.state)
         elif self.mode == 'expanded':
             lines = render_expanded_lines(self.state, self.bones, self.frame_idx, self.show_help)
-        elif self.mode == 'info':
-            lines = render_info_lines(self.state, self.bones, self.frame_idx, self.pet_idx, len(self.pets_data['pets']))
         elif self.mode == 'stats':
             lines = render_stats_lines(self.state, self.bones, self.frame_idx, self.pet_idx, len(self.pets_data['pets']))
         elif self.mode == 'achievements':
@@ -1246,12 +1223,17 @@ class PetWindow:
         # 根据内容自适应调整窗口大小
         new_w, new_h = self.calc_window_size(self.mode)
         if new_w != self.win_w or new_h != self.win_h:
+            cur = self.get_window_pos()
+            if cur: self._window_pos = cur
             self.win_w = new_w
             self.win_h = new_h
             sw = user32.GetSystemMetrics(0)
             sh = user32.GetSystemMetrics(1)
-            x = sw - new_w - 20
-            y = sh - new_h - 60
+            if self._window_pos:
+                x, y = self._clamp_pos(self._window_pos[0], self._window_pos[1], new_w, new_h, sw, sh)
+            else:
+                x = sw - new_w - 20
+                y = sh - new_h - 60
             user32.MoveWindow(hwnd, x, y, new_w, new_h, True)
 
         # 获取客户区尺寸

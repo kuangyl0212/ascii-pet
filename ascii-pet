@@ -298,25 +298,6 @@ def build_expanded(state, bones, frame_idx, show_help=False):
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
     if show_help:
         lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit{RST}')
-    else:
-        lines.append(f'{DIM}[h] [f] [p] [s]{RST}')
-    return '\n'.join(lines)
-
-def build_info(state, bones, frame_idx, pet_idx=0, pet_count=1):
-    RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
-    color = RARITY_COLORS[state['rarity']]; stars = RARITY_STARS[state['rarity']]
-    shiny = f' SHINY' if state['shiny'] else ''
-    frame = render_frame(bones, frame_idx, state.get('mood','normal'))
-
-    lines = [f'{BOLD}{state["name"]}{RST}{shiny} {color}{stars}{RST}']
-    evo = ' ★EVOLVED' if state.get('evolved') else ''
-    lines.append(f'{state["species"]}·{state["rarity"]} Eye:{state["eye"]} Hat:{state["hat"]} Lv.{state["level"]}{evo}')
-    lines.append(f'Interactions:{state["total_interactions"]} Pet:{pet_idx+1}/{pet_count}')
-    for row in frame: lines.append(f' {row}')
-    for s in STAT_NAMES:
-        v = state['stats'][s]
-        lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
-    lines.append(f'{DIM}[i]back [q]quit{RST}')
     return '\n'.join(lines)
 
 def build_stats(state, bones, frame_idx, pet_idx=0, pet_count=1):
@@ -328,8 +309,10 @@ def build_stats(state, bones, frame_idx, pet_idx=0, pet_count=1):
     days = (datetime.now() - created).days
     hours = (datetime.now() - created).total_seconds() / 3600
 
+    evo = ' ★Evolved' if state.get('evolved') else ''
+
     lines = [f'{BOLD}Stats for {state["name"]}{RST}']
-    lines.append(f'{DIM}Species:{RST} {state["species"]}  {DIM}Pet:{RST} {pet_idx+1}/{pet_count}')
+    lines.append(f'{DIM}Species:{RST} {state["species"]}  {DIM}Eye:{RST} {state["eye"]}  {DIM}Hat:{RST} {state["hat"]}  {DIM}Pet:{RST} {pet_idx+1}/{pet_count}{evo}')
     lines.append('')
     for row in frame: lines.append(f' {row}')
     lines.append('')
@@ -344,8 +327,6 @@ def build_stats(state, bones, frame_idx, pet_idx=0, pet_count=1):
     lines.append(f'{DIM}--- Growth ---{RST}')
     lines.append(f'  {DIM}Level:{RST} {state["level"]}  {DIM}XP:{RST} {state["xp"]}/{state["level"]*100}')
     lines.append(f'  {DIM}Rarity:{RST} {state["rarity"]}  {DIM}Shiny:{RST} {"Yes" if state["shiny"] else "No"}')
-    lines.append('')
-    lines.append(f'{DIM}[t]back [q]quit{RST}')
     return '\n'.join(lines)
 
 def build_achievements(state, bones):
@@ -361,8 +342,6 @@ def build_achievements(state, bones):
             lines.append(f'  {ach["icon"]} {BOLD}{ach["name"]}{RST}')
         else:
             lines.append(f'  {DIM}??? Locked{RST}')
-    lines.append('')
-    lines.append(f'{DIM}[a]back [q]quit{RST}')
     return '\n'.join(lines)
 
 # ─── Actions ───────────────────────────────────────────────────────────────────
@@ -416,50 +395,84 @@ def check_achievements(state, pets_data):
 
 # ─── Window layout ─────────────────────────────────────────────────────────────
 STATUS_BAR_HEIGHT = 30
+_window_pos = None  # preserve user-positioned location across mode switches
+
+def get_window_pos():
+    if sys.platform == 'win32':
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if not hwnd: return None
+        rect = wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        return rect.left, rect.top
+    wid = get_win_id()
+    if not wid: return None
+    try:
+        out = subprocess.check_output(
+            ['xdotool', 'getwindowgeometry', '--shell', wid], timeout=2
+        ).decode().strip()
+        x, y = None, None
+        for line in out.splitlines():
+            if line.startswith('X='): x = int(line.split('=')[1])
+            elif line.startswith('Y='): y = int(line.split('=')[1])
+        if x is not None and y is not None: return x, y
+    except: pass
+    return None
+
+def _clamp_pos(px, py, pw, ph, sw, sh):
+    px = max(0, min(px, sw - pw))
+    py = max(0, min(py, sh - ph))
+    return px, py
 
 def layout_compact():
+    global _window_pos
     sw, sh = get_screen_size()
     cols, rows = 18, 8
     px_w = cols * FONT_W + 8
     px_h = rows * FONT_H + 4
-    px = sw - px_w - 10
-    py = sh - px_h - STATUS_BAR_HEIGHT
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 10
+        py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
 def layout_expanded():
+    global _window_pos
     sw, sh = get_screen_size()
     cols, rows = 36, 26
     px_w = cols * FONT_W + 20
     px_h = rows * FONT_H + 10
-    px = sw - px_w - 20
-    py = sh - px_h - STATUS_BAR_HEIGHT
-    set_window_geometry(cols, rows, px, py)
-
-def layout_info():
-    sw, sh = get_screen_size()
-    cols, rows = 42, 18
-    px_w = cols * FONT_W + 20
-    px_h = rows * FONT_H + 10
-    px = sw - px_w - 20
-    py = sh - px_h - STATUS_BAR_HEIGHT
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
 def layout_stats():
+    global _window_pos
     sw, sh = get_screen_size()
     cols, rows = 42, 22
     px_w = cols * FONT_W + 20
     px_h = rows * FONT_H + 10
-    px = sw - px_w - 20
-    py = sh - px_h - STATUS_BAR_HEIGHT
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
 def layout_achievements():
+    global _window_pos
     sw, sh = get_screen_size()
     cols, rows = 42, 22
     px_w = cols * FONT_W + 20
     px_h = rows * FONT_H + 10
-    px = sw - px_w - 20
-    py = sh - px_h - STATUS_BAR_HEIGHT
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
 def export_pet(state, bones, frame_idx):
@@ -493,7 +506,7 @@ def main():
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg in ('--help','-h'):
-            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Info mode: detailed info (i to toggle)\n  Commands: f feed, p play, s sleep, r reset, b prev, n next, t stats, a achieve, e export, h help, c compact, q quit')
+            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, r reset, b prev, n next, t stats, a achieve, e export, h help, c compact, q quit')
             sys.exit(0)
         if arg == '--all':
             print('\n  All 18 species:\n')
@@ -527,7 +540,7 @@ def main():
 
     clear_screen(); hide_cursor()
 
-    frame_idx = 0; mode = 'compact'  # compact / expanded / info
+    frame_idx = 0; mode = 'compact'  # compact / expanded / stats / achievements
     show_help = False; last_tick = time.time(); message = None; message_time = 0
     reminder_shown = False; last_event_time = 0; anim_end = 0
     anim_frames = []; anim_idx = 0
@@ -559,11 +572,13 @@ def main():
                         elif k in state['stats']: state['stats'][k] = min(100, state['stats'][k] + v)
 
             if mode != prev_mode:
+                global _window_pos
+                cur = get_window_pos()
+                if cur: _window_pos = cur
                 if mode == 'compact': layout_compact()
                 elif mode == 'expanded': layout_expanded()
                 elif mode == 'stats': layout_stats()
                 elif mode == 'achievements': layout_achievements()
-                else: layout_info()
                 prev_mode = mode; need_redraw = True
                 time.sleep(0.15)  # let window resize settle
 
@@ -576,8 +591,6 @@ def main():
                     display = build_stats(state, bones, frame_idx, pet_idx, len(pets_data['pets']))
                 elif mode == 'achievements':
                     display = build_achievements(state, bones)
-                else:
-                    display = build_info(state, bones, frame_idx, pet_idx, len(pets_data['pets']))
                 if message and time.time() - message_time < 2:
                     display += f'\n  \033[33m{message}\033[0m'
 
@@ -602,8 +615,6 @@ def main():
                     mode = 'expanded'; show_help = False
                 elif mode == 'expanded':
                     mode = 'compact'; show_help = False
-                elif mode == 'info':
-                    mode = 'expanded'; show_help = False
             elif key == 'h':
                 if mode == 'compact':
                     mode = 'expanded'; show_help = True
@@ -640,24 +651,17 @@ def main():
                 if new_ach: message = f'Achievement: {new_ach[0]}!'
                 message_time = time.time()
                 need_redraw = True
-            elif key == 'i':
-                if mode == 'info':
-                    mode = 'expanded'
-                elif mode == 'expanded':
-                    mode = 'info'
-                else:
-                    mode = 'info'
             elif key == 't':
                 if mode == 'stats':
                     mode = 'expanded'
-                elif mode in ('expanded', 'info'):
+                elif mode == 'expanded':
                     mode = 'stats'
                 else:
                     mode = 'stats'
             elif key == 'a':
                 if mode == 'achievements':
                     mode = 'expanded'
-                elif mode in ('expanded', 'info', 'stats'):
+                elif mode in ('expanded', 'stats'):
                     mode = 'achievements'
                 else:
                     mode = 'achievements'
