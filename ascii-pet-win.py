@@ -381,8 +381,8 @@ class ICONINFO(ctypes.Structure):
         ('hbmColor', wintypes.HBITMAP),
     ]
 
-gdi32.CreateIconIndirect.argtypes = [ctypes.POINTER(ICONINFO)]
-gdi32.CreateIconIndirect.restype = wintypes.HICON
+user32.CreateIconIndirect.argtypes = [ctypes.POINTER(ICONINFO)]
+user32.CreateIconIndirect.restype = wintypes.HICON
 user32.CreatePopupMenu.argtypes = []
 user32.CreatePopupMenu.restype = wintypes.HMENU
 user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, ctypes.c_ssize_t, wintypes.LPCWSTR]
@@ -503,7 +503,7 @@ class PetWindow:
         info.yHotspot = 0
         info.hbmMask = hbmp_mask
         info.hbmColor = hbmp
-        hicon = gdi32.CreateIconIndirect(byref(info))
+        hicon = user32.CreateIconIndirect(byref(info))
 
         gdi32.SelectObject(hdc_mask, old_mask)
         gdi32.DeleteObject(hbmp_mask)
