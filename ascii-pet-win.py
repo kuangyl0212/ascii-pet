@@ -477,6 +477,9 @@ WM_LBUTTONDOWN = 0x0201
 WM_NCLBUTTONDOWN = 0x00A1
 WM_MOUSEMOVE   = 0x0200
 WM_MOUSELEAVE  = 0x02A3
+WM_CONTEXTMENU = 0x007B
+WM_COMMAND     = 0x0111
+WM_RBUTTONDOWN = 0x0204
 
 HTCAPTION      = 2
 DT_LEFT        = 0x0000
@@ -484,6 +487,29 @@ DT_TOP         = 0x0000
 TRANSPARENT    = 1
 
 COLOR_WINDOW   = 5
+
+# 右键菜单命令 ID
+ID_FEED        = 1001
+ID_PLAY        = 1002
+ID_SLEEP       = 1003
+ID_REGENERATE  = 1004
+ID_PREV_PET    = 1005
+ID_NEXT_PET    = 1006
+ID_EXPORT      = 1007
+ID_COMPACT     = 1008
+ID_EXPANDED    = 1009
+ID_INFO        = 1010
+ID_STATS       = 1011
+ID_ACHIEVE     = 1012
+ID_QUIT        = 1013
+
+MF_STRING     = 0x00000000
+MF_SEPARATOR  = 0x00000800
+MF_GRAYED     = 0x00000001
+MF_CHECKED    = 0x00000008
+TPM_RIGHTBUTTON = 0x0002
+TPM_NONOTIFY   = 0x0080
+TPM_RETURNCMD  = 0x0100
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Win32 窗口实现
@@ -668,6 +694,16 @@ gdi32.GetTextExtentPoint32W.restype = wintypes.BOOL
 gdi32.BitBlt.argtypes = [wintypes.HDC, c_int, c_int, c_int, c_int, wintypes.HDC, c_int, c_int, wintypes.DWORD]
 gdi32.CreateFontIndirectW.argtypes = [ctypes.POINTER(LOGFONTW)]
 gdi32.CreateFontIndirectW.restype = wintypes.HFONT
+user32.CreatePopupMenu.argtypes = []
+user32.CreatePopupMenu.restype = wintypes.HMENU
+user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, ctypes.c_ssize_t, wintypes.LPCWSTR]
+user32.AppendMenuW.restype = wintypes.BOOL
+user32.InsertMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, wintypes.UINT, ctypes.c_ssize_t, wintypes.LPCWSTR]
+user32.InsertMenuW.restype = wintypes.BOOL
+user32.TrackPopupMenu.argtypes = [wintypes.HMENU, wintypes.UINT, c_int, c_int, c_int, wintypes.HWND, ctypes.POINTER(RECT)]
+user32.TrackPopupMenu.restype = wintypes.BOOL
+user32.DestroyMenu.argtypes = [wintypes.HMENU]
+user32.DestroyMenu.restype = wintypes.BOOL
 
 
 class PetWindow:
@@ -818,6 +854,12 @@ class PetWindow:
             user32.ReleaseCapture()
             user32.SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)
             return 0
+        elif msg == WM_RBUTTONDOWN:
+            self.show_context_menu(lparam)
+            return 0
+        elif msg == WM_COMMAND:
+            self.on_command(wparam)
+            return 0
         elif msg == WM_MOUSEMOVE:
             if not self.tracking_mouse:
                 # 注册鼠标离开追踪
@@ -890,6 +932,127 @@ class PetWindow:
 
         # 触发重绘
         user32.InvalidateRect(self.hwnd, None, False)
+
+    def show_context_menu(self, lparam):
+        """显示右键菜单"""
+        # 获取鼠标屏幕坐标
+        class POINT(ctypes.Structure):
+            _fields_ = [('x', c_long), ('y', c_long)]
+        pt = POINT()
+        user32.GetCursorPos(byref(pt))
+        x, y = pt.x, pt.y
+
+        hmenu = user32.CreatePopupMenu()
+
+        # 动作菜单
+        is_compact = self.mode == 'compact'
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_FEED, '喂食 (F)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_PLAY, '玩耍 (P)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_SLEEP, '睡觉 (S)')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_REGENERATE, '重新生成 (R)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_EXPORT, '导出到剪贴板 (E)')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+
+        # 宠物切换
+        user32.AppendMenuW(hmenu, MF_STRING, ID_PREV_PET, '上一个宠物 (B)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_NEXT_PET, '下一个宠物 (N)')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+
+        # 视图模式
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'compact' else 0), ID_COMPACT, '紧凑模式')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'expanded' else 0), ID_EXPANDED, '展开模式')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'info' else 0), ID_INFO, '信息面板 (I)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'stats' else 0), ID_STATS, '属性面板 (T)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.mode == 'achievements' else 0), ID_ACHIEVE, '成就面板 (A)')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        user32.AppendMenuW(hmenu, MF_STRING, ID_QUIT, '退出 (Q)')
+
+        # 显示菜单并获取选择
+        cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                                     x, y, 0, self.hwnd, None)
+        user32.DestroyMenu(hmenu)
+
+        # 处理菜单选择
+        if cmd:
+            self.execute_menu_command(cmd)
+
+    def execute_menu_command(self, cmd):
+        """执行菜单命令"""
+        now = time.time()
+        if cmd == ID_FEED and self.mode != 'compact':
+            msg, anim_type = feed_pet(self.state)
+            self.message = msg; self.message_time = now
+            if anim_type: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim_type]
+            new_ach = check_achievements(self.state, self.pets_data)
+            if new_ach: self.message = f'Achievement: {new_ach[0]}!'; self.message_time = now
+            save_state(self.uid, self.state, self.pets_data, self.pet_idx)
+        elif cmd == ID_PLAY and self.mode != 'compact':
+            msg, anim_type = play_pet(self.state)
+            self.message = msg; self.message_time = now
+            if anim_type: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim_type]
+            new_ach = check_achievements(self.state, self.pets_data)
+            if new_ach: self.message = f'Achievement: {new_ach[0]}!'; self.message_time = now
+            save_state(self.uid, self.state, self.pets_data, self.pet_idx)
+        elif cmd == ID_SLEEP and self.mode != 'compact':
+            msg, anim_type = sleep_pet(self.state)
+            self.message = msg; self.message_time = now
+            if anim_type: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim_type]
+            new_ach = check_achievements(self.state, self.pets_data)
+            if new_ach: self.message = f'Achievement: {new_ach[0]}!'; self.message_time = now
+            save_state(self.uid, self.state, self.pets_data, self.pet_idx)
+        elif cmd == ID_REGENERATE and self.mode != 'compact':
+            self.bones = generate_companion(self.uid); name = generate_name(self.uid)
+            self.state = init_state(self.uid, self.bones, name)
+            self.pets_data['pets'][self.pet_idx] = self.state; save_pets(self.uid, self.pets_data)
+            self.message = 'Regenerated!'; self.message_time = now
+        elif cmd == ID_EXPORT and self.mode != 'compact':
+            self.message = export_pet(self.state, self.bones, self.frame_idx)
+            self.message_time = now
+        elif cmd == ID_PREV_PET:
+            if len(self.pets_data['pets']) > 1:
+                self.pets_data['pets'][self.pet_idx] = self.state
+                self.pet_idx = (self.pet_idx - 1) % len(self.pets_data['pets'])
+                self.state = self.pets_data['pets'][self.pet_idx]
+                self.bones = {k: self.state[k] for k in ('species','eye','hat','shiny','rarity')}
+                self.pets_data['current'] = self.pet_idx; save_pets(self.uid, self.pets_data)
+                new_ach = check_achievements(self.state, self.pets_data)
+                self.message = f'Switched to {self.state["name"]}'
+                if new_ach: self.message = f'Achievement: {new_ach[0]}!'
+                self.message_time = now
+        elif cmd == ID_NEXT_PET:
+            self.pets_data['pets'][self.pet_idx] = self.state
+            if self.pet_idx < len(self.pets_data['pets']) - 1:
+                self.pet_idx += 1
+            else:
+                new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
+                self.pets_data['pets'].append(new_state)
+                self.pet_idx = len(self.pets_data['pets']) - 1
+            self.state = self.pets_data['pets'][self.pet_idx]
+            self.bones = {k: self.state[k] for k in ('species','eye','hat','shiny','rarity')}
+            self.pets_data['current'] = self.pet_idx; save_pets(self.uid, self.pets_data)
+            new_ach = check_achievements(self.state, self.pets_data)
+            self.message = f'Switched to {self.state["name"]}'
+            if new_ach: self.message = f'Achievement: {new_ach[0]}!'
+            self.message_time = now
+        elif cmd == ID_COMPACT:
+            self.mode = 'compact'; self.show_help = False; self.resize_window(self.mode)
+        elif cmd == ID_EXPANDED:
+            self.mode = 'expanded'; self.show_help = False; self.resize_window(self.mode)
+        elif cmd == ID_INFO:
+            self.mode = 'info'; self.resize_window(self.mode)
+        elif cmd == ID_STATS:
+            self.mode = 'stats'; self.resize_window(self.mode)
+        elif cmd == ID_ACHIEVE:
+            self.mode = 'achievements'; self.resize_window(self.mode)
+        elif cmd == ID_QUIT:
+            user32.DestroyWindow(self.hwnd)
+            return
+        user32.InvalidateRect(self.hwnd, None, False)
+
+    def on_command(self, wparam):
+        """WM_COMMAND 处理"""
+        pass
 
     def on_char(self, wparam):
         """键盘输入处理"""
