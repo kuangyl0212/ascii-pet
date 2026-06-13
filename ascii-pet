@@ -85,30 +85,6 @@ def get_window_pos():
 def _clamp_pos(px, py, pw, ph, sw, sh):
     return max(0, min(px, sw - pw)), max(0, min(py, sh - ph))
 
-# ─── Terminal mouse (SGR) ──────────────────────────────────────────────────────
-
-def enable_mouse():
-    """Enable SGR mouse button-events (no drag tracking, no ?1002h)."""
-    sys.stdout.write('\033[?1000h\033[?1006h')
-    sys.stdout.flush()
-
-def disable_mouse():
-    sys.stdout.write('\033[?1000l\033[?1006l')
-    sys.stdout.flush()
-
-def read_raw_with_timeout(timeout=0.01):
-    """Read one byte from stdin with tty raw mode, restore before return."""
-    fd = sys.stdin.fileno()
-    try: old = termios.tcgetattr(fd)
-    except: return None
-    try:
-        tty.setraw(fd)
-        dr,_,_ = select.select([sys.stdin],[],[],timeout)
-        return sys.stdin.read(1) if dr else None
-    finally:
-        try: termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        except: pass
-
 # ─── Terminal ─────────────────────────────────────────────────────────────────
 
 def clear_screen(): sys.stdout.write('\033[2J\033[H'); sys.stdout.flush()
@@ -162,7 +138,7 @@ def build_expanded(game):
         v = game.state['stats'][s]
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
     if game.show_help:
-        lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit{RST}')
+        lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [m]move [Enter]compact [q]quit{RST}')
     return '\n'.join(lines)
 
 def build_stats(game):
@@ -274,7 +250,7 @@ def main():
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg in ('--help','-h'):
-            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, r reset, b prev, n next, t stats, a achieve, e export, h help, c compact, q quit')
+            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, r reset, b prev, n next, t stats, a achieve, e export, h help, c compact, m move, q quit')
             sys.exit(0)
         if arg == '--all':
             print('\n  All 18 species:\n')
@@ -298,13 +274,11 @@ def main():
     signal.signal(signal.SIGINT, lambda *_: (show_cursor(), clear_screen(), sys.exit(0)))
 
     clear_screen(); hide_cursor()
-    if sys.platform != 'win32': enable_mouse()
     layout_compact()
 
     prev_display = None; prev_mode = None; need_redraw = True
     last_tick = time.time()
-    dragging = False
-    drag_mx = drag_my = drag_wx = drag_wy = 0
+    move_mode = False
 
     try:
         while True:
@@ -329,6 +303,8 @@ def main():
                 elif game.mode == 'achievements': display = build_achievements(game)
                 if game.message and time.time() - game.message_time < 2:
                     display += f'\n  \033[33m{game.message}\033[0m'
+                if move_mode:
+                    display += '\n  \033[33m[MOVE] h← j↓ k↑ l→  m:exit\033[0m'
                 if display != prev_display:
                     clear_screen()
                     print(display, end='', flush=True)
@@ -346,63 +322,71 @@ def main():
             key = get_key()
             if key is None: continue
 
-            # SGR mouse sequence detection (only on Linux)
-            if key == '\x1b' and sys.platform != 'win32':
-                c2 = read_raw_with_timeout(0.01)
-                if c2 == '[':
-                    c3 = read_raw_with_timeout(0.01)
-                    if c3 == '<':
-                        seq = '\x1b[<'
-                        while True:
-                            c = read_raw_with_timeout(0.02)
-                            if c is None: break
-                            seq += c
-                            if c in ('Mm'):
-                                try:
-                                    rest = seq.replace('\x1b[<', '')
-                                    parts = rest[:-1].split(';')
-                                    btn, mx, my = int(parts[0]), int(parts[1]), int(parts[2])
-                                    press = (rest[-1] == 'M')
-                                    if btn == 0:
-                                        wid = get_win_id()
-                                        if press and wid:
-                                            try:
-                                                out = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', wid], timeout=2).decode()
-                                                wx = wy = ww = wh = None
-                                                for line in out.splitlines():
-                                                    if line.startswith('X='): wx = int(line.split('=')[1])
-                                                    elif line.startswith('Y='): wy = int(line.split('=')[1])
-                                                    elif line.startswith('WIDTH='): ww = int(line.split('=')[1])
-                                                    elif line.startswith('HEIGHT='): wh = int(line.split('=')[1])
-                                                if wx is not None and wx <= mx <= wx + ww and wy <= my <= wy + wh:
-                                                    dragging = True
-                                                    drag_mx, drag_my = mx, my
-                                                    drag_wx, drag_wy = wx, wy
-                                            except: pass
-                                        else:
-                                            dragging = False
-                                except: pass
-                                break
-                    # If not '<', consumed chars are discarded (harmless - no arrow keys used)
+            # Move mode toggle
+            if key == 'm':
+                move_mode = not move_mode
+                need_redraw = True
                 continue
 
-            # While dragging, poll xdotool for mouse position, move window
-            if dragging and sys.platform != 'win32':
-                try:
+            if move_mode:
+                delta = 10
+                cur = get_window_pos()
+                sw, sh = get_screen_size()
+                # Get actual window width/height from xdotool for clamping
+                pw = ph = None
+                wid = get_win_id()
+                if wid:
+                    try:
+                        out = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', wid], timeout=2).decode()
+                        for line in out.splitlines():
+                            if line.startswith('WIDTH='): pw = int(line.split('=')[1])
+                            elif line.startswith('HEIGHT='): ph = int(line.split('=')[1])
+                    except: pass
+                if pw is None: pw = 18 * FONT_W + 8
+                if ph is None: ph = 8 * FONT_H + 4
+                if key == 'h':
+                    if cur: _window_pos = (max(0, cur[0] - delta), cur[1])
+                elif key == 'j':
+                    if cur: _window_pos = (cur[0], min(sh - ph, cur[1] + delta))
+                elif key == 'k':
+                    if cur: _window_pos = (cur[0], max(0, cur[1] - delta))
+                elif key == 'l':
+                    if cur: _window_pos = (min(sw - pw, cur[0] + delta), cur[1])
+                else:
+                    move_mode = False
+                    need_redraw = True
+                    atype, detail = game.handle_key(key)
+                    if atype == 'quit': break
+                    elif atype == 'mode_change':
+                        cur = get_window_pos()
+                        if cur: _window_pos = cur
+                        do_layout(game)
+                        prev_mode = game.mode; need_redraw = True
+                        time.sleep(0.15)
+                    elif atype == 'export':
+                        text = export_text(game.state, game.bones, game.frame_idx)
+                        cmds = [['xclip','-selection','clipboard'],['xsel','--clipboard','--input']]
+                        if sys.platform == 'win32': cmds = [['clip.exe']]
+                        copied = False
+                        for cmd in cmds:
+                            try:
+                                p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                                p.communicate(text.encode())
+                                copied = True; break
+                            except: pass
+                        game.message = 'Copied to clipboard!' if copied else 'Printed to terminal'
+                        game.message_time = time.time(); need_redraw = True
+                    elif atype in ('action', 'pet_switch'):
+                        need_redraw = True
+                    continue
+
+                if cur:
+                    px, py = _clamp_pos(_window_pos[0], _window_pos[1], pw, ph, sw, sh)
+                    _window_pos = (px, py)
                     wid = get_win_id()
                     if wid:
-                        out = subprocess.check_output(['xdotool', 'getmouselocation', '--shell'], timeout=2).decode()
-                        mx = my = None
-                        for line in out.splitlines():
-                            if line.startswith('X='): mx = int(line.split('=')[1])
-                            elif line.startswith('Y='): my = int(line.split('=')[1])
-                        if mx is not None and my is not None:
-                            wx = drag_wx + mx - drag_mx
-                            wy = drag_wy + my - drag_my
-                            sw, sh = get_screen_size()
-                            _window_pos = (max(0, min(wx, sw - 100)), max(0, min(wy, sh - 50)))
-                            subprocess.run(['xdotool', 'windowmove', wid, str(int(_window_pos[0])), str(int(_window_pos[1]))], timeout=1)
-                except: pass
+                        subprocess.run(['xdotool', 'windowmove', wid, str(px), str(py)], timeout=1)
+                continue
 
             atype, detail = game.handle_key(key)
             if atype == 'quit': break
@@ -428,7 +412,6 @@ def main():
             elif atype in ('action', 'pet_switch'):
                 need_redraw = True
     finally:
-        if sys.platform != 'win32': disable_mouse()
         show_cursor(); clear_screen()
         print(f'\n  {render_face(game.bones)}  Bye!\n')
 
