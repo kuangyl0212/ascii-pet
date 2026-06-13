@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """ASCII Desktop Pet - Terminal Companion"""
 
-import os, sys, json, time, random, hashlib, signal, subprocess
-import termios, tty, select
+import os, sys, json, time, random, hashlib, signal, subprocess, select
 from pathlib import Path
 from datetime import datetime
+
+if sys.platform == 'win32':
+    import msvcrt
+    import ctypes
+else:
+    import termios, tty
 
 def mulberry32(seed):
     a = seed & 0xFFFFFFFF
@@ -195,6 +200,8 @@ FONT_W = 8   # approximate char width for monospace 11pt
 FONT_H = 17  # approximate char height for monospace 11pt
 
 def get_win_id():
+    if sys.platform == 'win32':
+        return ctypes.windll.kernel32.GetConsoleWindow()
     for _ in range(5):
         try:
             out = subprocess.check_output(['xdotool','search','--class','ascii-pet'], timeout=2).decode().strip()
@@ -204,6 +211,13 @@ def get_win_id():
     return None
 
 def set_window_geometry(cols, rows, pos_x, pos_y):
+    if sys.platform == 'win32':
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if not hwnd: return
+        px_w = cols * FONT_W + 20
+        px_h = rows * FONT_H + 10
+        ctypes.windll.user32.MoveWindow(hwnd, pos_x, pos_y, px_w, px_h, True)
+        return
     wid = get_win_id()
     if not wid: return
     px_w = cols * FONT_W + 20
@@ -220,6 +234,9 @@ def set_window_opacity(wid, opacity_hex):
     except: pass
 
 def get_screen_size():
+    if sys.platform == 'win32':
+        user32 = ctypes.windll.user32
+        return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
     try:
         out = subprocess.check_output(['xdotool','getdisplaygeometry'], timeout=2).decode().strip().split()
         return int(out[0]), int(out[1])
@@ -231,6 +248,12 @@ def move_cursor_top(): sys.stdout.write('\033[H'); sys.stdout.flush()
 def hide_cursor(): sys.stdout.write('\033[?25l'); sys.stdout.flush()
 def show_cursor(): sys.stdout.write('\033[?25h'); sys.stdout.flush()
 def get_key():
+    if sys.platform == 'win32':
+        if msvcrt.kbhit():
+            b = msvcrt.getch()
+            try: return b.decode('utf-8', errors='replace')
+            except: return None
+        return None
     fd = sys.stdin.fileno()
     try: old = termios.tcgetattr(fd)
     except: return None
@@ -452,7 +475,10 @@ def export_pet(state, bones, frame_idx):
         v = state['stats'][s]
         lines.append(f'{s[:4]}  {"█"*round(v/5)}{"░"*(20-round(v/5))} {v}')
     text = '\n'.join(lines)
-    for cmd in [['xclip','-selection','clipboard'],['xsel','--clipboard','--input']]:
+    cmds = [['xclip','-selection','clipboard'],['xsel','--clipboard','--input']]
+    if sys.platform == 'win32':
+        cmds = [['clip.exe']]
+    for cmd in cmds:
         try:
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
             p.communicate(text.encode())
@@ -478,6 +504,14 @@ def main():
                 print()
             sys.exit(0)
         uid = arg
+
+    if sys.platform == 'win32':
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            mode.value |= 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            kernel32.SetConsoleMode(handle, mode)
 
     state, pets_data, pet_idx = load_state(uid)
     if state is None:
