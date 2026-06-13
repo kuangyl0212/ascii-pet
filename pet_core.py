@@ -219,7 +219,8 @@ def init_state(uid, bones, name):
             'eye':bones['eye'],'hat':bones['hat'],'shiny':bones['shiny'],'stats':bones['stats'],
             'mood':'normal','created_at':now,'last_fed':now,'last_played':now,'last_slept':now,
             'level':1,'xp':0,'total_interactions':0,
-            'feed_count':0,'play_count':0,'sleep_count':0,'achievements':[]}
+            'feed_count':0,'play_count':0,'sleep_count':0,'achievements':[],
+            'critical_since':None,'is_dead':False}
 
 def update_state_over_time(state):
     now = datetime.now()
@@ -337,6 +338,9 @@ class PetGame:
         delta_hours = (now - self.last_tick_time) / 3600
         self.last_tick_time = now
 
+        if self.state.get('is_dead'):
+            return None, 0
+
         stats = self.state['stats']
         decay_config = [('last_fed', 4, 5, 'HUNGER'), ('last_played', 2, 3, 'HAPPY'), ('last_slept', 6, 4, 'ENERGY')]
         for key, threshold, rate, stat in decay_config:
@@ -349,16 +353,42 @@ class PetGame:
         self.state['mood'] = 'hungry' if stats['HUNGER']<20 else 'sleepy' if stats['ENERGY']<20 else 'excited' if stats['HAPPY']>80 else 'happy' if stats['HAPPY']>50 else 'normal'
         self.save()
 
-        stats = self.state['stats']
+        h, e, p = stats['HUNGER'], stats['ENERGY'], stats['HAPPY']
         msg, msg_time = None, 0
-        if stats['HUNGER'] < 10:
-            msg = 'Your pet is starving!'; msg_time = now; self.warning_active = True
-        elif stats['ENERGY'] < 10:
-            msg = 'Your pet is exhausted!'; msg_time = now; self.warning_active = True
-        elif stats['HAPPY'] < 10:
-            msg = 'Your pet is lonely!'; msg_time = now; self.warning_active = True
+        critical = h == 0 or e == 0 or p == 0
+        all_zero = h == 0 and e == 0 and p == 0
+
+        if critical:
+            if self.state.get('critical_since') is None:
+                self.state['critical_since'] = datetime.now().isoformat()
+            critical_secs = (datetime.now() - datetime.fromisoformat(self.state['critical_since'])).total_seconds()
+            if all_zero and critical_secs >= 300:
+                self.state['is_dead'] = True
+                self.save()
+                return 'Your pet has died...', now
+            elif critical_secs >= 900:
+                self.state['is_dead'] = True
+                self.save()
+                return 'Your pet has died...', now
+            if all_zero:
+                remaining = int((300 - critical_secs) / 60) + 1
+                msg = f'CRITICAL! All stats at zero! ({remaining}min left)'; msg_time = now
+            else:
+                remaining = int((900 - critical_secs) / 60) + 1
+                msg = f'CRITICAL! A stat is at zero! ({remaining}min left)'; msg_time = now
+            self.warning_active = True
         else:
-            self.warning_active = False
+            if self.state.get('critical_since'):
+                self.state['critical_since'] = None
+                self.save()
+            if h < 10:
+                msg = 'Your pet is starving!'; msg_time = now; self.warning_active = True
+            elif e < 10:
+                msg = 'Your pet is exhausted!'; msg_time = now; self.warning_active = True
+            elif p < 10:
+                msg = 'Your pet is lonely!'; msg_time = now; self.warning_active = True
+            else:
+                self.warning_active = False
 
         if now - self.last_event_time > 60 and random.random() < 0.01:
             evt = random.choice(RANDOM_EVENTS)
@@ -371,6 +401,16 @@ class PetGame:
 
     def handle_action(self, action):
         """Execute an action. Returns (message, anim_type)."""
+        if self.state.get('is_dead'):
+            if action in ('feed', 'play', 'sleep'):
+                self.state['is_dead'] = False
+                self.state['critical_since'] = None
+                self.state['stats']['HUNGER'] = 25
+                self.state['stats']['ENERGY'] = 25
+                self.state['stats']['HAPPY'] = 25
+                self.save()
+                return 'Revived!', None
+            return 'Your pet is dead...', None
         if action == 'feed':
             msg, anim = feed_pet(self.state)
         elif action == 'play':
@@ -459,6 +499,15 @@ class PetGame:
         now = time.time()
         if key == 'q':
             return 'quit', None
+
+        if self.state.get('is_dead'):
+            if key in ('f', 'p', 's'):
+                msg, anim = self.handle_action(key if key != 'f' else 'feed')
+                if key == 'p': msg, anim = self.handle_action('play')
+                if key == 's': msg, anim = self.handle_action('sleep')
+                self.message = msg; self.message_time = now
+                return 'action', msg
+            return 'none', None
 
         if key in ('\r', '\n'):
             if self.mode == 'compact':

@@ -135,6 +135,17 @@ def render_release_lines(game):
     lines.append(('[1-3]select [c]cancel', COLOR_DIM))
     return lines
 
+def render_death_lines(game):
+    frame = render_frame(game.bones, game.frame_idx, 'normal')
+    lines = []
+    lines.append(('Your pet has died...', (255, 50, 50)))
+    lines.append(('', COLOR_DIM))
+    for row in frame:
+        lines.append((f'  {row}', (100, 100, 100)))
+    lines.append(('', COLOR_DIM))
+    lines.append(('[f]feed, [p]play, or [s]sleep to revive', (255, 50, 50)))
+    return lines
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Win32 剪贴板导出
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -746,7 +757,9 @@ class PetWindow:
 
     def get_render_lines(self):
         g = self.game
-        if g.mode == 'compact':
+        if g.state.get('is_dead'):
+            lines = render_death_lines(g)
+        elif g.mode == 'compact':
             lines = render_compact_lines(g.bones, g.frame_idx, g.state)
         elif g.mode == 'expanded':
             lines = render_expanded_lines(g.state, g.bones, g.frame_idx, g.show_help)

@@ -196,6 +196,17 @@ def build_release(game):
     lines.append(f'{DIM}[1-3]select [c]cancel{RST}')
     return '\n'.join(lines)
 
+def build_death(game):
+    RST='\033[0m'; BOLD='\033[1m'; RED='\033[31m'
+    frame = render_frame(game.bones, game.frame_idx, 'normal')
+    lines = [f'{RED}{BOLD}  Your pet has died...{RST}']
+    lines.append('')
+    for row in frame:
+        lines.append(f'  \033[90m{row}{RST}')
+    lines.append('')
+    lines.append(f'{RED}  Press [f]feed, [p]play, or [s]sleep to revive{RST}')
+    return '\n'.join(lines)
+
 # ─── Layout ───────────────────────────────────────────────────────────────────
 
 def layout_compact():
@@ -325,7 +336,9 @@ def main():
                 time.sleep(0.15)
 
             if need_redraw:
-                if game.mode == 'compact': display = build_compact(game)
+                if game.state.get('is_dead'):
+                    display = build_death(game)
+                elif game.mode == 'compact': display = build_compact(game)
                 elif game.mode == 'expanded': display = build_expanded(game)
                 elif game.mode == 'stats': display = build_stats(game)
                 elif game.mode == 'achievements': display = build_achievements(game)
