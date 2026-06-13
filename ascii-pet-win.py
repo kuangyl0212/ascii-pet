@@ -88,7 +88,10 @@ def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
 
     lines = []
     lines.append((f'Stats for {state["name"]}', color))
-    lines.append((f'Species: {state["species"]}  Eye: {state["eye"]}  Hat: {state["hat"]}  Pet: {pet_idx+1}/{pet_count}{evo}', COLOR_DIM))
+    lines.append((f'Species: {state["species"]}', COLOR_DIM))
+    lines.append((f'Eye: {state["eye"]}', COLOR_DIM))
+    lines.append((f'Hat: {state["hat"]}', COLOR_DIM))
+    lines.append((f'Pet: {pet_idx+1}/{pet_count}{evo}', COLOR_DIM))
     lines.append(('', COLOR_DIM))
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
@@ -247,7 +250,7 @@ PADDING = 8
 LAYOUT_SIZES = {
     'compact':      (18, 7),
     'expanded':     (38, 22),
-    'stats':        (44, 20),
+    'stats':        (44, 24),
     'achievements': (44, 20),
     'release':      (44, 14),
 }

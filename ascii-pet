@@ -152,7 +152,10 @@ def build_stats(game):
     evo = ' ★Evolved' if game.state.get('evolved') else ''
 
     lines = [f'{BOLD}Stats for {game.state["name"]}{RST}']
-    lines.append(f'{DIM}Species:{RST} {game.state["species"]}  {DIM}Eye:{RST} {game.state["eye"]}  {DIM}Hat:{RST} {game.state["hat"]}  {DIM}Pet:{RST} {game.pet_idx+1}/{len(game.pets_data["pets"])}{evo}')
+    lines.append(f'{DIM}Species:{RST} {game.state["species"]}')
+    lines.append(f'{DIM}Eye:{RST} {game.state["eye"]}')
+    lines.append(f'{DIM}Hat:{RST} {game.state["hat"]}')
+    lines.append(f'{DIM}Pet:{RST} {game.pet_idx+1}/{len(game.pets_data["pets"])}{evo}')
     lines.append('')
     for row in frame: lines.append(f' {row}')
     lines.append('')
@@ -238,7 +241,7 @@ def layout_expanded():
 def layout_stats():
     global _window_pos
     sw, sh = get_screen_size()
-    cols, rows = 42, 22
+    cols, rows = 42, 24
     px_w = cols * FONT_W + 20
     px_h = rows * FONT_H + 10
     if _window_pos:
