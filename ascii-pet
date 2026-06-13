@@ -276,7 +276,7 @@ def build_expanded(state, bones, frame_idx, show_help=False):
     if show_help:
         lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit{RST}')
     else:
-        lines.append(f'{DIM}[h]help [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit{RST}')
+        lines.append(f'{DIM}[h] [f] [p] [s]{RST}')
     return '\n'.join(lines)
 
 def build_info(state, bones, frame_idx, pet_idx=0, pet_count=1):
@@ -405,7 +405,7 @@ def layout_compact():
 
 def layout_expanded():
     sw, sh = get_screen_size()
-    cols, rows = 50, 26
+    cols, rows = 36, 26
     px_w = cols * FONT_W + 20
     px_h = rows * FONT_H + 10
     px = sw - px_w - 20
