@@ -480,7 +480,7 @@ class PetGame:
             self.message = msg; self.message_time = now
             return 'pet_switch', msg
 
-        if key == 'w' and self.mode != 'compact':
+        if key == 'w':
             msg = self.adopt_pet()
             if msg is None:
                 return 'mode_change', self.mode

@@ -672,11 +672,11 @@ class PetWindow:
         user32.GetCursorPos(byref(pt))
         hmenu = user32.CreatePopupMenu()
         is_compact = self.game.mode == 'compact'
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_FEED, '喂食 (F)')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_PLAY, '玩耍 (P)')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_SLEEP, '睡觉 (S)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_FEED, '喂食 (F)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_PLAY, '玩耍 (P)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_SLEEP, '睡觉 (S)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_ADOPT, '领养新宠物 (W)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_ADOPT, '领养新宠物 (W)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_EXPORT, '导出到剪贴板 (E)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_PREV_PET, '上一个宠物 (B)')
@@ -694,19 +694,19 @@ class PetWindow:
 
     def execute_menu_command(self, cmd):
         now = time.time()
-        if cmd == ID_FEED and self.game.mode != 'compact':
+        if cmd == ID_FEED:
             msg, anim = self.game.handle_action('feed')
             self.game.message = msg; self.game.message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
-        elif cmd == ID_PLAY and self.game.mode != 'compact':
+        elif cmd == ID_PLAY:
             msg, anim = self.game.handle_action('play')
             self.game.message = msg; self.game.message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
-        elif cmd == ID_SLEEP and self.game.mode != 'compact':
+        elif cmd == ID_SLEEP:
             msg, anim = self.game.handle_action('sleep')
             self.game.message = msg; self.game.message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
-        elif cmd == ID_ADOPT and self.game.mode != 'compact':
+        elif cmd == ID_ADOPT:
             msg = self.game.adopt_pet()
             self.game.message = msg; self.game.message_time = now
         elif cmd == ID_EXPORT and self.game.mode != 'compact':
