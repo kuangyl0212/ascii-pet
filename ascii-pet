@@ -8,7 +8,7 @@ else:
     import termios, tty
 
 from pet_core import (
-    SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ANIMATIONS, ACHIEVEMENTS,
+    SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ANIMATIONS, ACHIEVEMENTS, MAX_PETS,
     render_sprite, render_face, render_frame, export_text,
     PetGame,
 )
@@ -138,7 +138,7 @@ def build_expanded(game):
         v = game.state['stats'][s]
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
     if game.show_help:
-        lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [m]move [Enter]compact [q]quit{RST}')
+        lines.append(f'{DIM}[f]feed [p]play [s]sleep [b]prev [n]next [t]stats [a]achieve [e]export [m]move [Enter]compact [q]quit{RST}')
     return '\n'.join(lines)
 
 def build_stats(game):
@@ -180,6 +180,20 @@ def build_achievements(game):
             lines.append(f'  {ach["icon"]} {BOLD}{ach["name"]}{RST}')
         else:
             lines.append(f'  {DIM}??? Locked{RST}')
+    return '\n'.join(lines)
+
+def build_release(game):
+    RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
+    pets = game.get_release_list()
+    lines = [f'{BOLD}\033[31mSelect a pet to release:{RST}']
+    lines.append(f'{DIM}Max {MAX_PETS} pets. Choose 1-3, or [c]cancel{RST}')
+    lines.append('')
+    for idx, name, species, rarity in pets:
+        color = RARITY_COLORS[rarity]
+        stars = RARITY_STARS[rarity]
+        lines.append(f'  {BOLD}{idx}{RST}  {color}{name}{RST} {DIM}{species}·{rarity}{RST} {color}{stars}{RST}')
+    lines.append('')
+    lines.append(f'{DIM}[1-3]select [c]cancel{RST}')
     return '\n'.join(lines)
 
 # ─── Layout ───────────────────────────────────────────────────────────────────
@@ -236,11 +250,25 @@ def layout_achievements():
         py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
+def layout_release():
+    global _window_pos
+    sw, sh = get_screen_size()
+    cols, rows = 42, 14
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
 def do_layout(game):
     if game.mode == 'compact': layout_compact()
     elif game.mode == 'expanded': layout_expanded()
     elif game.mode == 'stats': layout_stats()
     elif game.mode == 'achievements': layout_achievements()
+    elif game.mode == 'release': layout_release()
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -250,7 +278,7 @@ def main():
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg in ('--help','-h'):
-            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, r reset, b prev, n next, t stats, a achieve, e export, h help, c compact, m move, q quit')
+            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, b prev, n next, t stats, a achieve, e export, h help, c compact, m move, q quit')
             sys.exit(0)
         if arg == '--all':
             print('\n  All 18 species:\n')
@@ -301,6 +329,7 @@ def main():
                 elif game.mode == 'expanded': display = build_expanded(game)
                 elif game.mode == 'stats': display = build_stats(game)
                 elif game.mode == 'achievements': display = build_achievements(game)
+                elif game.mode == 'release': display = build_release(game)
                 if game.message and time.time() - game.message_time < 2:
                     display += f'\n  \033[33m{game.message}\033[0m'
                 if move_mode:

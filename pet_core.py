@@ -19,6 +19,7 @@ MOODS = {'happy':{'emoji':'♪'},'normal':{'emoji':'~'},
          'sleepy':{'emoji':'z'},'hungry':{'emoji':'!'},
          'excited':{'emoji':'★'}}
 SALT = 'ascii-pet-2026'
+MAX_PETS = 3
 
 RANDOM_EVENTS = [
     ('sneeze',    'Achoo!',             {}),
@@ -350,13 +351,6 @@ class PetGame:
             msg, anim = play_pet(self.state)
         elif action == 'sleep':
             msg, anim = sleep_pet(self.state)
-        elif action == 'regenerate':
-            self.bones = generate_companion(self.uid)
-            name = generate_name(self.uid)
-            self.state = init_state(self.uid, self.bones, name)
-            self.pets_data['pets'][self.pet_idx] = self.state
-            save_pets(self.uid, self.pets_data, self.data_dir)
-            return 'Regenerated!', None
         else:
             return None, None
 
@@ -366,7 +360,7 @@ class PetGame:
         return msg, anim
 
     def switch_pet(self, direction):
-        """Switch to prev (-1) or next (+1) pet. Returns message."""
+        """Switch to prev (-1) or next (+1) pet. Returns message or None if entering release mode."""
         self.pets_data['pets'][self.pet_idx] = self.state
         if direction < 0:
             self.pet_idx = (self.pet_idx - 1) % len(self.pets_data['pets'])
@@ -374,6 +368,11 @@ class PetGame:
             if self.pet_idx < len(self.pets_data['pets']) - 1:
                 self.pet_idx += 1
             else:
+                if len(self.pets_data['pets']) >= MAX_PETS:
+                    self.mode = 'release'
+                    self.pets_data['current'] = self.pet_idx
+                    save_pets(self.uid, self.pets_data, self.data_dir)
+                    return None
                 new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
                 self.pets_data['pets'].append(new_state)
                 self.pet_idx = len(self.pets_data['pets']) - 1
@@ -385,6 +384,32 @@ class PetGame:
         msg = f'Switched to {self.state["name"]}'
         if new_ach: msg = f'Achievement: {new_ach[0]}!'
         return msg
+
+    def release_pet(self, index):
+        """Release a pet by index (0-based). Returns message."""
+        if index < 0 or index >= len(self.pets_data['pets']):
+            return 'Invalid pet!'
+        if len(self.pets_data['pets']) <= 1:
+            return 'Cannot release your last pet!'
+        name = self.pets_data['pets'][index]['name']
+        self.pets_data['pets'].pop(index)
+        if self.pet_idx >= len(self.pets_data['pets']):
+            self.pet_idx = len(self.pets_data['pets']) - 1
+        elif self.pet_idx > index:
+            self.pet_idx -= 1
+        self.state = self.pets_data['pets'][self.pet_idx]
+        self.bones = {k: self.state[k] for k in ('species','eye','hat','shiny','rarity')}
+        self.pets_data['current'] = self.pet_idx
+        self.mode = 'expanded'
+        save_pets(self.uid, self.pets_data, self.data_dir)
+        return f'Released {name}!'
+
+    def get_release_list(self):
+        """Return list of (index, name, species, rarity) for release mode."""
+        result = []
+        for i, s in enumerate(self.pets_data['pets']):
+            result.append((i+1, s['name'], s['species'], s['rarity']))
+        return result
 
     def handle_key(self, key):
         """Process a keypress. Returns (action_type, detail).
@@ -425,6 +450,8 @@ class PetGame:
 
         if key == 'n':
             msg = self.switch_pet(1)
+            if msg is None:
+                return 'mode_change', self.mode
             self.message = msg; self.message_time = now
             return 'pet_switch', msg
 
@@ -461,9 +488,16 @@ class PetGame:
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
-        if key == 'r' and self.mode != 'compact':
-            msg, _ = self.handle_action('regenerate')
-            self.message = msg; self.message_time = now
-            return 'action', msg
+        if self.mode == 'release':
+            if key in ('1','2','3'):
+                idx = int(key) - 1
+                if idx < len(self.pets_data['pets']):
+                    msg = self.release_pet(idx)
+                    self.message = msg; self.message_time = now
+                    return 'action', msg
+            if key == 'c':
+                self.mode = 'expanded'
+                return 'mode_change', self.mode
+            return 'none', None
 
         return 'none', None

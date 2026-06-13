@@ -7,7 +7,7 @@ from ctypes import windll, c_int, c_uint, c_long, c_wchar_p, byref, sizeof, crea
 from ctypes import wintypes, POINTER, c_void_p, c_char_p, c_size_t, memmove, c_byte
 
 from pet_core import (
-    SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ACHIEVEMENTS,
+    SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ACHIEVEMENTS, MAX_PETS,
     render_sprite, render_face, render_frame, export_text,
     PetGame,
 )
@@ -74,7 +74,7 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
         filled, empty, val = stat_bar_text(v, 15)
         lines.append((f'{s[:4]}', COLOR_DIM, filled, COLOR_BAR_FILL, empty, COLOR_BAR_EMPTY, f' {val}', COLOR_WHITE))
     if show_help:
-        lines.append(('[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit', COLOR_DIM))
+        lines.append(('[f]feed [p]play [s]sleep [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit', COLOR_DIM))
     return lines
 
 def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
@@ -119,6 +119,20 @@ def render_achievements_lines(state, bones):
         else:
             lines.append(('  ??? Locked', COLOR_DIM))
     lines.append(('', COLOR_DIM))
+    return lines
+
+def render_release_lines(game):
+    pets = game.get_release_list()
+    lines = []
+    lines.append(('Select a pet to release:', (255, 80, 80)))
+    lines.append((f'Max {MAX_PETS} pets. Choose 1-3, or [c]cancel', COLOR_DIM))
+    lines.append(('', COLOR_DIM))
+    for idx, name, species, rarity in pets:
+        color = RARITY_RGB[rarity]
+        stars = RARITY_STARS[rarity]
+        lines.append((f'  {idx}  {name} {species}·{rarity} {stars}', color))
+    lines.append(('', COLOR_DIM))
+    lines.append(('[1-3]select [c]cancel', COLOR_DIM))
     return lines
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -175,7 +189,6 @@ COLOR_WINDOW   = 5
 ID_FEED        = 1001
 ID_PLAY        = 1002
 ID_SLEEP       = 1003
-ID_REGENERATE  = 1004
 ID_PREV_PET    = 1005
 ID_NEXT_PET    = 1006
 ID_EXPORT      = 1007
@@ -207,6 +220,7 @@ LAYOUT_SIZES = {
     'expanded':     (38, 22),
     'stats':        (44, 20),
     'achievements': (44, 20),
+    'release':      (44, 14),
 }
 
 user32 = windll.user32
@@ -483,7 +497,6 @@ class PetWindow:
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_PLAY, '玩耍 (P)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_SLEEP, '睡觉 (S)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_REGENERATE, '重新生成 (R)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_EXPORT, '导出到剪贴板 (E)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_PREV_PET, '上一个宠物 (B)')
@@ -513,9 +526,6 @@ class PetWindow:
             msg, anim = self.game.handle_action('sleep')
             self.game.message = msg; self.game.message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
-        elif cmd == ID_REGENERATE and self.game.mode != 'compact':
-            msg, _ = self.game.handle_action('regenerate')
-            self.game.message = msg; self.game.message_time = now
         elif cmd == ID_EXPORT and self.game.mode != 'compact':
             text = export_text(self.game.state, self.game.bones, self.game.frame_idx)
             if export_to_clipboard(text):
@@ -561,6 +571,8 @@ class PetWindow:
             lines = render_stats_lines(g.state, g.bones, g.frame_idx, g.pet_idx, len(g.pets_data['pets']))
         elif g.mode == 'achievements':
             lines = render_achievements_lines(g.state, g.bones)
+        elif g.mode == 'release':
+            lines = render_release_lines(g)
         else:
             lines = render_compact_lines(g.bones, g.frame_idx, g.state)
         if g.message and time.time() - g.message_time < 2:
@@ -643,7 +655,7 @@ def main():
                   '    ascii-pet-win.py --help       Help\n\n'
                   '  Compact mode: just the pet\n'
                   '  Expanded mode: full stats (Enter to toggle)\n'
-                  '  Commands: f feed, p play, s sleep, r reset, b prev, n next,\n'
+                  '  Commands: f feed, p play, s sleep, b prev, n next,\n'
                   '            t stats, a achieve, e export, h help, c compact, q quit')
             sys.exit(0)
         if arg == '--all':
