@@ -371,6 +371,18 @@ gdi32.GetTextExtentPoint32W.restype = wintypes.BOOL
 gdi32.BitBlt.argtypes = [wintypes.HDC, c_int, c_int, c_int, c_int, wintypes.HDC, c_int, c_int, wintypes.DWORD]
 gdi32.CreateFontIndirectW.argtypes = [ctypes.POINTER(LOGFONTW)]
 gdi32.CreateFontIndirectW.restype = wintypes.HFONT
+
+class ICONINFO(ctypes.Structure):
+    _fields_ = [
+        ('fIcon', wintypes.BOOL),
+        ('xHotspot', wintypes.DWORD),
+        ('yHotspot', wintypes.DWORD),
+        ('hbmMask', wintypes.HBITMAP),
+        ('hbmColor', wintypes.HBITMAP),
+    ]
+
+gdi32.CreateIconIndirect.argtypes = [ctypes.POINTER(ICONINFO)]
+gdi32.CreateIconIndirect.restype = wintypes.HICON
 user32.CreatePopupMenu.argtypes = []
 user32.CreatePopupMenu.restype = wintypes.HMENU
 user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, ctypes.c_ssize_t, wintypes.LPCWSTR]
@@ -436,6 +448,72 @@ class PetWindow:
             x, y = sw - w - 20, sh - h - 60
         user32.MoveWindow(self.hwnd, x, y, w, h, True)
 
+    def _create_tray_icon(self):
+        size = 16
+        hdc_screen = user32.GetDC(0)
+        hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
+        hbmp = gdi32.CreateCompatibleBitmap(hdc_screen, size, size)
+        old_bmp = gdi32.SelectObject(hdc_mem, hbmp)
+
+        bg = gdi32.CreateSolidBrush(rgb_to_colorref(0, 0, 0))
+        user32.FillRect(hdc_mem, byref(RECT(0, 0, size, size)), bg)
+        gdi32.DeleteObject(bg)
+
+        green = rgb_to_colorref(0, 255, 65)
+        dark_green = rgb_to_colorref(0, 180, 45)
+        white = rgb_to_colorref(255, 255, 255)
+
+        def pixel(x, y, color):
+            brush = gdi32.CreateSolidBrush(color)
+            user32.FillRect(hdc_mem, byref(RECT(x, y, x+1, y+1)), brush)
+            gdi32.DeleteObject(brush)
+
+        def rect(x1, y1, x2, y2, color):
+            brush = gdi32.CreateSolidBrush(color)
+            user32.FillRect(hdc_mem, byref(RECT(x1, y1, x2, y2)), brush)
+            gdi32.DeleteObject(brush)
+
+        # body (blob shape)
+        rect(4, 3, 12, 5, green)
+        rect(3, 5, 13, 11, green)
+        rect(4, 11, 12, 13, green)
+
+        # belly highlight
+        rect(5, 6, 11, 10, dark_green)
+
+        # eyes
+        pixel(5, 6, white)
+        pixel(10, 6, white)
+
+        # mouth
+        pixel(7, 9, white)
+        pixel(8, 9, white)
+
+        # Create mask bitmap
+        hdc_mask = gdi32.CreateCompatibleDC(hdc_screen)
+        hbmp_mask = gdi32.CreateCompatibleBitmap(hdc_screen, size, size)
+        old_mask = gdi32.SelectObject(hdc_mask, hbmp_mask)
+        mask_brush = gdi32.CreateSolidBrush(rgb_to_colorref(255, 255, 255))
+        user32.FillRect(hdc_mask, byref(RECT(0, 0, size, size)), mask_brush)
+        gdi32.DeleteObject(mask_brush)
+
+        info = ICONINFO()
+        info.fIcon = True
+        info.xHotspot = 0
+        info.yHotspot = 0
+        info.hbmMask = hbmp_mask
+        info.hbmColor = hbmp
+        hicon = gdi32.CreateIconIndirect(byref(info))
+
+        gdi32.SelectObject(hdc_mask, old_mask)
+        gdi32.DeleteObject(hbmp_mask)
+        gdi32.DeleteDC(hdc_mask)
+        gdi32.SelectObject(hdc_mem, old_bmp)
+        gdi32.DeleteObject(hbmp)
+        gdi32.DeleteDC(hdc_mem)
+        user32.ReleaseDC(0, hdc_screen)
+        return hicon
+
     def add_tray_icon(self):
         if self.tray_added: return
         nid = NOTIFYICONDATAW()
@@ -444,7 +522,7 @@ class PetWindow:
         nid.uID = self.tray_icon_id
         nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP
         nid.uCallbackMessage = WM_TRAYICON
-        nid.hIcon = user32.LoadIconW(0, 32518)
+        nid.hIcon = self._create_tray_icon()
         nid.szTip = 'ASCII Pet'
         shell32.Shell_NotifyIconW(NIM_ADD, byref(nid))
         self.tray_added = True
