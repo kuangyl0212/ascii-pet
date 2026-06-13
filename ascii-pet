@@ -85,6 +85,27 @@ def get_window_pos():
 def _clamp_pos(px, py, pw, ph, sw, sh):
     return max(0, min(px, sw - pw)), max(0, min(py, sh - ph))
 
+# ─── Mouse drag polling ───────────────────────────────────────────────────────
+
+def check_mouse_button():
+    """Returns (x, y, pressed) using xinput + xdotool."""
+    try:
+        out = subprocess.check_output(['xdotool', 'getmouselocation', '--shell'], timeout=2).decode()
+        x = y = None
+        for line in out.splitlines():
+            if line.startswith('X='): x = int(line.split('=')[1])
+            elif line.startswith('Y='): y = int(line.split('=')[1])
+        devs = subprocess.check_output(['xinput', 'list', '--id-only', '--pointer'], timeout=2).decode().split()
+        pressed = False
+        for dev in devs:
+            if not dev.strip().isdigit(): continue
+            st = subprocess.check_output(['xinput', 'query-state', dev.strip()], timeout=2).decode()
+            if any('button[1]=' in l and 'down' in l for l in st.splitlines()):
+                pressed = True; break
+        return x, y, pressed
+    except:
+        return None, None, False
+
 # ─── Terminal ─────────────────────────────────────────────────────────────────
 
 def clear_screen(): sys.stdout.write('\033[2J\033[H'); sys.stdout.flush()
@@ -278,6 +299,9 @@ def main():
 
     prev_display = None; prev_mode = None; need_redraw = True
     last_tick = time.time()
+    last_drag_poll = 0.0
+    dragging = False
+    drag_mx = drag_my = drag_wx = drag_wy = 0
 
     try:
         while True:
@@ -315,6 +339,35 @@ def main():
                 sys.stdout.flush()
             elif game.anim_end and now >= game.anim_end:
                 game.anim_end = 0; need_redraw = True
+
+            # Mouse drag polling (every ~50ms)
+            if now - last_drag_poll > 0.05 and sys.platform != 'win32':
+                last_drag_poll = now
+                mx, my, pressed = check_mouse_button()
+                wid = get_win_id()
+                if pressed and not dragging and wid:
+                    # Check if cursor is over our window
+                    try:
+                        out = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', wid], timeout=2).decode()
+                        wx = wy = ww = wh = None
+                        for line in out.splitlines():
+                            if line.startswith('X='): wx = int(line.split('=')[1])
+                            elif line.startswith('Y='): wy = int(line.split('=')[1])
+                            elif line.startswith('WIDTH='): ww = int(line.split('=')[1])
+                            elif line.startswith('HEIGHT='): wh = int(line.split('=')[1])
+                        if wx is not None and wy is not None and wx <= mx <= wx + ww and wy <= my <= wy + wh:
+                            dragging = True
+                            drag_mx, drag_my = mx, my
+                            drag_wx, drag_wy = wx, wy
+                    except: pass
+                elif pressed and dragging and wid:
+                    wx = drag_wx + mx - drag_mx
+                    wy = drag_wy + my - drag_my
+                    sw, sh = get_screen_size()
+                    _window_pos = (max(0, min(wx, sw - 100)), max(0, min(wy, sh - 50)))
+                    subprocess.run(['xdotool', 'windowmove', wid, str(int(_window_pos[0])), str(int(_window_pos[1]))], timeout=1)
+                elif not pressed:
+                    dragging = False
 
             key = get_key()
             if key is None: continue
