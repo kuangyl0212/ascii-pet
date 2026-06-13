@@ -420,6 +420,7 @@ class PetWindow:
         self.tracking_mouse = False
         self.tray_icon_id = 1
         self.tray_added = False
+        self._last_pet_time = 0
 
     def calc_window_size(self, mode):
         lines = self.get_render_lines()
@@ -646,6 +647,11 @@ class PetWindow:
                 user32.TrackMouseEvent(byref(tme)); self.tracking_mouse = True
             if not self.hover:
                 self.hover = True
+                now = time.time()
+                if not self.game.state.get('is_dead') and now - self._last_pet_time >= 1.0:
+                    self._last_pet_time = now
+                    self.game.state['stats']['HAPPY'] = min(100, self.game.state['stats']['HAPPY'] + 2)
+                    self.game.save()
                 user32.SetLayeredWindowAttributes(hwnd, rgb_to_colorref(0, 0, 0), 100, LWA_COLORKEY | LWA_ALPHA)
                 user32.InvalidateRect(hwnd, None, False)
             return 0
