@@ -502,19 +502,19 @@ class PetGame:
         if key == 'e' and self.mode != 'compact':
             return 'export', None
 
-        if key == 'f' and self.mode != 'compact':
+        if key == 'f':
             msg, anim = self.handle_action('feed')
             self.message = msg; self.message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
-        if key == 'p' and self.mode != 'compact':
+        if key == 'p':
             msg, anim = self.handle_action('play')
             self.message = msg; self.message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
-        if key == 's' and self.mode != 'compact':
+        if key == 's':
             msg, anim = self.handle_action('sleep')
             self.message = msg; self.message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
