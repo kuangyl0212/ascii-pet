@@ -301,6 +301,7 @@ class PetGame:
         self.anim_frames = []
         self.anim_idx = 0
         self.warning_active = False
+        self.last_tick_time = time.time()
 
         state, pets_data, pet_idx = load_state(uid, data_dir)
         if state is None:
