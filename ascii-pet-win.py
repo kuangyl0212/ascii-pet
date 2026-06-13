@@ -741,9 +741,32 @@ class PetWindow:
         self.win_h = 0
 
     def calc_window_size(self, mode):
-        """根据模式计算窗口像素尺寸"""
-        cols, rows = LAYOUT_SIZES.get(mode, (38, 22))
-        return cols * CHAR_W + PADDING * 2, rows * CHAR_H + PADDING * 2
+        """根据实际渲染内容计算窗口像素尺寸"""
+        lines = self.get_render_lines()
+        if not lines:
+            cols, rows = LAYOUT_SIZES.get(mode, (38, 22))
+            return cols * CHAR_W + PADDING * 2, rows * CHAR_H + PADDING * 2
+
+        # 计算最大行宽（字符数）和行数
+        max_chars = 0
+        for line in lines:
+            # 计算该行的总字符数（多段行累加）
+            total = 0
+            if len(line) >= 4 and len(line) % 2 == 0:
+                i = 0
+                while i + 1 < len(line):
+                    total += len(line[i])
+                    i += 2
+            else:
+                total = len(line[0])
+            if total > max_chars:
+                max_chars = total
+
+        num_lines = len(lines)
+        # 加一点余量避免截断
+        w = max_chars * CHAR_W + PADDING * 2 + 4
+        h = num_lines * CHAR_H + PADDING * 2 + 4
+        return w, h
 
     def resize_window(self, mode):
         """调整窗口大小和位置"""
@@ -1217,6 +1240,20 @@ class PetWindow:
         ps = PAINTSTRUCT()
         hdc = user32.BeginPaint(hwnd, byref(ps))
 
+        # 获取渲染行
+        lines = self.get_render_lines()
+
+        # 根据内容自适应调整窗口大小
+        new_w, new_h = self.calc_window_size(self.mode)
+        if new_w != self.win_w or new_h != self.win_h:
+            self.win_w = new_w
+            self.win_h = new_h
+            sw = user32.GetSystemMetrics(0)
+            sh = user32.GetSystemMetrics(1)
+            x = sw - new_w - 20
+            y = sh - new_h - 60
+            user32.MoveWindow(hwnd, x, y, new_w, new_h, True)
+
         # 获取客户区尺寸
         rect = RECT()
         user32.GetClientRect(hwnd, byref(rect))
@@ -1239,9 +1276,6 @@ class PetWindow:
 
         # 设置透明背景模式
         gdi32.SetBkMode(memdc, TRANSPARENT)
-
-        # 获取渲染行
-        lines = self.get_render_lines()
 
         # 逐行绘制
         y = PADDING
