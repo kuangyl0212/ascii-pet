@@ -1,203 +1,29 @@
 #!/usr/bin/env python3
-"""ASCII Desktop Pet - Terminal Companion"""
+"""ASCII Desktop Pet - Terminal Companion (Linux)"""
 
-import os, sys, json, time, random, hashlib, signal, subprocess, select
-from pathlib import Path
-from datetime import datetime
-
+import os, sys, signal, subprocess, select, time
 if sys.platform == 'win32':
-    import msvcrt
-    import ctypes
+    import msvcrt, ctypes
 else:
     import termios, tty
 
-def mulberry32(seed):
-    a = seed & 0xFFFFFFFF
-    def rng():
-        nonlocal a
-        a = (a + 0x6D2B79F5) & 0xFFFFFFFF
-        t = a; t = (t ^ (t >> 15)) & 0xFFFFFFFF; t = (t * (1 | t)) & 0xFFFFFFFF
-        t = (t ^ (t >> 7)) & 0xFFFFFFFF; t = (t * 61 | t) & 0xFFFFFFFF
-        t = (t ^ (t >> 14)) & 0xFFFFFFFF
-        return (t & 0xFFFFFFFF) / 0x100000000
-    return rng
+from pet_core import (
+    SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ANIMATIONS, ACHIEVEMENTS,
+    render_sprite, render_face, render_frame, export_text,
+    PetGame,
+)
 
-def hash_string(s):
-    h = 2166136261
-    for c in s: h ^= ord(c); h = (h * 16777619) & 0xFFFFFFFF
-    return h
+# ─── ANSI colors ──────────────────────────────────────────────────────────────
 
-def pick(rng, arr): return arr[int(rng() * len(arr))]
-
-SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin',
-           'turtle','snail','ghost','axolotl','capybara','cactus','robot','rabbit','mushroom','chonk']
-EYES = ['·','✦','×','◉','@','°']
-RARITIES = ['common','uncommon','rare','epic','legendary']
-RARITY_WEIGHTS = {'common':60,'uncommon':25,'rare':10,'epic':4,'legendary':1}
-RARITY_STARS = {'common':'★','uncommon':'★★','rare':'★★★','epic':'★★★★','legendary':'★★★★★'}
 RARITY_COLORS = {'common':'\033[90m','uncommon':'\033[32m','rare':'\033[36m','epic':'\033[35m','legendary':'\033[33m'}
-RARITY_FLOOR = {'common':5,'uncommon':15,'rare':25,'epic':35,'legendary':50}
-STAT_NAMES = ['HUNGER','HAPPY','ENERGY','WISDOM','CHAOS']
-MOODS = {'happy':{'emoji':'♪','color':'\033[33m'},'normal':{'emoji':'~','color':'\033[0m'},
-         'sleepy':{'emoji':'z','color':'\033[90m'},'hungry':{'emoji':'!','color':'\033[31m'},
-         'excited':{'emoji':'★','color':'\033[35m'}}
-SALT = 'ascii-pet-2026'
-
-RANDOM_EVENTS = [
-    ('sneeze',    'Achoo!',             {}),
-    ('find_item', 'Found a shiny pebble!', {'xp': 5}),
-    ('mood_boost','Feeling great!',     {'HAPPY': 10}),
-    ('sparkle',   '✨ Sparkle!',         {}),
-    ('yawn',      '*yaaawn*',           {}),
-]
-
-ACHIEVEMENTS = {
-    'first_feed':    {'name':'First Meal',    'icon':'🍖', 'check': lambda s,p: s.get('feed_count',0) >= 1},
-    'feeder_10':     {'name':'Gourmet',       'icon':'🍽', 'check': lambda s,p: s.get('feed_count',0) >= 10},
-    'feeder_100':    {'name':'Master Chef',   'icon':'👨‍🍳', 'check': lambda s,p: s.get('feed_count',0) >= 100},
-    'first_play':    {'name':'Playtime',      'icon':'⚽', 'check': lambda s,p: s.get('play_count',0) >= 1},
-    'player_10':     {'name':'Best Friend',   'icon':'❤️', 'check': lambda s,p: s.get('play_count',0) >= 10},
-    'sleeper_10':    {'name':'Sleepyhead',    'icon':'💤', 'check': lambda s,p: s.get('sleep_count',0) >= 10},
-    'level_5':       {'name':'Rising Star',   'icon':'⭐', 'check': lambda s,p: s['level'] >= 5},
-    'level_10':      {'name':'Veteran',       'icon':'🌟', 'check': lambda s,p: s['level'] >= 10},
-    'level_25':      {'name':'Legend',        'icon':'👑', 'check': lambda s,p: s['level'] >= 25},
-    'collector_5':   {'name':'Pet Collector', 'icon':'🐾', 'check': lambda s,p: len(p['pets']) >= 5},
-    'legendary':     {'name':'Lucky Find',    'icon':'🌈', 'check': lambda s,p: s['rarity'] == 'legendary'},
-    'shiny':         {'name':'Shiny Hunter',  'icon':'✨', 'check': lambda s,p: s['shiny']},
-}
-
-BODIES = {
-    'duck':[['            ','    __      ','  <({E} )___  ','   (  ._>   ','    `--´    '],['            ','    __      ','  <({E} )___  ','   (  ._>   ','    `--´~   '],['            ','    __      ','  <({E} )___  ','   (  .__>  ','    `--´    ']],
-    'goose':[['            ','     ({E}>    ','     ||     ','   _(__)_   ','    ^^^^    '],['            ','    ({E}>     ','     ||     ','   _(__)_   ','    ^^^^    '],['            ','     ({E}>>   ','     ||     ','   _(__)_   ','    ^^^^    ']],
-    'blob':[['            ','   .----.   ','  ( {E}  {E} )  ','  (      )  ','   `----´   '],['            ','  .------.  ',' (  {E}  {E}  ) ',' (        ) ','  `------´  '],['            ','    .--.    ','   ({E}  {E})   ','   (    )   ','    `--´    ']],
-    'cat':[['            ','   /\\_/\\    ','  ( {E}   {E})  ','  (  ω  )   ','  (")_(")   '],['            ','   /\\_/\\    ','  ( {E}   {E})  ','  (  ω  )   ','  (")_(")~  '],['            ','   /\\-/\\    ','  ( {E}   {E})  ','  (  ω  )   ','  (")_(")   ']],
-    'dragon':[['            ','  /^\\  /^\\  ',' <  {E}  {E}  > ',' (   ~~   ) ','  `-vvvv-´  '],['            ','  /^\\  /^\\  ',' <  {E}  {E}  > ',' (        ) ','  `-vvvv-´  '],['   ~    ~   ','  /^\\  /^\\  ',' <  {E}  {E}  > ',' (   ~~   ) ','  `-vvvv-´  ']],
-    'octopus':[['            ','   .----.   ','  ( {E}  {E} )  ','  (______)  ','  /\\/\\/\\/\\  '],['            ','   .----.   ','  ( {E}  {E} )  ','  (______)  ','  \\/\\/\\/\\/  '],['     o      ','   .----.   ','  ( {E}  {E} )  ','  (______)  ','  /\\/\\/\\/\\  ']],
-    'owl':[['            ','   /\\  /\\   ','  (({E})({E}))  ','  (  ><  )  ','   `----´   '],['            ','   /\\  /\\   ','  (({E})({E}))  ','  (  ><  )  ','   .----.   '],['            ','   /\\  /\\   ','  (({E})(-))  ','  (  ><  )  ','   `----´   ']],
-    'penguin':[['            ','   .---.    ','   ({E}>{E})    ','  /(   )\\   ','   `---´    '],['            ','   .---.    ','   ({E}>{E})    ','  |(   )|   ','   `---´    '],['   .---.    ','   ({E}>{E})    ','  /(   )\\   ','   `---´    ','    ~ ~     ']],
-    'turtle':[['            ','    _,--._  ','   ( {E}  {E} ) ','  /[______]\\','   ``    `` '],['            ','    _,--._  ','   ( {E}  {E} ) ','  /[______]\\','    ``  ``  '],['            ','    _,--._  ','   ( {E}  {E} ) ','  /[======]\\','   ``    `` ']],
-    'snail':[['            ',' {E}    .--.  ','  \\  ( @ )  ','   \\_`--´   ','  ~~~~~~~   '],['            ','  {E}   .--.  ','  |  ( @ )  ','   \\_`--´   ','  ~~~~~~~   '],['            ',' {E}    .--.  ','  \\  ( @  ) ','   \\_`--´   ','   ~~~~~~   ']],
-    'ghost':[['            ','   .----.   ','  / {E}  {E} \\  ','  |      |  ','  ~`~``~`~  '],['            ','   .----.   ','  / {E}  {E} \\  ','  |      |  ','  `~`~~`~`  '],['    ~  ~    ','   .----.   ','  / {E}  {E} \\  ','  |      |  ','  ~~`~~`~~  ']],
-    'axolotl':[['            ','}~(______)~{','}~({E} .. {E})~{','  ( .--. )  ','  (_/  \\_)  '],['            ','~}(______){~','~}({E} .. {E}){~','  ( .--. )  ','  (_/  \\_)  '],['            ','}~(______)~{','}~({E} .. {E})~{','  (  --  )  ','  ~_/  \\_~  ']],
-    'capybara':[['            ','  n______n  ',' ( {E}    {E} ) ',' (   oo   ) ','  `------´  '],['            ','  n______n  ',' ( {E}    {E} ) ',' (   Oo   ) ','  `------´  '],['    ~  ~    ','  u______n  ',' ( {E}    {E} ) ',' (   oo   ) ','  `------´  ']],
-    'cactus':[['            ',' n  ____  n ',' | |{E}  {E}| | ',' |_|    |_| ','   |    |   '],['            ','    ____    ',' n |{E}  {E}| n ',' |_|    |_| ','   |    |   '],[' n        n ',' |  ____  | ',' | |{E}  {E}| | ',' |_|    |_| ','   |    |   ']],
-    'robot':[['            ','   .[||].   ','  [ {E}  {E} ]  ','  [ ==== ]  ','  `------´  '],['            ','   .[||].   ','  [ {E}  {E} ]  ','  [ -==- ]  ','  `------´  '],['     *      ','   .[||].   ','  [ {E}  {E} ]  ','  [ ==== ]  ','  `------´  ']],
-    'rabbit':[['            ','   (\\__/)   ','  ( {E}  {E} )  ',' =(  ..  )= ','  (")__(")  '],['            ','   (|__/)   ','  ( {E}  {E} )  ',' =(  ..  )= ','  (")__(")  '],['            ','   (\\__/)   ','  ( {E}  {E} )  ',' =( .  . )= ','  (")__(")  ']],
-    'mushroom':[['            ',' .-o-OO-o-. ','(__________)','   |{E}  {E}|   ','   |____|   '],['            ',' .-O-oo-O-. ','(__________)','   |{E}  {E}|   ','   |____|   '],['   . o  .   ',' .-o-OO-o-. ','(__________)','   |{E}  {E}|   ','   |____|   ']],
-    'chonk':[['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /|  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´~ ']],
-}
-HAT_LINES = {'none':'','crown':'   \\^^^/    ','tophat':'   [___]    ','propeller':'    -+-     ','halo':'   (   )    ','wizard':'    /^\\     ','beanie':'   (___)    ','tinyduck':'    ,>      '}
-IDLE_SEQUENCE = [0,0,0,0,1,0,0,0,-1,0,0,2,0,0,0]
-MOOD_SEQUENCES = {
-    'normal':  [0,0,0,0,1,0,0,0,-1,0,0,2,0,0,0],
-    'happy':   [0,1,0,1,0,0,2,0,2,0,-1,0,0,0,0],
-    'excited': [0,1,2,1,2,1,0,-1,0,1,2,1,2,0,0],
-    'hungry':  [0,0,0,0,0,0,2,2,0,0,0,0,0,0,0],
-    'sleepy':  [0,0,0,-1,0,0,0,0,-1,0,0,0,0,0,0],
-}
-ADJECTIVES = ['Tiny','Fluffy','Brave','Sneaky','Cosmic','Dizzy','Fuzzy','Mighty','Wobbly','Crispy','Sparkly','Grumpy','Sleepy','Zippy','Bouncy','Spooky','Jolly','Rusty','Stormy','Lucky','Peppy','Zany','Quirky','Sassy']
-NOUNS = ['Bean','Nugget','Sprout','Biscuit','Noodle','Pebble','Pickle','Muffin','Waffle','Squish','Pudding','Crumble','Tater','Dumpling','Scraps','Widget','Pixel','Nibble','Scooter','Snickers','Wobbles','Patches','Buttons','Pip']
-
-def roll_rarity(rng):
-    total = sum(RARITY_WEIGHTS.values()); roll = rng() * total
-    for r in RARITIES:
-        roll -= RARITY_WEIGHTS[r]
-        if roll < 0: return r
-    return 'common'
-
-def roll_stats(rng, rarity):
-    floor = RARITY_FLOOR[rarity]; peak = pick(rng, STAT_NAMES); dump = pick(rng, STAT_NAMES)
-    while dump == peak: dump = pick(rng, STAT_NAMES)
-    stats = {}
-    for n in STAT_NAMES:
-        if n == peak: stats[n] = min(100, floor + 50 + int(rng()*30))
-        elif n == dump: stats[n] = max(1, floor - 10 + int(rng()*15))
-        else: stats[n] = floor + int(rng()*40)
-    return stats
-
-def generate_companion(uid, seed=None):
-    if seed is None: seed = str(time.time_ns())
-    rng = mulberry32(hash_string(uid + SALT + seed)); rarity = roll_rarity(rng)
-    return {'rarity':rarity,'species':pick(rng,SPECIES),'eye':pick(rng,EYES),
-            'hat':'none' if rarity=='common' else pick(rng,list(HAT_LINES.keys())),
-            'shiny':rng()<0.01,'stats':roll_stats(rng,rarity)}
-
-def generate_name(uid, seed=None):
-    if seed is None: seed = str(time.time_ns())
-    rng = mulberry32(hash_string(uid + SALT + seed + '-name'))
-    return pick(rng, ADJECTIVES) + ' ' + pick(rng, NOUNS)
-
-def render_sprite(bones, frame=0):
-    frames = BODIES[bones['species']]
-    body = [l.replace('{E}', bones['eye']) for l in frames[frame % len(frames)]]
-    if bones['hat'] != 'none' and not body[0].strip(): body[0] = HAT_LINES[bones['hat']]
-    if not body[0].strip() and all(not f[0].strip() for f in frames): body.pop(0)
-    return body
-
-def render_face(bones):
-    e = bones['eye']
-    faces = {'duck':f'({e}>','goose':f'({e}>','blob':f'({e}{e})','cat':f'={e}ω{e}=',
-        'dragon':f'<{e}~{e}>','octopus':f'~({e}{e})~','owl':f'({e})({e})',
-        'penguin':f'({e}>)','turtle':f'[{e}_{e}]','snail':f'{e}(@)',
-        'ghost':f'/{e}{e}\\','axolotl':f'}}{e}.{e}{{','capybara':f'({e}oo{e})',
-        'cactus':f'|{e}  {e}|','robot':f'[{e}{e}]','rabbit':f'({e}..{e})',
-        'mushroom':f'|{e}  {e}|','chonk':f'({e}.{e})'}
-    return faces.get(bones['species'], f'({e}{e})')
-
-ANIMATIONS = {
-    'feed':  ['  ♪nom  ','  ♪nom♪ ','  ~yum~ '],
-    'play':  ['  *  *  ',' * ** * ','  *  *  '],
-    'sleep': ['  z     ','  z Z   ','  z Z z '],
-}
-
-def stat_bar(value, width=15):
-    filled = round((value / 100) * width)
-    return '\033[90m\033[32m' + '█'*filled + '\033[90m' + '░'*(width-filled) + '\033[0m'
-
-DATA_DIR = Path.home() / '.local' / 'share' / 'ascii-pet'
-def get_state_path(uid):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return DATA_DIR / f'{hash_string(uid) & 0xFFFFFFFF:08x}.json'
-def load_pets(uid):
-    p = get_state_path(uid)
-    if not p.exists(): return None
-    data = json.load(open(p))
-    if isinstance(data, list): return {'pets': data, 'current': 0}
-    if 'pets' not in data: return {'pets': [data], 'current': 0}
-    return data
-def save_pets(uid, data):
-    json.dump(data, open(get_state_path(uid), 'w'), indent=2)
-def load_state(uid):
-    data = load_pets(uid)
-    if data is None: return None, None, 0
-    idx = data.get('current', 0)
-    if idx >= len(data['pets']): idx = 0
-    return data['pets'][idx], data, idx
-def save_state(uid, state, pets_data, idx):
-    pets_data['pets'][idx] = state
-    save_pets(uid, pets_data)
-def init_state(uid, bones, name):
-    now = datetime.now().isoformat()
-    return {'user_id':uid,'name':name,'species':bones['species'],'rarity':bones['rarity'],
-            'eye':bones['eye'],'hat':bones['hat'],'shiny':bones['shiny'],'stats':bones['stats'],
-            'mood':'normal','created_at':now,'last_fed':now,'last_played':now,'last_slept':now,
-            'level':1,'xp':0,'total_interactions':0,
-            'feed_count':0,'play_count':0,'sleep_count':0,'achievements':[]}
-
-def update_state_over_time(state):
-    now = datetime.now()
-    for key, decay, rate in [('last_fed',4,5),('last_played',2,3),('last_slept',6,4)]:
-        hours = (now - datetime.fromisoformat(state[key])).total_seconds() / 3600
-        if hours > decay:
-            stat = {'last_fed':'HUNGER','last_played':'HAPPY','last_slept':'ENERGY'}[key]
-            state['stats'][stat] = max(0, state['stats'][stat] - int(hours * rate))
-    h, e, p = state['stats']['HUNGER'], state['stats']['ENERGY'], state['stats']['HAPPY']
-    state['mood'] = 'hungry' if h<20 else 'sleepy' if e<20 else 'excited' if p>80 else 'happy' if p>50 else 'normal'
-    return state
+MOOD_COLORS = {'happy':'\033[33m','normal':'\033[0m','sleepy':'\033[90m','hungry':'\033[31m','excited':'\033[35m'}
 
 # ─── Window control via xdotool ───────────────────────────────────────────────
-FONT_W = 8   # approximate char width for monospace 11pt
-FONT_H = 17  # approximate char height for monospace 11pt
+
+FONT_W = 8
+FONT_H = 17
+STATUS_BAR_HEIGHT = 30
+_window_pos = None
 
 def get_win_id():
     if sys.platform == 'win32':
@@ -227,12 +53,6 @@ def set_window_geometry(cols, rows, pos_x, pos_y):
         subprocess.run(['xdotool','windowmove',wid,str(pos_x),str(pos_y)], timeout=2)
     except: pass
 
-def set_window_opacity(wid, opacity_hex):
-    if not wid: return
-    try:
-        subprocess.run(['xprop','-id',wid,'-f','_NET_WM_WINDOW_OPACITY','32c','-set','_NET_WM_WINDOW_OPACITY',opacity_hex], timeout=2)
-    except: pass
-
 def get_screen_size():
     if sys.platform == 'win32':
         user32 = ctypes.windll.user32
@@ -242,11 +62,35 @@ def get_screen_size():
         return int(out[0]), int(out[1])
     except: return 1920, 1080
 
-# ─── Terminal ──────────────────────────────────────────────────────────────────
+def get_window_pos():
+    if sys.platform == 'win32':
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if not hwnd: return None
+        from ctypes import wintypes, byref
+        rect = wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(hwnd, byref(rect))
+        return rect.left, rect.top
+    wid = get_win_id()
+    if not wid: return None
+    try:
+        out = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', wid], timeout=2).decode().strip()
+        x, y = None, None
+        for line in out.splitlines():
+            if line.startswith('X='): x = int(line.split('=')[1])
+            elif line.startswith('Y='): y = int(line.split('=')[1])
+        if x is not None and y is not None: return x, y
+    except: pass
+    return None
+
+def _clamp_pos(px, py, pw, ph, sw, sh):
+    return max(0, min(px, sw - pw)), max(0, min(py, sh - ph))
+
+# ─── Terminal ─────────────────────────────────────────────────────────────────
+
 def clear_screen(): sys.stdout.write('\033[2J\033[H'); sys.stdout.flush()
-def move_cursor_top(): sys.stdout.write('\033[H'); sys.stdout.flush()
 def hide_cursor(): sys.stdout.write('\033[?25l'); sys.stdout.flush()
 def show_cursor(): sys.stdout.write('\033[?25h'); sys.stdout.flush()
+
 def get_key():
     if sys.platform == 'win32':
         if msvcrt.kbhit():
@@ -265,76 +109,70 @@ def get_key():
         try: termios.tcsetattr(fd, termios.TCSADRAIN, old)
         except: pass
 
-# ─── Display ───────────────────────────────────────────────────────────────────
-def render_frame(bones, frame_idx, mood='normal'):
-    seq = MOOD_SEQUENCES.get(mood, IDLE_SEQUENCE)
-    step = seq[frame_idx % len(seq)]
-    if step == -1:
-        f = render_sprite(bones, 0)
-        return [l.replace(bones['eye'], '-') for l in f]
-    return render_sprite(bones, step)
+# ─── ANSI rendering ───────────────────────────────────────────────────────────
 
-def build_compact(bones, frame_idx, state):
-    lines = render_frame(bones, frame_idx, state.get('mood','normal'))
+def stat_bar(value, width=15):
+    filled = round((value / 100) * width)
+    return '\033[90m\033[32m' + '█'*filled + '\033[90m' + '░'*(width-filled) + '\033[0m'
+
+def build_compact(game):
+    lines = render_frame(game.bones, game.frame_idx, game.state.get('mood','normal'))
     return '\n'.join(lines)
 
-def build_expanded(state, bones, frame_idx, show_help=False):
+def build_expanded(game):
     RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
-    color = RARITY_COLORS[state['rarity']]; stars = RARITY_STARS[state['rarity']]
-    shiny = f' {BOLD}\033[33mSHINY{RST}' if state['shiny'] else ''
-    mood = MOODS[state['mood']]
-    frame = render_frame(bones, frame_idx, state.get('mood','normal'))
+    color = RARITY_COLORS[game.state['rarity']]; stars = RARITY_STARS[game.state['rarity']]
+    shiny = f' {BOLD}\033[33mSHINY{RST}' if game.state['shiny'] else ''
+    mood = MOODS[game.state['mood']]
+    frame = render_frame(game.bones, game.frame_idx, game.state.get('mood','normal'))
 
     lines = []
-    lines.append(f'{color}{BOLD}{state["name"]}{RST} {color}{stars}{RST}{shiny}')
-    lines.append(f'{DIM}{state["species"]}·{state["rarity"]}{RST} {mood["color"]}[{mood["emoji"]}]{RST}')
-    lines.append(f'{DIM}Lv.{state["level"]} XP:{state["xp"]}/{state["level"]*100}{RST}')
-    if state.get('evolved'):
+    lines.append(f'{color}{BOLD}{game.state["name"]}{RST} {color}{stars}{RST}{shiny}')
+    lines.append(f'{DIM}{game.state["species"]}·{game.state["rarity"]}{RST} {MOOD_COLORS[game.state["mood"]]}[{mood["emoji"]}]{RST}')
+    lines.append(f'{DIM}Lv.{game.state["level"]} XP:{game.state["xp"]}/{game.state["level"]*100}{RST}')
+    if game.state.get('evolved'):
         lines.append(f'{DIM}★ Evolved{RST}')
     for row in frame: lines.append(f' {row}')
-    lines.append(f'{DIM}face:{render_face(bones)}{RST}')
+    lines.append(f'{DIM}face:{render_face(game.bones)}{RST}')
     for s in STAT_NAMES:
-        v = state['stats'][s]
+        v = game.state['stats'][s]
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
-    if show_help:
+    if game.show_help:
         lines.append(f'{DIM}[f]feed [p]play [s]sleep [r]reset [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit{RST}')
     return '\n'.join(lines)
 
-def build_stats(state, bones, frame_idx, pet_idx=0, pet_count=1):
+def build_stats(game):
     RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
-    color = RARITY_COLORS[state['rarity']]
-    frame = render_frame(bones, frame_idx, state.get('mood','normal'))
-
-    created = datetime.fromisoformat(state['created_at'])
+    color = RARITY_COLORS[game.state['rarity']]
+    frame = render_frame(game.bones, game.frame_idx, game.state.get('mood','normal'))
+    from datetime import datetime
+    created = datetime.fromisoformat(game.state['created_at'])
     days = (datetime.now() - created).days
     hours = (datetime.now() - created).total_seconds() / 3600
+    evo = ' ★Evolved' if game.state.get('evolved') else ''
 
-    evo = ' ★Evolved' if state.get('evolved') else ''
-
-    lines = [f'{BOLD}Stats for {state["name"]}{RST}']
-    lines.append(f'{DIM}Species:{RST} {state["species"]}  {DIM}Eye:{RST} {state["eye"]}  {DIM}Hat:{RST} {state["hat"]}  {DIM}Pet:{RST} {pet_idx+1}/{pet_count}{evo}')
+    lines = [f'{BOLD}Stats for {game.state["name"]}{RST}']
+    lines.append(f'{DIM}Species:{RST} {game.state["species"]}  {DIM}Eye:{RST} {game.state["eye"]}  {DIM}Hat:{RST} {game.state["hat"]}  {DIM}Pet:{RST} {game.pet_idx+1}/{len(game.pets_data["pets"])}{evo}')
     lines.append('')
     for row in frame: lines.append(f' {row}')
     lines.append('')
     lines.append(f'{DIM}--- Activity ---{RST}')
     lines.append(f'  {DIM}Days adopted:{RST}  {days}')
     lines.append(f'  {DIM}Hours online:{RST} {hours:.1f}')
-    lines.append(f'  {DIM}Feed count:{RST}   {state.get("feed_count",0)}')
-    lines.append(f'  {DIM}Play count:{RST}   {state.get("play_count",0)}')
-    lines.append(f'  {DIM}Sleep count:{RST}  {state.get("sleep_count",0)}')
-    lines.append(f'  {DIM}Total acts:{RST}   {state["total_interactions"]}')
+    lines.append(f'  {DIM}Feed count:{RST}   {game.state.get("feed_count",0)}')
+    lines.append(f'  {DIM}Play count:{RST}   {game.state.get("play_count",0)}')
+    lines.append(f'  {DIM}Sleep count:{RST}  {game.state.get("sleep_count",0)}')
+    lines.append(f'  {DIM}Total acts:{RST}   {game.state["total_interactions"]}')
     lines.append('')
     lines.append(f'{DIM}--- Growth ---{RST}')
-    lines.append(f'  {DIM}Level:{RST} {state["level"]}  {DIM}XP:{RST} {state["xp"]}/{state["level"]*100}')
-    lines.append(f'  {DIM}Rarity:{RST} {state["rarity"]}  {DIM}Shiny:{RST} {"Yes" if state["shiny"] else "No"}')
+    lines.append(f'  {DIM}Level:{RST} {game.state["level"]}  {DIM}XP:{RST} {game.state["xp"]}/{game.state["level"]*100}')
+    lines.append(f'  {DIM}Rarity:{RST} {game.state["rarity"]}  {DIM}Shiny:{RST} {"Yes" if game.state["shiny"] else "No"}')
     return '\n'.join(lines)
 
-def build_achievements(state, bones):
+def build_achievements(game):
     RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
-    color = RARITY_COLORS[state['rarity']]
-    unlocked = state.get('achievements', [])
-
-    lines = [f'{BOLD}Achievements for {state["name"]}{RST}']
+    unlocked = game.state.get('achievements', [])
+    lines = [f'{BOLD}Achievements for {game.state["name"]}{RST}']
     lines.append(f'{DIM}{len(unlocked)}/{len(ACHIEVEMENTS)} unlocked{RST}')
     lines.append('')
     for aid, ach in ACHIEVEMENTS.items():
@@ -344,84 +182,7 @@ def build_achievements(state, bones):
             lines.append(f'  {DIM}??? Locked{RST}')
     return '\n'.join(lines)
 
-# ─── Actions ───────────────────────────────────────────────────────────────────
-def feed_pet(state):
-    if state['stats']['HUNGER'] >= 100: return 'Already full!', None
-    state['stats']['HUNGER'] = min(100, state['stats']['HUNGER']+25)
-    state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+5)
-    state['last_fed'] = datetime.now().isoformat()
-    state['total_interactions'] += 1; state['feed_count'] = state.get('feed_count',0) + 1
-    state['xp'] += 10; check_level_up(state)
-    return '+25 Hunger, +5 Happy', 'feed'
-
-def play_pet(state):
-    if state['stats']['ENERGY'] < 10: return 'Too tired!', None
-    state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+30)
-    state['stats']['ENERGY'] = max(0, state['stats']['ENERGY']-15)
-    state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-10)
-    state['last_played'] = datetime.now().isoformat()
-    state['total_interactions'] += 1; state['play_count'] = state.get('play_count',0) + 1
-    state['xp'] += 15; check_level_up(state)
-    return '+30 Happy, -15 Energy', 'play'
-
-def sleep_pet(state):
-    if state['stats']['ENERGY'] >= 100: return 'Not sleepy!', None
-    state['stats']['ENERGY'] = min(100, state['stats']['ENERGY']+40)
-    state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-5)
-    state['last_slept'] = datetime.now().isoformat()
-    state['total_interactions'] += 1; state['sleep_count'] = state.get('sleep_count',0) + 1
-    state['xp'] += 5; check_level_up(state)
-    return '+40 Energy', 'sleep'
-
-def check_level_up(state):
-    xp_need = state['level'] * 100
-    while state['xp'] >= xp_need:
-        state['xp'] -= xp_need; state['level'] += 1
-        state['stats']['WISDOM'] = min(100, state['stats']['WISDOM']+5)
-        xp_need = state['level'] * 100
-    if state['level'] >= 10: state['evolved'] = True
-    if state['level'] >= 5 and not state.get('eye_upgraded'):
-        idx = EYES.index(state['eye']) if state['eye'] in EYES else 0
-        state['eye'] = EYES[(idx + 1) % len(EYES)]
-        state['eye_upgraded'] = True
-
-def check_achievements(state, pets_data):
-    unlocked = []
-    for aid, ach in ACHIEVEMENTS.items():
-        if aid not in state.get('achievements', []) and ach['check'](state, pets_data):
-            state.setdefault('achievements', []).append(aid)
-            unlocked.append(ach['name'])
-    return unlocked
-
-# ─── Window layout ─────────────────────────────────────────────────────────────
-STATUS_BAR_HEIGHT = 30
-_window_pos = None  # preserve user-positioned location across mode switches
-
-def get_window_pos():
-    if sys.platform == 'win32':
-        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        if not hwnd: return None
-        rect = wintypes.RECT()
-        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
-        return rect.left, rect.top
-    wid = get_win_id()
-    if not wid: return None
-    try:
-        out = subprocess.check_output(
-            ['xdotool', 'getwindowgeometry', '--shell', wid], timeout=2
-        ).decode().strip()
-        x, y = None, None
-        for line in out.splitlines():
-            if line.startswith('X='): x = int(line.split('=')[1])
-            elif line.startswith('Y='): y = int(line.split('=')[1])
-        if x is not None and y is not None: return x, y
-    except: pass
-    return None
-
-def _clamp_pos(px, py, pw, ph, sw, sh):
-    px = max(0, min(px, sw - pw))
-    py = max(0, min(py, sh - ph))
-    return px, py
+# ─── Layout ───────────────────────────────────────────────────────────────────
 
 def layout_compact():
     global _window_pos
@@ -475,33 +236,16 @@ def layout_achievements():
         py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
-def export_pet(state, bones, frame_idx):
-    RST='\033[0m'; BOLD='\033[1m'
-    color = RARITY_COLORS[state['rarity']]; stars = RARITY_STARS[state['rarity']]
-    frame = render_frame(bones, frame_idx, state.get('mood','normal'))
-    lines = [f'{state["name"]}  {stars}', f'{state["species"]} · {state["rarity"]}', '']
-    for row in frame: lines.append(row)
-    lines.append('')
-    lines.append(f'face: {render_face(bones)}')
-    lines.append('')
-    for s in STAT_NAMES:
-        v = state['stats'][s]
-        lines.append(f'{s[:4]}  {"█"*round(v/5)}{"░"*(20-round(v/5))} {v}')
-    text = '\n'.join(lines)
-    cmds = [['xclip','-selection','clipboard'],['xsel','--clipboard','--input']]
-    if sys.platform == 'win32':
-        cmds = [['clip.exe']]
-    for cmd in cmds:
-        try:
-            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-            p.communicate(text.encode())
-            return 'Copied to clipboard!'
-        except: pass
-    print(text)
-    return 'Printed to terminal (no clipboard tool)'
+def do_layout(game):
+    if game.mode == 'compact': layout_compact()
+    elif game.mode == 'expanded': layout_expanded()
+    elif game.mode == 'stats': layout_stats()
+    elif game.mode == 'achievements': layout_achievements()
 
-# ─── Main ──────────────────────────────────────────────────────────────────────
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
 def main():
+    global _window_pos
     uid = os.environ.get('USER', os.environ.get('USERNAME', 'anon'))
     if len(sys.argv) > 1:
         arg = sys.argv[1]
@@ -520,180 +264,85 @@ def main():
 
     if sys.platform == 'win32':
         kernel32 = ctypes.windll.kernel32
-        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        handle = kernel32.GetStdHandle(-11)
         mode = ctypes.c_uint32()
         if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-            mode.value |= 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            mode.value |= 0x0004
             kernel32.SetConsoleMode(handle, mode)
 
-    state, pets_data, pet_idx = load_state(uid)
-    if state is None:
-        bones = generate_companion(uid); name = generate_name(uid)
-        state = init_state(uid, bones, name)
-        pets_data = {'pets': [state], 'current': 0}; pet_idx = 0
-        save_pets(uid, pets_data)
-    else:
-        bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
-
-    state = update_state_over_time(state); save_state(uid, state, pets_data, pet_idx)
+    game = PetGame(uid)
     signal.signal(signal.SIGINT, lambda *_: (show_cursor(), clear_screen(), sys.exit(0)))
 
     clear_screen(); hide_cursor()
-
-    frame_idx = 0; mode = 'compact'  # compact / expanded / stats / achievements
-    show_help = False; last_tick = time.time(); message = None; message_time = 0
-    reminder_shown = False; last_event_time = 0; anim_end = 0
-    anim_frames = []; anim_idx = 0
     layout_compact()
 
     prev_display = None; prev_mode = None; need_redraw = True
+    last_tick = time.time()
 
     try:
         while True:
             now = time.time()
-            if now - last_tick >= 0.5:
-                frame_idx += 1; state = update_state_over_time(state)
-                save_state(uid, state, pets_data, pet_idx); last_tick = now
-                need_redraw = True
-                stats = state['stats']
-                if stats['HUNGER'] < 10 and not reminder_shown:
-                    message = 'Your pet is starving!'; message_time = now; reminder_shown = True
-                elif stats['ENERGY'] < 10 and not reminder_shown:
-                    message = 'Your pet is exhausted!'; message_time = now; reminder_shown = True
-                elif stats['HAPPY'] < 10 and not reminder_shown:
-                    message = 'Your pet is lonely!'; message_time = now; reminder_shown = True
-                if stats['HUNGER'] >= 10 and stats['ENERGY'] >= 10 and stats['HAPPY'] >= 10:
-                    reminder_shown = False
-                if now - last_event_time > 60 and random.random() < 0.01:
-                    evt = random.choice(RANDOM_EVENTS)
-                    message = evt[1]; message_time = now; last_event_time = now
-                    for k, v in evt[2].items():
-                        if k == 'xp': state['xp'] += v; check_level_up(state)
-                        elif k in state['stats']: state['stats'][k] = min(100, state['stats'][k] + v)
 
-            if mode != prev_mode:
-                global _window_pos
+            if now - last_tick >= 0.5:
+                msg, msg_time = game.tick()
+                if msg: game.message = msg; game.message_time = msg_time
+                last_tick = now; need_redraw = True
+
+            if game.mode != prev_mode:
                 cur = get_window_pos()
                 if cur: _window_pos = cur
-                if mode == 'compact': layout_compact()
-                elif mode == 'expanded': layout_expanded()
-                elif mode == 'stats': layout_stats()
-                elif mode == 'achievements': layout_achievements()
-                prev_mode = mode; need_redraw = True
-                time.sleep(0.15)  # let window resize settle
+                do_layout(game)
+                prev_mode = game.mode; need_redraw = True
+                time.sleep(0.15)
 
             if need_redraw:
-                if mode == 'compact':
-                    display = build_compact(bones, frame_idx, state)
-                elif mode == 'expanded':
-                    display = build_expanded(state, bones, frame_idx, show_help)
-                elif mode == 'stats':
-                    display = build_stats(state, bones, frame_idx, pet_idx, len(pets_data['pets']))
-                elif mode == 'achievements':
-                    display = build_achievements(state, bones)
-                if message and time.time() - message_time < 2:
-                    display += f'\n  \033[33m{message}\033[0m'
-
+                if game.mode == 'compact': display = build_compact(game)
+                elif game.mode == 'expanded': display = build_expanded(game)
+                elif game.mode == 'stats': display = build_stats(game)
+                elif game.mode == 'achievements': display = build_achievements(game)
+                if game.message and time.time() - game.message_time < 2:
+                    display += f'\n  \033[33m{game.message}\033[0m'
                 if display != prev_display:
                     clear_screen()
                     print(display, end='', flush=True)
                     prev_display = display
                 need_redraw = False
 
-            if anim_end and now < anim_end:
-                anim_idx = int((now * 6) % len(anim_frames))
+            if game.anim_end and now < game.anim_end:
+                game.anim_idx = int((now * 6) % len(game.anim_frames))
                 sys.stdout.write(f'\033[H{len(display.splitlines())+1}\033[K')
-                sys.stdout.write(f'  \033[33m{anim_frames[anim_idx]}\033[0m\n')
+                sys.stdout.write(f'  \033[33m{game.anim_frames[game.anim_idx]}\033[0m\n')
                 sys.stdout.flush()
-            elif anim_end and now >= anim_end:
-                anim_end = 0; need_redraw = True
+            elif game.anim_end and now >= game.anim_end:
+                game.anim_end = 0; need_redraw = True
 
             key = get_key()
-            if key == 'q': break
-            elif key in ('\r','\n'):
-                if mode == 'compact':
-                    mode = 'expanded'; show_help = False
-                elif mode == 'expanded':
-                    mode = 'compact'; show_help = False
-            elif key == 'h':
-                if mode == 'compact':
-                    mode = 'expanded'; show_help = True
-                else:
-                    show_help = not show_help; need_redraw = True
-            elif key == 'c':
-                if mode != 'compact':
-                    mode = 'compact'; show_help = False
-            elif key == 'b':
-                if len(pets_data['pets']) > 1:
-                    pets_data['pets'][pet_idx] = state
-                    pet_idx = (pet_idx - 1) % len(pets_data['pets'])
-                    state = pets_data['pets'][pet_idx]
-                    bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
-                    pets_data['current'] = pet_idx; save_pets(uid, pets_data)
-                    new_ach = check_achievements(state, pets_data)
-                    message = f'Switched to {state["name"]}'
-                    if new_ach: message = f'Achievement: {new_ach[0]}!'
-                    message_time = time.time()
-                    need_redraw = True
-            elif key == 'n':
-                pets_data['pets'][pet_idx] = state
-                if pet_idx < len(pets_data['pets']) - 1:
-                    pet_idx += 1
-                else:
-                    new_state = init_state(uid, generate_companion(uid), generate_name(uid))
-                    pets_data['pets'].append(new_state)
-                    pet_idx = len(pets_data['pets']) - 1
-                state = pets_data['pets'][pet_idx]
-                bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
-                pets_data['current'] = pet_idx; save_pets(uid, pets_data)
-                new_ach = check_achievements(state, pets_data)
-                message = f'Switched to {state["name"]}'
-                if new_ach: message = f'Achievement: {new_ach[0]}!'
-                message_time = time.time()
-                need_redraw = True
-            elif key == 't':
-                if mode == 'stats':
-                    mode = 'expanded'
-                elif mode == 'expanded':
-                    mode = 'stats'
-                else:
-                    mode = 'stats'
-            elif key == 'a':
-                if mode == 'achievements':
-                    mode = 'expanded'
-                elif mode in ('expanded', 'stats'):
-                    mode = 'achievements'
-                else:
-                    mode = 'achievements'
-            elif key == 'e' and mode != 'compact':
-                message = export_pet(state, bones, frame_idx); message_time = time.time()
-                need_redraw = True
-            elif key == 'f' and mode != 'compact':
-                message, anim_type = feed_pet(state); message_time = time.time()
-                if anim_type: anim_end = now + 1.5; anim_frames = ANIMATIONS[anim_type]; anim_idx = 0
-                new_ach = check_achievements(state, pets_data)
-                if new_ach: message = f'Achievement: {new_ach[0]}!'; message_time = time.time()
-                save_state(uid, state, pets_data, pet_idx); need_redraw = True
-            elif key == 'p' and mode != 'compact':
-                message, anim_type = play_pet(state); message_time = time.time()
-                if anim_type: anim_end = now + 1.5; anim_frames = ANIMATIONS[anim_type]; anim_idx = 0
-                new_ach = check_achievements(state, pets_data)
-                if new_ach: message = f'Achievement: {new_ach[0]}!'; message_time = time.time()
-                save_state(uid, state, pets_data, pet_idx); need_redraw = True
-            elif key == 's' and mode != 'compact':
-                message, anim_type = sleep_pet(state); message_time = time.time()
-                if anim_type: anim_end = now + 1.5; anim_frames = ANIMATIONS[anim_type]; anim_idx = 0
-                new_ach = check_achievements(state, pets_data)
-                if new_ach: message = f'Achievement: {new_ach[0]}!'; message_time = time.time()
-                save_state(uid, state, pets_data, pet_idx); need_redraw = True
-            elif key == 'r' and mode != 'compact':
-                bones = generate_companion(uid); name = generate_name(uid)
-                state = init_state(uid, bones, name)
-                pets_data['pets'][pet_idx] = state; save_pets(uid, pets_data)
-                message = 'Regenerated!'; message_time = time.time()
+            if key is None: continue
+            atype, detail = game.handle_key(key)
+            if atype == 'quit': break
+            elif atype == 'mode_change':
+                cur = get_window_pos()
+                if cur: _window_pos = cur
+                do_layout(game)
+                prev_mode = game.mode; need_redraw = True
+                time.sleep(0.15)
+            elif atype == 'export':
+                text = export_text(game.state, game.bones, game.frame_idx)
+                cmds = [['xclip','-selection','clipboard'],['xsel','--clipboard','--input']]
+                if sys.platform == 'win32': cmds = [['clip.exe']]
+                copied = False
+                for cmd in cmds:
+                    try:
+                        p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                        p.communicate(text.encode())
+                        copied = True; break
+                    except: pass
+                game.message = 'Copied to clipboard!' if copied else 'Printed to terminal'
+                game.message_time = time.time(); need_redraw = True
+            elif atype in ('action', 'pet_switch'):
                 need_redraw = True
     finally:
         show_cursor(); clear_screen()
-        print(f'\n  {render_face(bones)}  Bye!\n')
+        print(f'\n  {render_face(game.bones)}  Bye!\n')
 
 if __name__ == '__main__': main()
