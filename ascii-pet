@@ -138,7 +138,7 @@ def build_expanded(game):
         v = game.state['stats'][s]
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
     if game.show_help:
-        lines.append(f'{DIM}[f]feed [p]play [s]sleep [b]prev [n]next [t]stats [a]achieve [e]export [m]move [Enter]compact [q]quit{RST}')
+        lines.append(f'{DIM}[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [e]export [m]move [Enter]compact [q]quit{RST}')
     return '\n'.join(lines)
 
 def build_stats(game):
@@ -278,7 +278,7 @@ def main():
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg in ('--help','-h'):
-            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, b prev, n next, t stats, a achieve, e export, h help, c compact, m move, q quit')
+            print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, w adopt, b prev, n next, t stats, a achieve, e export, h help, c compact, m move, q quit')
             sys.exit(0)
         if arg == '--all':
             print('\n  All 18 species:\n')

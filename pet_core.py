@@ -374,31 +374,41 @@ class PetGame:
         return msg, anim
 
     def switch_pet(self, direction):
-        """Switch to prev (-1) or next (+1) pet. Returns message or None if entering release mode."""
+        """Switch to prev (-1) or next (+1) pet. Only cycles through existing pets."""
         self.pets_data['pets'][self.pet_idx] = self.state
         if direction < 0:
             self.pet_idx = (self.pet_idx - 1) % len(self.pets_data['pets'])
         else:
-            if self.pet_idx < len(self.pets_data['pets']) - 1:
-                self.pet_idx += 1
-            else:
-                if len(self.pets_data['pets']) >= MAX_PETS:
-                    self.mode = 'release'
-                    self.pets_data['current'] = self.pet_idx
-                    save_pets(self.uid, self.pets_data, self.data_dir)
-                    return None
-                if self.count_today_adoptions() >= MAX_DAILY_ADOPTIONS:
-                    return f'Daily limit reached ({MAX_DAILY_ADOPTIONS}/day). Try again tomorrow!'
-                new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
-                self.pets_data['pets'].append(new_state)
-                self.pets_data.setdefault('adoption_log', []).append(datetime.now().isoformat())
-                self.pet_idx = len(self.pets_data['pets']) - 1
+            self.pet_idx = (self.pet_idx + 1) % len(self.pets_data['pets'])
         self.state = self.pets_data['pets'][self.pet_idx]
         self.bones = {k: self.state[k] for k in ('species','eye','hat','shiny','rarity')}
         self.pets_data['current'] = self.pet_idx
         save_pets(self.uid, self.pets_data, self.data_dir)
         new_ach = check_achievements(self.state, self.pets_data)
         msg = f'Switched to {self.state["name"]}'
+        if new_ach: msg = f'Achievement: {new_ach[0]}!'
+        return msg
+
+    def adopt_pet(self):
+        """Adopt a new pet. Returns message or None if entering release mode."""
+        if len(self.pets_data['pets']) >= MAX_PETS:
+            self.mode = 'release'
+            self.pets_data['current'] = self.pet_idx
+            save_pets(self.uid, self.pets_data, self.data_dir)
+            return None
+        if self.count_today_adoptions() >= MAX_DAILY_ADOPTIONS:
+            return f'Daily limit reached ({MAX_DAILY_ADOPTIONS}/day). Try again tomorrow!'
+        self.pets_data['pets'][self.pet_idx] = self.state
+        new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
+        self.pets_data['pets'].append(new_state)
+        self.pets_data.setdefault('adoption_log', []).append(datetime.now().isoformat())
+        self.pet_idx = len(self.pets_data['pets']) - 1
+        self.state = self.pets_data['pets'][self.pet_idx]
+        self.bones = {k: self.state[k] for k in ('species','eye','hat','shiny','rarity')}
+        self.pets_data['current'] = self.pet_idx
+        save_pets(self.uid, self.pets_data, self.data_dir)
+        new_ach = check_achievements(self.state, self.pets_data)
+        msg = f'Adopted {self.state["name"]}!'
         if new_ach: msg = f'Achievement: {new_ach[0]}!'
         return msg
 
@@ -467,10 +477,15 @@ class PetGame:
 
         if key == 'n':
             msg = self.switch_pet(1)
+            self.message = msg; self.message_time = now
+            return 'pet_switch', msg
+
+        if key == 'w' and self.mode != 'compact':
+            msg = self.adopt_pet()
             if msg is None:
                 return 'mode_change', self.mode
             self.message = msg; self.message_time = now
-            return 'pet_switch', msg
+            return 'action', msg
 
         if key == 't':
             if self.mode == 'stats': self.mode = 'expanded'

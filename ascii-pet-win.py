@@ -74,7 +74,7 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
         filled, empty, val = stat_bar_text(v, 15)
         lines.append((f'{s[:4]}', COLOR_DIM, filled, COLOR_BAR_FILL, empty, COLOR_BAR_EMPTY, f' {val}', COLOR_WHITE))
     if show_help:
-        lines.append(('[f]feed [p]play [s]sleep [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit', COLOR_DIM))
+        lines.append(('[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit', COLOR_DIM))
     return lines
 
 def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
@@ -206,6 +206,7 @@ ID_TRAY_QUIT   = 2002
 ID_FEED        = 1001
 ID_PLAY        = 1002
 ID_SLEEP       = 1003
+ID_ADOPT       = 1004
 ID_PREV_PET    = 1005
 ID_NEXT_PET    = 1006
 ID_EXPORT      = 1007
@@ -675,6 +676,7 @@ class PetWindow:
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_PLAY, '玩耍 (P)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_SLEEP, '睡觉 (S)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_ADOPT, '领养新宠物 (W)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_EXPORT, '导出到剪贴板 (E)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_PREV_PET, '上一个宠物 (B)')
@@ -704,6 +706,9 @@ class PetWindow:
             msg, anim = self.game.handle_action('sleep')
             self.game.message = msg; self.game.message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
+        elif cmd == ID_ADOPT and self.game.mode != 'compact':
+            msg = self.game.adopt_pet()
+            self.game.message = msg; self.game.message_time = now
         elif cmd == ID_EXPORT and self.game.mode != 'compact':
             text = export_text(self.game.state, self.game.bones, self.game.frame_idx)
             if export_to_clipboard(text):
@@ -833,7 +838,7 @@ def main():
                   '    ascii-pet-win.py --help       Help\n\n'
                   '  Compact mode: just the pet\n'
                   '  Expanded mode: full stats (Enter to toggle)\n'
-                  '  Commands: f feed, p play, s sleep, b prev, n next,\n'
+                  '  Commands: f feed, p play, s sleep, w adopt, b prev, n next,\n'
                   '            t stats, a achieve, e export, h help, c compact, q quit')
             sys.exit(0)
         if arg == '--all':
