@@ -20,6 +20,7 @@ MOODS = {'happy':{'emoji':'♪'},'normal':{'emoji':'~'},
          'excited':{'emoji':'★'}}
 SALT = 'ascii-pet-2026'
 MAX_PETS = 3
+MAX_DAILY_ADOPTIONS = 3
 
 RANDOM_EVENTS = [
     ('sneeze',    'Achoo!',             {}),
@@ -316,6 +317,18 @@ class PetGame:
     def save(self):
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
 
+    def count_today_adoptions(self):
+        """Count how many pets were adopted today."""
+        today = datetime.now().date()
+        count = 0
+        for s in self.pets_data['pets']:
+            try:
+                created = datetime.fromisoformat(s['created_at']).date()
+                if created == today:
+                    count += 1
+            except: pass
+        return count
+
     def tick(self):
         """Called every 500ms. Returns (message, message_time) or (None, 0)."""
         self.frame_idx += 1
@@ -373,6 +386,8 @@ class PetGame:
                     self.pets_data['current'] = self.pet_idx
                     save_pets(self.uid, self.pets_data, self.data_dir)
                     return None
+                if self.count_today_adoptions() >= MAX_DAILY_ADOPTIONS:
+                    return f'Daily limit reached ({MAX_DAILY_ADOPTIONS}/day). Try again tomorrow!'
                 new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
                 self.pets_data['pets'].append(new_state)
                 self.pet_idx = len(self.pets_data['pets']) - 1

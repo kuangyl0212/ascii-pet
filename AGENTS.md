@@ -59,6 +59,7 @@ python build.py              # Build Windows exe (auto-installs PyInstaller if m
 - **Zero pip dependencies** at runtime (stdlib only). PyInstaller is build-time only.
 - **PetGame is the interface** — platform files call `game.tick()`, `game.handle_key()`, `game.handle_action()`. Never duplicate game logic in platform files.
 - **Pet limit**: `MAX_PETS=3`. Pressing `n` at the last pet opens release mode. Keys 1/2/3 select pet to release. Cannot release your last pet.
+- **Daily limit**: `MAX_DAILY_ADOPTIONS=3`. User can adopt max 3 pets per day. Shows warning when exceeded.
 - **State path**: Linux → `~/.local/share/ascii-pet/`, Windows → `%APPDATA%\ascii-pet\`.
 - **Deterministic generation**: Custom FNV-1a hash (`hash_string()`) of uid+SALT (`'ascii-pet-2026'`) feeds a mulberry32 PRNG. Same uid = same pet.
 - **Rendering differs by design**: Linux returns ANSI strings, Windows returns `(text, (R,G,B))` tuples. Both call the same `pet_core` data functions.
