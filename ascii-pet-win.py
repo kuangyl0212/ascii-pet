@@ -181,10 +181,27 @@ WM_MOUSELEAVE  = 0x02A3
 WM_CONTEXTMENU = 0x007B
 WM_COMMAND     = 0x0111
 WM_RBUTTONDOWN = 0x0204
+WM_SIZE        = 0x0005
+WM_SYSCOMMAND  = 0x0112
+
+SC_MINIMIZE    = 0xF020
+SC_RESTORE     = 0xF120
 
 HTCAPTION      = 2
 TRANSPARENT    = 1
 COLOR_WINDOW   = 5
+
+# Tray icon constants
+WM_TRAYICON    = 0x0400
+NIF_ICON       = 0x00000002
+NIF_MESSAGE    = 0x00000001
+NIF_TIP        = 0x00000004
+NIM_ADD        = 0x00000000
+NIM_MODIFY     = 0x00000001
+NIM_DELETE     = 0x00000002
+
+ID_TRAY_SHOW   = 2001
+ID_TRAY_QUIT   = 2002
 
 ID_FEED        = 1001
 ID_PLAY        = 1002
@@ -295,6 +312,31 @@ class WNDCLASSW(ctypes.Structure):
         ('lpszMenuName', c_wchar_p), ('lpszClassName', c_wchar_p),
     ]
 
+# NOTIFYICONDATAW for system tray
+class NOTIFYICONDATAW(ctypes.Structure):
+    _fields_ = [
+        ('cbSize', wintypes.DWORD),
+        ('hWnd', wintypes.HWND),
+        ('uID', wintypes.UINT),
+        ('uFlags', wintypes.UINT),
+        ('uCallbackMessage', wintypes.UINT),
+        ('hIcon', wintypes.HICON),
+        ('szTip', ctypes.c_wchar * 128),
+        ('dwState', wintypes.DWORD),
+        ('dwStateMask', wintypes.DWORD),
+        ('szInfo', ctypes.c_wchar * 256),
+        ('uTimeoutOrVersion', wintypes.UINT),
+        ('szInfoTitle', ctypes.c_wchar * 64),
+        ('dwInfoFlags', wintypes.DWORD),
+        ('guidItem', ctypes.c_byte * 16),
+        ('hBalloonIcon', wintypes.HICON),
+    ]
+
+# Shell_NotifyIconW
+shell32 = ctypes.windll.shell32
+shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW)]
+shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+
 # API signatures
 user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.c_ssize_t, ctypes.c_ssize_t]
 user32.DefWindowProcW.restype = ctypes.c_ssize_t
@@ -352,6 +394,8 @@ class PetWindow:
         self._window_pos = None
         self.hover = False
         self.tracking_mouse = False
+        self.tray_icon_id = 1
+        self.tray_added = False
 
     def calc_window_size(self, mode):
         lines = self.get_render_lines()
@@ -391,6 +435,49 @@ class PetWindow:
         else:
             x, y = sw - w - 20, sh - h - 60
         user32.MoveWindow(self.hwnd, x, y, w, h, True)
+
+    def add_tray_icon(self):
+        if self.tray_added: return
+        nid = NOTIFYICONDATAW()
+        nid.cbSize = sizeof(NOTIFYICONDATAW)
+        nid.hWnd = self.hwnd
+        nid.uID = self.tray_icon_id
+        nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP
+        nid.uCallbackMessage = WM_TRAYICON
+        nid.hIcon = user32.LoadIconW(0, 32518)
+        nid.szTip = 'ASCII Pet'
+        shell32.Shell_NotifyIconW(NIM_ADD, byref(nid))
+        self.tray_added = True
+        self._tray_nid = nid
+
+    def remove_tray_icon(self):
+        if not self.tray_added: return
+        shell32.Shell_NotifyIconW(NIM_DELETE, byref(self._tray_nid))
+        self.tray_added = False
+
+    def show_tray_menu(self):
+        class POINT(ctypes.Structure):
+            _fields_ = [('x', c_long), ('y', c_long)]
+        pt = POINT()
+        user32.GetCursorPos(byref(pt))
+        hmenu = user32.CreatePopupMenu()
+        user32.AppendMenuW(hmenu, MF_STRING, ID_TRAY_SHOW, '显示窗口')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        user32.AppendMenuW(hmenu, MF_STRING, ID_TRAY_QUIT, '退出')
+        cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
+        user32.DestroyMenu(hmenu)
+        if cmd == ID_TRAY_SHOW:
+            user32.ShowWindow(self.hwnd, SC_RESTORE)
+            user32.SetForegroundWindow(self.hwnd)
+        elif cmd == ID_TRAY_QUIT:
+            user32.DestroyWindow(self.hwnd)
+
+    def minimize_to_tray(self):
+        user32.ShowWindow(self.hwnd, 0)
+
+    def restore_from_tray(self):
+        user32.ShowWindow(self.hwnd, SC_RESTORE)
+        user32.SetForegroundWindow(self.hwnd)
 
     def create_window(self):
         hinstance = kernel32.GetModuleHandleW(None)
@@ -432,6 +519,7 @@ class PetWindow:
         user32.ShowWindow(self.hwnd, 5)
         user32.SetForegroundWindow(self.hwnd)
         user32.SetFocus(self.hwnd)
+        self.add_tray_icon()
 
     def wnd_proc(self, hwnd, msg, wparam, lparam):
         if msg == WM_PAINT:
@@ -440,6 +528,17 @@ class PetWindow:
             self.on_timer(); return 0
         elif msg == WM_CHAR:
             self.on_char(wparam); return 0
+        elif msg == WM_TRAYICON:
+            if lparam == WM_RBUTTONDOWN:
+                self.show_tray_menu()
+            elif lparam == WM_LBUTTONDOWN:
+                self.restore_from_tray()
+            return 0
+        elif msg == WM_SIZE:
+            if wparam == SC_MINIMIZE:
+                self.add_tray_icon()
+                self.minimize_to_tray()
+                return 0
         elif msg == WM_NCHITTEST:
             return 1
         elif msg == WM_LBUTTONDOWN:
@@ -476,6 +575,7 @@ class PetWindow:
             user32.FillRect(hdc, byref(rect), brush)
             gdi32.DeleteObject(brush); return 1
         elif msg == WM_DESTROY:
+            self.remove_tray_icon()
             user32.KillTimer(hwnd, 1)
             if self.hfont: gdi32.DeleteObject(self.hfont)
             user32.PostQuitMessage(0); return 0
