@@ -304,8 +304,10 @@ class PetGame:
         if state is None:
             bones = generate_companion(uid); name = generate_name(uid)
             state = init_state(uid, bones, name)
-            pets_data = {'pets': [state], 'current': 0}; pet_idx = 0
+            pets_data = {'pets': [state], 'current': 0, 'adoption_log': []}; pet_idx = 0
             save_pets(uid, pets_data, data_dir)
+        if 'adoption_log' not in pets_data:
+            pets_data['adoption_log'] = []
         self.state = state
         self.pets_data = pets_data
         self.pet_idx = pet_idx
@@ -318,13 +320,12 @@ class PetGame:
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
 
     def count_today_adoptions(self):
-        """Count how many pets were adopted today."""
+        """Count how many pets were adopted today (from log, not current list)."""
         today = datetime.now().date()
         count = 0
-        for s in self.pets_data['pets']:
+        for ts in self.pets_data.get('adoption_log', []):
             try:
-                created = datetime.fromisoformat(s['created_at']).date()
-                if created == today:
+                if datetime.fromisoformat(ts).date() == today:
                     count += 1
             except: pass
         return count
@@ -390,6 +391,7 @@ class PetGame:
                     return f'Daily limit reached ({MAX_DAILY_ADOPTIONS}/day). Try again tomorrow!'
                 new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
                 self.pets_data['pets'].append(new_state)
+                self.pets_data.setdefault('adoption_log', []).append(datetime.now().isoformat())
                 self.pet_idx = len(self.pets_data['pets']) - 1
         self.state = self.pets_data['pets'][self.pet_idx]
         self.bones = {k: self.state[k] for k in ('species','eye','hat','shiny','rarity')}
