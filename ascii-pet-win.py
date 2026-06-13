@@ -648,10 +648,9 @@ class PetWindow:
             if not self.hover:
                 self.hover = True
                 now = time.time()
-                if not self.game.state.get('is_dead') and now - self._last_pet_time >= 1.0:
+                if now - self._last_pet_time >= 1.0:
                     self._last_pet_time = now
-                    self.game.state['stats']['HAPPY'] = min(100, self.game.state['stats']['HAPPY'] + 2)
-                    self.game.save()
+                    self.game.handle_pet()
                 user32.SetLayeredWindowAttributes(hwnd, rgb_to_colorref(0, 0, 0), 100, LWA_COLORKEY | LWA_ALPHA)
                 user32.InvalidateRect(hwnd, None, False)
             return 0

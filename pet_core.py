@@ -220,7 +220,8 @@ def init_state(uid, bones, name):
             'mood':'normal','created_at':now,'last_fed':now,'last_played':now,'last_slept':now,
             'level':1,'xp':0,'total_interactions':0,
             'feed_count':0,'play_count':0,'sleep_count':0,'achievements':[],
-            'critical_since':None,'is_dead':False}
+            'critical_since':None,'is_dead':False,
+            'last_feed':None,'last_play':None,'last_sleep':None,'pet_count_hour':0,'pet_hour_start':None}
 
 def update_state_over_time(state):
     now = datetime.now()
@@ -411,12 +412,31 @@ class PetGame:
                 self.save()
                 return 'Revived!', None
             return 'Your pet is dead...', None
+
+        now = datetime.now()
+        cooldowns = {
+            'feed':  ('last_feed',  3600,  'Feed again in {m}min'),
+            'play':  ('last_play',  3600,  'Play again in {m}min'),
+            'sleep': ('last_sleep', 10800, 'Sleep again in {m}min'),
+        }
+        if action in cooldowns:
+            key, secs, msg_tpl = cooldowns[action]
+            last = self.state.get(key)
+            if last:
+                elapsed = (now - datetime.fromisoformat(last)).total_seconds()
+                if elapsed < secs:
+                    remaining = int((secs - elapsed) / 60) + 1
+                    return msg_tpl.format(m=remaining), None
+
         if action == 'feed':
             msg, anim = feed_pet(self.state)
+            self.state['last_feed'] = now.isoformat()
         elif action == 'play':
             msg, anim = play_pet(self.state)
+            self.state['last_play'] = now.isoformat()
         elif action == 'sleep':
             msg, anim = sleep_pet(self.state)
+            self.state['last_sleep'] = now.isoformat()
         else:
             return None, None
 
@@ -424,6 +444,22 @@ class PetGame:
         new_ach = check_achievements(self.state, self.pets_data)
         if new_ach: msg = f'Achievement: {new_ach[0]}!'
         return msg, anim
+
+    def handle_pet(self):
+        """Handle hover petting with cooldown. Returns message or None."""
+        if self.state.get('is_dead'):
+            return None
+        now = datetime.now()
+        hour_start = self.state.get('pet_hour_start')
+        if hour_start is None or (now - datetime.fromisoformat(hour_start)).total_seconds() >= 3600:
+            self.state['pet_hour_start'] = now.isoformat()
+            self.state['pet_count_hour'] = 0
+        if self.state['pet_count_hour'] >= 3:
+            return None
+        self.state['pet_count_hour'] = self.state.get('pet_count_hour', 0) + 1
+        self.state['stats']['HAPPY'] = min(100, self.state['stats']['HAPPY'] + 2)
+        self.save()
+        return None
 
     def switch_pet(self, direction):
         """Switch to prev (-1) or next (+1) pet. Only cycles through existing pets."""
