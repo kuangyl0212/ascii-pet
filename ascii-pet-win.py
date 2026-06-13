@@ -493,7 +493,7 @@ class PetWindow:
         wc.lpszMenuName = None; wc.lpszClassName = 'AsciiPetWin'
         user32.RegisterClassW(byref(wc))
 
-        ex_style = WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_APPWINDOW
+        ex_style = WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW
         style = WS_POPUP | WS_VISIBLE
         w, h = self.calc_window_size(self.game.mode)
         self.win_w, self.win_h = w, h
