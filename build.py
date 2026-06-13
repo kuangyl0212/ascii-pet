@@ -11,6 +11,10 @@ def main():
         print(f'错误: 找不到 {script}')
         sys.exit(1)
 
+    # 结束正在运行的旧进程
+    subprocess.run(['taskkill', '/f', '/im', 'ascii-pet-win.exe'],
+                   capture_output=True, check=False)
+
     # 检查 PyInstaller 是否可用
     try:
         subprocess.run([sys.executable, '-m', 'PyInstaller', '--version'],
