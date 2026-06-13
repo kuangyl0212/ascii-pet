@@ -333,9 +333,21 @@ class PetGame:
     def tick(self):
         """Called every 500ms. Returns (message, message_time) or (None, 0)."""
         self.frame_idx += 1
-        self.state = update_state_over_time(self.state)
-        self.save()
         now = time.time()
+        delta_hours = (now - self.last_tick_time) / 3600
+        self.last_tick_time = now
+
+        stats = self.state['stats']
+        decay_config = [('last_fed', 4, 5, 'HUNGER'), ('last_played', 2, 3, 'HAPPY'), ('last_slept', 6, 4, 'ENERGY')]
+        for key, threshold, rate, stat in decay_config:
+            hours_since = (datetime.now() - datetime.fromisoformat(self.state[key])).total_seconds() / 3600
+            if hours_since > threshold:
+                decay = max(0, int(delta_hours * rate))
+                if decay > 0:
+                    stats[stat] = max(0, stats[stat] - decay)
+
+        self.state['mood'] = 'hungry' if stats['HUNGER']<20 else 'sleepy' if stats['ENERGY']<20 else 'excited' if stats['HAPPY']>80 else 'happy' if stats['HAPPY']>50 else 'normal'
+        self.save()
 
         stats = self.state['stats']
         msg, msg_time = None, 0
