@@ -330,7 +330,7 @@ def main():
                 elif game.mode == 'stats': display = build_stats(game)
                 elif game.mode == 'achievements': display = build_achievements(game)
                 elif game.mode == 'release': display = build_release(game)
-                if game.message and time.time() - game.message_time < 2:
+                if game.message and (game.warning_active or time.time() - game.message_time < 2):
                     display += f'\n  \033[33m{game.message}\033[0m'
                 if move_mode:
                     display += '\n  \033[33m[MOVE] h← j↓ k↑ l→  m:exit\033[0m'

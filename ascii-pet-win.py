@@ -758,7 +758,7 @@ class PetWindow:
             lines = render_release_lines(g)
         else:
             lines = render_compact_lines(g.bones, g.frame_idx, g.state)
-        if g.message and time.time() - g.message_time < 2:
+        if g.message and (g.warning_active or time.time() - g.message_time < 2):
             lines.append((f'  {g.message}', COLOR_MSG))
         if g.anim_end and time.time() < g.anim_end:
             g.anim_idx = int((time.time() * 6) % len(g.anim_frames))

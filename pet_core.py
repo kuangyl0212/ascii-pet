@@ -294,11 +294,11 @@ class PetGame:
         self.show_help = False
         self.message = None
         self.message_time = 0
-        self.reminder_shown = False
         self.last_event_time = 0
         self.anim_end = 0
         self.anim_frames = []
         self.anim_idx = 0
+        self.warning_active = False
 
         state, pets_data, pet_idx = load_state(uid, data_dir)
         if state is None:
@@ -339,14 +339,14 @@ class PetGame:
 
         stats = self.state['stats']
         msg, msg_time = None, 0
-        if stats['HUNGER'] < 10 and not self.reminder_shown:
-            msg = 'Your pet is starving!'; msg_time = now; self.reminder_shown = True
-        elif stats['ENERGY'] < 10 and not self.reminder_shown:
-            msg = 'Your pet is exhausted!'; msg_time = now; self.reminder_shown = True
-        elif stats['HAPPY'] < 10 and not self.reminder_shown:
-            msg = 'Your pet is lonely!'; msg_time = now; self.reminder_shown = True
-        if stats['HUNGER'] >= 10 and stats['ENERGY'] >= 10 and stats['HAPPY'] >= 10:
-            self.reminder_shown = False
+        if stats['HUNGER'] < 10:
+            msg = 'Your pet is starving!'; msg_time = now; self.warning_active = True
+        elif stats['ENERGY'] < 10:
+            msg = 'Your pet is exhausted!'; msg_time = now; self.warning_active = True
+        elif stats['HAPPY'] < 10:
+            msg = 'Your pet is lonely!'; msg_time = now; self.warning_active = True
+        else:
+            self.warning_active = False
 
         if now - self.last_event_time > 60 and random.random() < 0.01:
             evt = random.choice(RANDOM_EVENTS)
