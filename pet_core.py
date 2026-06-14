@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Platform-independent game logic for ASCII Desktop Pet."""
 
-import os, json, time, random
+import os, json, time, random, math
 from pathlib import Path
 from datetime import datetime
 
@@ -66,13 +66,13 @@ BODIES = {
     'chonk':[['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /|  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´~ ']],
 }
 HAT_LINES = {'none':'','crown':'   \\^^^/    ','tophat':'   [___]    ','propeller':'    -+-     ','halo':'   (   )    ','wizard':'    /^\\     ','beanie':'   (___)    ','tinyduck':'    ,>      '}
-IDLE_SEQUENCE = [0,0,0,0,1,0,0,0,-1,0,0,2,0,0,0]
+IDLE_SEQUENCE = [0,0,0,0,0,0,1,0,0,0,0,0,2,0,0,0,-1,0,0,0,0,1,0,0,0,0,0,2,0,0]
 MOOD_SEQUENCES = {
-    'normal':  [0,0,0,0,1,0,0,0,-1,0,0,2,0,0,0],
-    'happy':   [0,1,0,1,0,0,2,0,2,0,-1,0,0,0,0],
-    'excited': [0,1,2,1,2,1,0,-1,0,1,2,1,2,0,0],
-    'hungry':  [0,0,0,0,0,0,2,2,0,0,0,0,0,0,0],
-    'sleepy':  [0,0,0,-1,0,0,0,0,-1,0,0,0,0,0,0],
+    'normal':  [0,0,0,0,0,0,1,0,0,0,0,0,2,0,0,0,-1,0,0,0,0,1,0,0,0,0,0,2,0,0],
+    'happy':   [0,1,0,2,0,1,0,2,0,1,0,2,-1,0,0,0,1,0,2,0,1,0,2,0],
+    'excited': [0,1,2,0,1,2,0,1,2,-1,0,1,2,0,1,2,0,1,2,-1,0,1,2,0],
+    'hungry':  [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,-1,0,0,0,0,0,0,0,0],
+    'sleepy':  [0,0,0,0,-1,0,0,0,0,0,-1,0,0,0,0,0,-1,0,0,0,0,0,0,0],
 }
 ADJECTIVES = ['Tiny','Fluffy','Brave','Sneaky','Cosmic','Dizzy','Fuzzy','Mighty','Wobbly','Crispy','Sparkly','Grumpy','Sleepy','Zippy','Bouncy','Spooky','Jolly','Rusty','Stormy','Lucky','Peppy','Zany','Quirky','Sassy']
 NOUNS = ['Bean','Nugget','Sprout','Biscuit','Noodle','Pebble','Pickle','Muffin','Waffle','Squish','Pudding','Crumble','Tater','Dumpling','Scraps','Widget','Pixel','Nibble','Scooter','Snickers','Wobbles','Patches','Buttons','Pip']
@@ -156,10 +156,19 @@ def render_face(bones):
 def render_frame(bones, frame_idx, mood='normal'):
     seq = MOOD_SEQUENCES.get(mood, IDLE_SEQUENCE)
     step = seq[frame_idx % len(seq)]
+
     if step == -1:
         f = render_sprite(bones, 0)
-        return [l.replace(bones['eye'], '-') for l in f]
-    return render_sprite(bones, step)
+        body = [l.replace(bones['eye'], '-') for l in f]
+    else:
+        body = render_sprite(bones, step % 3)
+
+    bob = int(math.sin(frame_idx * 0.4) * 0.8)
+    if bob > 0:
+        body = ['            '] * bob + body
+    elif bob < 0:
+        body = body[-bob:]
+    return body
 
 # ─── Actions ──────────────────────────────────────────────────────────────────
 
