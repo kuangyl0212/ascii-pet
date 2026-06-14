@@ -5,10 +5,27 @@ import os, json, time, random, math
 from pathlib import Path
 from datetime import datetime
 
+try:
+    from weather import get_weather
+except ImportError:
+    get_weather = lambda: None
+
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin',
            'turtle','snail','ghost','axolotl','capybara','cactus','robot','rabbit','mushroom','chonk']
+
+EVOLUTION_CHAIN = {
+    'blob':    [('slime', 5), ('elemental', 15)],
+    'duck':    [('goose', 5), ('swan', 15)],
+    'cat':     [('tiger', 5), ('lion', 15)],
+    'dragon':  [('wyvern', 10), ('dragonlord', 25)],
+    'owl':     [('phoenix', 10), ('sage', 20)],
+    'rabbit':  [('hare', 5), ('jackalope', 15)],
+    'snail':   [('shell', 5), ('turbo', 15)],
+    'ghost':   [('wraith', 10), ('specter', 20)],
+}
+
 EYES = ['·','✦','×','◉','@','°']
 RARITIES = ['common','uncommon','rare','epic','legendary']
 RARITY_WEIGHTS = {'common':60,'uncommon':25,'rare':10,'epic':4,'legendary':1}
@@ -23,12 +40,36 @@ MAX_PETS = 3
 MAX_DAILY_ADOPTIONS = 3
 
 RANDOM_EVENTS = [
-    ('sneeze',    'Achoo!',             {}),
-    ('find_item', 'Found a shiny pebble!', {'xp': 5}),
-    ('mood_boost','Feeling great!',     {'HAPPY': 10}),
-    ('sparkle',   '✨ Sparkle!',         {}),
-    ('yawn',      '*yaaawn*',           {}),
+    ('sneeze',     'Achoo!',              {}),
+    ('find_item',  'Found something!',     {'item': True}),
+    ('mood_boost', 'Feeling great!',      {'HAPPY': 10}),
+    ('sparkle',    '✨ Sparkle!',          {}),
+    ('yawn',       '*yaaawn*',            {}),
+    ('find_coin',  'Found a coin!',       {'xp': 5}),
+    ('dance',      '♪ Dancing! ♪',        {'HAPPY': 5}),
+    ('nap',        '*zzz* quick nap',     {'ENERGY': 10}),
+    ('sing',       '♪ La la la ♪',        {'WISDOM': 5}),
+    ('tripped',    'Tripped! Ouch!',      {'HAPPY': -5}),
+    ('found_food', 'Found a snack!',      {'HUNGER': 10}),
 ]
+
+PET_INTERACTIONS = [
+    ('play_together', ' played together!',  {'HAPPY': 5},  'both'),
+    ('share_food',    ' shared a snack!',   {'HUNGER': 10}, 'current'),
+    ('chat',          ' had a nice chat!',  {'WISDOM': 5},  'both'),
+    ('race',          ' had a race!',       {'ENERGY': 10}, 'current'),
+]
+
+ITEMS = {
+    'apple':   {'name':'Apple',    'icon':'🍎', 'effect':{'HUNGER':30},  'desc':'Restores 30 hunger'},
+    'toy':     {'name':'Toy',      'icon':'🎾', 'effect':{'HAPPY':30},   'desc':'Restores 30 happiness'},
+    'bed':     {'name':'Bed',      'icon':'🛏', 'effect':{'ENERGY':30},  'desc':'Restores 30 energy'},
+    'book':    {'name':'Book',     'icon':'📖', 'effect':{'WISDOM':10},  'desc':'Grants 10 wisdom'},
+    'potion':  {'name':'Potion',   'icon':'🧪', 'effect':{'revive':True}, 'desc':'Revives a dead pet'},
+    'crown':   {'name':'Crown',    'icon':'👑', 'effect':{'hat':'crown'}, 'desc':'A fancy crown'},
+    'tophat':  {'name':'Top Hat',  'icon':'🎩', 'effect':{'hat':'tophat'},'desc':'A classy top hat'},
+}
+MAX_INVENTORY = 20
 
 ACHIEVEMENTS = {
     'first_feed':    {'name':'First Meal',    'icon':'🍖', 'check': lambda s,p: s.get('feed_count',0) >= 1},
@@ -65,6 +106,85 @@ BODIES = {
     'mushroom':[['            ',' .-o-OO-o-. ','(__________)','   |{E}  {E}|   ','   |____|   '],['            ',' .-O-oo-O-. ','(__________)','   |{E}  {E}|   ','   |____|   '],['   . o  .   ',' .-o-OO-o-. ','(__________)','   |{E}  {E}|   ','   |____|   ']],
     'chonk':[['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /|  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´  '],['            ','  /\\    /\\  ',' ( {E}    {E} ) ',' (   ..   ) ','  `------´~ ']],
 }
+
+EVOLVED_BODIES = {
+    'slime': [
+        ['            ', '   .----.   ', '  ( {E}  {E} )  ', '  ( ~~~~ )  ', '   `----´   '],
+        ['            ', '  .------.  ', ' (  {E}  {E}  ) ', ' ( ~~~~~~ ) ', '  `------´  '],
+        ['            ', '    .--.    ', '   ({E}  {E})   ', '   (~~~~)   ', '    `--´    '],
+    ],
+    'elemental': [
+        ['   ~    ~   ', '  /^\\  /^\\  ', ' <  {E}  {E}  > ', ' (  ****  ) ', '  `-vvvv-´  '],
+        ['  ~   ~   ~ ', '  /^\\  /^\\  ', ' <  {E}  {E}  > ', ' (  ****  ) ', '  `-vvvv-´  '],
+        ['   ~    ~   ', '  /^\\  /^\\  ', ' <  {E}  {E}  > ', ' (        ) ', '  `-vvvv-´  '],
+    ],
+    'swan': [
+        ['            ', '     ({E}>    ', '    /||\\    ', '   / || \\   ', '    ~~~~    '],
+        ['            ', '    ({E}>     ', '    /||\\    ', '   / || \\   ', '    ~~~~    '],
+        ['            ', '     ({E}>>   ', '    /||\\    ', '   / || \\   ', '    ~~~~    '],
+    ],
+    'tiger': [
+        ['   /\\_/\\    ', '  ( {E}   {E})  ', '  (  ≈ω≈ )  ', '  (")_(")   ', '   |||||    '],
+        ['   /\\_/\\    ', '  ( {E}   {E})  ', '  (  ≈ω≈ )  ', '  (")_(")~  ', '   |||||    '],
+        ['   /\\-/\\    ', '  ( {E}   {E})  ', '  (  ≈ω≈ )  ', '  (")_(")   ', '   |||||    '],
+    ],
+    'lion': [
+        ['  /^^^^^\\   ', ' ( {E}   {E} ) ', ' (  ≈ω≈  ) ', ' (")_(")    ', '  |||||||   '],
+        ['  /^^^^^\\   ', ' ( {E}   {E} ) ', ' (  ≈ω≈  ) ', ' (")_(")~   ', '  |||||||   '],
+        ['  /^^^^^\\   ', ' ( {E}   {E} ) ', ' (  ≈ω≈  ) ', ' (")_(")    ', '  |||||||   '],
+    ],
+    'wyvern': [
+        [' /^\\  /^\\  ', ' <  {E}  {E}  > ', ' (  ~~~~ ) ', '  \\vvvv/   ', '   ^^      '],
+        [' /^\\  /^\\  ', ' <  {E}  {E}  > ', ' (        ) ', '  \\vvvv/   ', '   ^^      '],
+        [' /^\\  /^\\  ', ' <  {E}  {E}  > ', ' (  ~~~~ ) ', '  \\vvvv/   ', '   ~~      '],
+    ],
+    'dragonlord': [
+        [' /^^\\  /^^\\', ' <  {E}  {E}  > ', ' (  ≈≈≈≈ ) ', '  \\vvvv/   ', '   @@@     '],
+        [' /^^\\  /^^\\', ' <  {E}  {E}  > ', ' (        ) ', '  \\vvvv/   ', '   @@@     '],
+        [' /^^\\  /^^\\', ' <  {E}  {E}  > ', ' (  ≈≈≈≈ ) ', '  \\vvvv/   ', '   ~~~     '],
+    ],
+    'phoenix': [
+        ['   *  *    ', '  /{E}\\  /{E}\\ ', ' <  ~~   > ', '  (~~~~)   ', '   `--´    '],
+        ['  * ** *   ', '  /{E}\\  /{E}\\ ', ' <      > ', '  (~~~~)   ', '   `--´    '],
+        ['   *  *    ', '  /{E}\\  /{E}\\ ', ' <  ~~   > ', '  (    )   ', '   `--´    '],
+    ],
+    'sage': [
+        ['   /\\  /\\  ', '  (({E})({E}))  ', '  (  ><  ) ', '   `----´  ', '   |oo|    '],
+        ['   /\\  /\\  ', '  (({E})({E}))  ', '  (  ><  ) ', '   .----.  ', '   |oo|    '],
+        ['   /\\  /\\  ', '  (({E})(-))  ', '  (  ><  ) ', '   `----´  ', '   |oo|    '],
+    ],
+    'hare': [
+        ['   (\\__/)  ', '  ( {E}  {E} ) ', ' =(  ..  )=', '  (")__(") ', '   /\\ /\\   '],
+        ['   (|__/)  ', '  ( {E}  {E} ) ', ' =(  ..  )=', '  (")__(") ', '   /\\ /\\   '],
+        ['   (\\__/)  ', '  ( {E}  {E} ) ', ' =( .  . )=', '  (")__(") ', '   /\\ /\\   '],
+    ],
+    'jackalope': [
+        ['   (\\__/)  ', '  ( {E}  {E} ) ', ' =(  ..  )=', '  (")__(") ', '   /\\ /\\   '],
+        ['   (|__/)  ', '  ( {E}  {E} ) ', ' =(  ..  )=', '  (")__(") ', '   /\\ /\\   '],
+        ['   (\\__/)  ', '  ( {E}  {E} ) ', ' =( .  . )=', '  (")__(") ', '   /\\ /\\   '],
+    ],
+    'shell': [
+        ['  .---.    ', ' / {E} {E} \\  ', ' \\_____)/  ', '  `---´    ', '   ~~~~    '],
+        ['  .---.    ', ' / {E} {E} \\  ', ' \\_____)\\  ', '  `---´    ', '   ~~~~    '],
+        ['  .---.    ', ' / {E} {E} \\  ', ' \\_____)\\  ', '  `---´    ', '   ~~~~    '],
+    ],
+    'turbo': [
+        ['  .---.    ', ' / {E} {E} \\  ', ' \\=====/   ', '  `---´    ', '  >>>>>    '],
+        ['  .---.    ', ' / {E} {E} \\  ', ' \\=====/   ', '  `---´    ', '  >>>>>    '],
+        ['  .---.    ', ' / {E} {E} \\  ', ' \\=====/   ', '  `---´    ', '  >>>>>    '],
+    ],
+    'wraith': [
+        ['   .----.  ', '  / {E}  {E} \\ ', '  | ~~~~ | ', '  ~`~``~`~ ', '   .  . .  '],
+        ['   .----.  ', '  / {E}  {E} \\ ', '  | ~~~~ | ', '  `~`~~`~` ', '    .  .   '],
+        ['   .----.  ', '  / {E}  {E} \\ ', '  | ~~~~ | ', '  ~~`~~`~~ ', '   .  . .  '],
+    ],
+    'specter': [
+        ['   .----.  ', '  / {E}  {E} \\ ', '  | **** | ', '  ~`~``~`~ ', '   *  * *  '],
+        ['   .----.  ', '  / {E}  {E} \\ ', '  | **** | ', '  `~`~~`~` ', '    *  *   '],
+        ['   .----.  ', '  / {E}  {E} \\ ', '  | **** | ', '  ~~`~~`~~ ', '   *  * *  '],
+    ],
+}
+
 HAT_LINES = {'none':'','crown':'   \\^^^/    ','tophat':'   [___]    ','propeller':'    -+-     ','halo':'   (   )    ','wizard':'    /^\\     ','beanie':'   (___)    ','tinyduck':'    ,>      '}
 IDLE_SEQUENCE = [0,0,0,0,0,0,1,0,0,0,0,0,2,0,0,0,-1,0,0,0,0,1,0,0,0,0,0,2,0,0]
 MOOD_SEQUENCES = {
@@ -137,7 +257,8 @@ def generate_name(uid, seed=None):
 # ─── Rendering (data only) ───────────────────────────────────────────────────
 
 def render_sprite(bones, frame=0):
-    frames = BODIES[bones['species']]
+    all_bodies = {**BODIES, **EVOLVED_BODIES}
+    frames = all_bodies.get(bones['species'], BODIES.get(bones['species'], BODIES['blob']))
     body = [l.replace('{E}', bones['eye']) for l in frames[frame % len(frames)]]
     if bones['hat'] != 'none' and not body[0].strip(): body[0] = HAT_LINES[bones['hat']]
     if not body[0].strip() and all(not f[0].strip() for f in frames): body.pop(0)
@@ -150,7 +271,14 @@ def render_face(bones):
         'penguin':f'({e}>)','turtle':f'[{e}_{e}]','snail':f'{e}(@)',
         'ghost':f'/{e}{e}\\','axolotl':f'}}{e}.{e}{{','capybara':f'({e}oo{e})',
         'cactus':f'|{e}  {e}|','robot':f'[{e}{e}]','rabbit':f'({e}..{e})',
-        'mushroom':f'|{e}  {e}|','chonk':f'({e}.{e})'}
+        'mushroom':f'|{e}  {e}|','chonk':f'({e}.{e})',
+        'slime':f'({e}{e})','elemental':f'<{e}*{e}>',
+        'swan':f'({e}>','tiger':f'={e}≈{e}=','lion':f'({e}≈{e})',
+        'wyvern':f'<{e}~{e}>','dragonlord':f'<{e}@{e}>',
+        'phoenix':f'({e}*{e})','sage':f'({e})({e})',
+        'hare':f'({e}..{e})','jackalope':f'({e}..{e})',
+        'shell':f'({e}{e})','turbo':f'({e}{e})',
+        'wraith':f'/{e}{e}\\','specter':f'/{e}{e}\\'}
     return faces.get(bones['species'], f'({e}{e})')
 
 def render_frame(bones, frame_idx, mood='normal'):
@@ -178,7 +306,8 @@ def feed_pet(state):
     state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+5)
     state['last_fed'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['feed_count'] = state.get('feed_count',0) + 1
-    state['xp'] += 10; check_level_up(state)
+    state['xp'] += 10; evo = check_level_up(state)
+    if evo: return evo, None
     return '+25 Hunger, +5 Happy', 'feed'
 
 def play_pet(state):
@@ -188,7 +317,8 @@ def play_pet(state):
     state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-10)
     state['last_played'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['play_count'] = state.get('play_count',0) + 1
-    state['xp'] += 15; check_level_up(state)
+    state['xp'] += 15; evo = check_level_up(state)
+    if evo: return evo, None
     return '+30 Happy, -15 Energy', 'play'
 
 def sleep_pet(state):
@@ -197,7 +327,8 @@ def sleep_pet(state):
     state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-5)
     state['last_slept'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['sleep_count'] = state.get('sleep_count',0) + 1
-    state['xp'] += 5; check_level_up(state)
+    state['xp'] += 5; evo = check_level_up(state)
+    if evo: return evo, None
     return '+40 Energy', 'sleep'
 
 def check_level_up(state):
@@ -211,6 +342,15 @@ def check_level_up(state):
         idx = EYES.index(state['eye']) if state['eye'] in EYES else 0
         state['eye'] = EYES[(idx + 1) % len(EYES)]
         state['eye_upgraded'] = True
+    # Check evolution chain
+    chain = EVOLUTION_CHAIN.get(state['species'])
+    if chain:
+        for evo_species, evo_level in chain:
+            if state['level'] >= evo_level and state['species'] != evo_species:
+                state['species'] = evo_species
+                state['evolved'] = True
+                return f'Evolved into {evo_species}!'
+    return None
 
 def check_achievements(state, pets_data):
     unlocked = []
@@ -259,8 +399,9 @@ def load_pets(uid, data_dir=None):
     p = get_state_path(uid, data_dir)
     if not p.exists(): return None
     data = json.load(open(p, encoding='utf-8'))
-    if isinstance(data, list): return {'pets': data, 'current': 0}
-    if 'pets' not in data: return {'pets': [data], 'current': 0}
+    if isinstance(data, list): data = {'pets': data, 'current': 0}
+    if 'pets' not in data: data = {'pets': [data], 'current': 0}
+    if 'inventory' not in data: data['inventory'] = {}
     return data
 
 def save_pets(uid, data, data_dir=None):
@@ -328,6 +469,17 @@ class PetGame:
         self.state = update_state_over_time(self.state)
         save_state(uid, self.state, pets_data, pet_idx, data_dir)
 
+        # Daily login bonus
+        today = datetime.now().date().isoformat()
+        if self.pets_data.get('last_login') != today:
+            self.pets_data['last_login'] = today
+            if sum(self.pets_data.get('inventory', {}).values()) < MAX_INVENTORY:
+                item_id = random.choice(list(ITEMS.keys()))
+                self.add_item(item_id)
+                self.message = f'Daily bonus: {ITEMS[item_id]["name"]}!'
+                self.message_time = time.time()
+            self.save()
+
     def save(self):
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
 
@@ -363,6 +515,39 @@ class PetGame:
 
         self.state['mood'] = 'hungry' if stats['HUNGER']<20 else 'sleepy' if stats['ENERGY']<20 else 'excited' if stats['HAPPY']>80 else 'happy' if stats['HAPPY']>50 else 'normal'
         self.save()
+
+        # Weather effects (every ~10 minutes, i.e. every 20 ticks)
+        if not hasattr(self, '_last_weather_tick'):
+            self._last_weather_tick = 0
+        self._last_weather_tick += 1
+
+        if self._last_weather_tick >= 20:
+            self._last_weather_tick = 0
+            weather = get_weather()
+            if weather:
+                self.state['weather'] = weather
+                raw = weather.get('raw_name', '')
+                temp = weather.get('temp', 20)
+                if raw in ('Rain', 'Drizzle', 'Thunderstorm'):
+                    stats['HAPPY'] = max(0, stats['HAPPY'] - 5)
+                elif raw in ('Clear',):
+                    stats['HAPPY'] = min(100, stats['HAPPY'] + 2)
+                elif raw == 'Snow':
+                    stats['ENERGY'] = min(100, stats['ENERGY'] + 3)
+                if temp > 30:
+                    stats['HUNGER'] = max(0, stats['HUNGER'] - 3)
+                elif temp < 5:
+                    stats['ENERGY'] = max(0, stats['ENERGY'] - 3)
+                # Weather reminder
+                if raw in ('Rain', 'Drizzle', 'Thunderstorm'):
+                    msg = f"☔ It's {weather['description']} outside — bring an umbrella!"
+                    msg_time = now
+                elif temp > 35:
+                    msg = f"🔥 It's {round(temp)}°C outside — stay hydrated!"
+                    msg_time = now
+                elif temp < 0:
+                    msg = f"🥶 It's {round(temp)}°C outside — dress warm!"
+                    msg_time = now
 
         h, e, p = stats['HUNGER'], stats['ENERGY'], stats['HAPPY']
         msg, msg_time = None, 0
@@ -401,11 +586,15 @@ class PetGame:
             else:
                 self.warning_active = False
 
-        if now - self.last_event_time > 60 and random.random() < 0.01:
+        if now - self.last_event_time > 30 and random.random() < 0.05:
             evt = random.choice(RANDOM_EVENTS)
             msg = evt[1]; msg_time = now; self.last_event_time = now
             for k, v in evt[2].items():
-                if k == 'xp': self.state['xp'] += v; check_level_up(self.state)
+                if k == 'xp': self.state['xp'] += v; evo = check_level_up(self.state)
+                elif k == 'item':
+                    item_id = random.choice(list(ITEMS.keys()))
+                    if self.add_item(item_id):
+                        msg = f'Found a {ITEMS[item_id]["name"]}!'; msg_time = now
                 elif k in self.state['stats']: self.state['stats'][k] = min(100, self.state['stats'][k] + v)
 
         return msg, msg_time
@@ -489,7 +678,27 @@ class PetGame:
         new_ach = check_achievements(self.state, self.pets_data)
         msg = f'Switched to {self.state["name"]}'
         if new_ach: msg = f'Achievement: {new_ach[0]}!'
+        interaction_msg = self.trigger_interaction()
+        if interaction_msg: msg = f'{msg}\n  {interaction_msg}'
         return msg
+
+    def trigger_interaction(self):
+        """Random interaction between pets when switching. Returns message or None."""
+        if len(self.pets_data['pets']) < 2:
+            return None
+        if random.random() > 0.3:
+            return None
+        interaction = random.choice(PET_INTERACTIONS)
+        iid, msg, effects, target = interaction
+        for stat, val in effects.items():
+            if target == 'both':
+                for pet in self.pets_data['pets']:
+                    pet['stats'][stat] = min(100, pet['stats'][stat] + val)
+            else:
+                self.state['stats'][stat] = min(100, self.state['stats'][stat] + val)
+        self.save()
+        other = self.pets_data['pets'][(self.pet_idx - 1) % len(self.pets_data['pets'])]
+        return f'{self.state["name"]} and {other["name"]}{msg}'
 
     def adopt_pet(self):
         """Adopt a new pet. Returns message or None if entering release mode."""
@@ -538,6 +747,55 @@ class PetGame:
         result = []
         for i, s in enumerate(self.pets_data['pets']):
             result.append((i+1, s['name'], s['species'], s['rarity']))
+        return result
+
+    def add_item(self, item_id):
+        """Add item to inventory. Returns True if added, False if full."""
+        if sum(self.pets_data.get('inventory', {}).values()) >= MAX_INVENTORY:
+            return False
+        inv = self.pets_data.setdefault('inventory', {})
+        inv[item_id] = inv.get(item_id, 0) + 1
+        self.save()
+        return True
+
+    def use_item(self, item_id):
+        """Use an item from inventory. Returns message."""
+        inv = self.pets_data.get('inventory', {})
+        if inv.get(item_id, 0) <= 0:
+            return 'No such item!'
+        item = ITEMS.get(item_id)
+        if not item:
+            return 'Unknown item!'
+        inv[item_id] -= 1
+        if inv[item_id] <= 0:
+            del inv[item_id]
+        effect = item['effect']
+        if effect.get('revive'):
+            if not self.state.get('is_dead'):
+                return 'Pet is not dead!'
+            self.state['is_dead'] = False
+            self.state['critical_since'] = None
+            self.state['stats']['HUNGER'] = 25
+            self.state['stats']['ENERGY'] = 25
+            self.state['stats']['HAPPY'] = 25
+        elif 'hat' in effect:
+            self.state['hat'] = effect['hat']
+            self.bones['hat'] = effect['hat']
+        else:
+            for stat, val in effect.items():
+                if stat in self.state['stats']:
+                    self.state['stats'][stat] = min(100, self.state['stats'][stat] + val)
+        self.save()
+        return f'Used {item["name"]}!'
+
+    def get_inventory_list(self):
+        """Return list of (item_id, name, icon, count, desc) for display."""
+        inv = self.pets_data.get('inventory', {})
+        result = []
+        for iid, count in inv.items():
+            item = ITEMS.get(iid)
+            if item and count > 0:
+                result.append((iid, item['name'], item['icon'], count, item['desc']))
         return result
 
     def handle_key(self, key):
@@ -610,6 +868,15 @@ class PetGame:
             else: self.mode = 'achievements'
             return 'mode_change', self.mode
 
+        if key == 'u':
+            if self.mode == 'items':
+                self.mode = 'expanded'
+            elif self.mode in ('expanded', 'stats', 'achievements'):
+                self.mode = 'items'
+            else:
+                self.mode = 'items'
+            return 'mode_change', self.mode
+
         if key == 'e' and self.mode != 'compact':
             return 'export', None
 
@@ -636,6 +903,20 @@ class PetGame:
                 idx = int(key) - 1
                 if idx < len(self.pets_data['pets']):
                     msg = self.release_pet(idx)
+                    self.message = msg; self.message_time = now
+                    return 'action', msg
+            if key == 'c':
+                self.mode = 'expanded'
+                return 'mode_change', self.mode
+            return 'none', None
+
+        if self.mode == 'items':
+            if key in ('1','2','3','4','5','6','7'):
+                idx = int(key) - 1
+                inv_list = self.get_inventory_list()
+                if idx < len(inv_list):
+                    iid = inv_list[idx][0]
+                    msg = self.use_item(iid)
                     self.message = msg; self.message_time = now
                     return 'action', msg
             if key == 'c':

@@ -66,6 +66,13 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
     lines.append((f'Lv.{state["level"]} XP:{state["xp"]}/{state["level"]*100}', COLOR_DIM))
     if state.get('evolved'):
         lines.append(('★ Evolved', color))
+    try:
+        from weather import format_weather_line
+        weather_line = format_weather_line(state.get('weather'))
+        if weather_line:
+            lines.append((weather_line, COLOR_DIM))
+    except ImportError:
+        pass
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
     for s in STAT_NAMES:
@@ -73,7 +80,7 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
         filled, empty, val = stat_bar_text(v, 15)
         lines.append((f'{s[:4]}', COLOR_DIM, filled, COLOR_BAR_FILL, empty, COLOR_BAR_EMPTY, f' {val}', COLOR_WHITE))
     if show_help:
-        lines.append(('[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [e]export [Enter]compact [q]quit', COLOR_DIM))
+        lines.append(('[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit', COLOR_DIM))
     return lines
 
 def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
@@ -122,6 +129,20 @@ def render_achievements_lines(state, bones):
         else:
             lines.append(('  ??? Locked', COLOR_DIM))
     lines.append(('', COLOR_DIM))
+    return lines
+
+def render_items_lines(game):
+    from pet_core import ITEMS, MAX_INVENTORY
+    inv_list = game.get_inventory_list()
+    total = sum(game.pets_data.get('inventory', {}).values())
+    lines = [(f'Inventory ({total}/{MAX_INVENTORY})', COLOR_WHITE)]
+    lines.append(('Select item [1-7] or [c]cancel', COLOR_DIM))
+    lines.append(('', COLOR_DIM))
+    if not inv_list:
+        lines.append(('  Empty — items drop from random events', COLOR_DIM))
+    else:
+        for i, (iid, name, icon, count, desc) in enumerate(inv_list):
+            lines.append((f'  {i+1}  {icon} {name} x{count}  {desc}', COLOR_WHITE))
     return lines
 
 def render_release_lines(game):
@@ -252,6 +273,7 @@ LAYOUT_SIZES = {
     'expanded':     (38, 22),
     'stats':        (44, 24),
     'achievements': (44, 20),
+    'items':        (44, 16),
     'release':      (44, 14),
 }
 
@@ -775,6 +797,8 @@ class PetWindow:
             lines = render_stats_lines(g.state, g.bones, g.frame_idx, g.pet_idx, len(g.pets_data['pets']))
         elif g.mode == 'achievements':
             lines = render_achievements_lines(g.state, g.bones)
+        elif g.mode == 'items':
+            lines = render_items_lines(g)
         elif g.mode == 'release':
             lines = render_release_lines(g)
         else:
@@ -863,8 +887,10 @@ def main():
                   '            t stats, a achieve, e export, h help, c compact, q quit')
             sys.exit(0)
         if arg == '--all':
-            print('\n  All 18 species:\n')
-            for sp in SPECIES:
+            from pet_core import EVOLVED_BODIES
+            all_species = SPECIES + list(EVOLVED_BODIES.keys())
+            print(f'\n  All {len(all_species)} species:\n')
+            for sp in all_species:
                 fb = {'species':sp,'eye':'·','hat':'none','shiny':False,'stats':{},'rarity':'common'}
                 print(f'  {sp}  {render_face(fb)}')
                 for row in render_sprite(fb, 0): print(f'  {row}')

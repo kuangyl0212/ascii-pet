@@ -7,12 +7,14 @@ ASCII desktop pet: shared core logic + platform-specific rendering, no external 
 | File | Platform | Notes |
 |------|----------|-------|
 | `pet_core.py` | — | Shared: constants, PRNG, pet generation, actions, persistence, `PetGame` class |
+| `weather.py` | — | OpenWeatherMap API client, caching, geolocation |
 | `ascii-pet` | Linux | ANSI terminal rendering, xdotool window control, imports `pet_core` |
 | `ascii-pet-win.py` | Windows | Win32 GDI rendering via ctypes, system tray icon, imports `pet_core` |
 | `ascii-pet-launcher` | Linux (i3) | Bash — kills old instance, launches alacritty with `config/pet.toml` |
 | `build.py` | — | PyInstaller → `dist/ascii-pet-win.exe` |
 | `reinstall.sh` | Linux | Copies files to `~/.local/bin/`, fixes launcher path, runs |
 | `config/pet.toml` | — | Alacritty config: transparent bg, monospace font, green-on-black |
+| `config/weather.json` | — | OpenWeatherMap API key and city config |
 
 ## Architecture
 
@@ -26,19 +28,27 @@ pet_core.py          ← platform-independent game logic
 ├── Persistence: load_state, save_state (auto-detects Linux/Windows data dir)
 ├── Export: export_text (plain text for clipboard)
 ├── Pet limit: MAX_PETS=3, release_pet(index), get_release_list()
+├── Items: ITEMS dict, add_item, use_item, get_inventory_list
+├── Evolution: EVOLUTION_CHAIN, EVOLVED_BODIES
+├── Interactions: PET_INTERACTIONS, trigger_interaction
 └── PetGame class: state machine wrapping all logic, handles key input
+
+weather.py           ← OpenWeatherMap API client
+├── get_weather(): fetches weather data with 30min cache
+├── format_weather_line(): one-line weather summary
+└── _get_ip_city(): IP-based geolocation fallback
 
 ascii-pet            ← Linux wrapper
 ├── ANSI color constants (RARITY_COLORS, MOOD_COLORS)
 ├── Terminal I/O (get_key, clear_screen, etc.)
 ├── xdotool window control (set_window_geometry, get_screen_size)
-├── ANSI rendering (build_compact, build_expanded, build_stats, build_achievements, build_release)
+├── ANSI rendering (build_compact, build_expanded, build_stats, build_achievements, build_items, build_release)
 └── main(): event loop calling PetGame
 
 ascii-pet-win.py     ← Windows wrapper
 ├── Win32 RGB colors (RARITY_RGB, MOOD_RGB, COLOR_*)
 ├── Win32 API structs and function signatures
-├── GDI rendering (render_compact_lines, render_expanded_lines, render_release_lines, etc.)
+├── GDI rendering (render_compact_lines, render_expanded_lines, render_release_lines, render_items_lines, etc.)
 ├── PetWindow class (WndProc, on_paint, on_timer, on_char)
 ├── System tray icon with context menu (right-click)
 └── main(): creates PetGame + PetWindow, runs message loop
@@ -74,6 +84,11 @@ python build.py              # Build Windows exe (auto-installs PyInstaller if m
 - **Stat decay**: HUNGER decays after 4h offline, HAPPY after 2h, ENERGY after 6h.
 - **Death**: Pet dies if any stat hits zero for 15min, or all stats zero for 5min. Revivable by feeding/playing/sleeping.
 - **Leveling**: XP from actions. Level up at `level * 100` XP. Eye upgrades at level 5, evolves at level 10.
+- **Random events**: 5% chance per tick (500ms), 30s cooldown. 11 event types with stat effects.
+- **Pet interactions**: 30% chance when switching pets. Types: play_together, share_food, chat, race.
+- **Items/backpack**: 7 item types (apple, toy, bed, book, potion, crown, tophat). Max 20 items. Drops from events + daily bonus. Press 'u' to open inventory.
+- **Evolution chains**: 8 species evolve at specific levels (e.g., blob→slime lv5→elemental lv15). Changes species, keeps stats.
+- **Weather system**: OpenWeatherMap API (config/weather.json). Affects pet mood. Weather reminders for extreme conditions.
 
 ## Linux runtime deps
 
