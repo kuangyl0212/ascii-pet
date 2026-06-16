@@ -66,13 +66,6 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
     lines.append((f'Lv.{state["level"]} XP:{state["xp"]}/{state["level"]*100}', COLOR_DIM))
     if state.get('evolved'):
         lines.append(('★ Evolved', color))
-    try:
-        from weather import format_weather_line
-        weather_line = format_weather_line(state.get('weather'))
-        if weather_line:
-            lines.append((weather_line, COLOR_DIM))
-    except ImportError:
-        pass
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
     for s in STAT_NAMES:

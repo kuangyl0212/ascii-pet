@@ -5,11 +5,6 @@ import os, json, time, random, math
 from pathlib import Path
 from datetime import datetime
 
-try:
-    from weather import get_weather
-except ImportError:
-    get_weather = lambda: None
-
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin',
@@ -515,39 +510,6 @@ class PetGame:
 
         self.state['mood'] = 'hungry' if stats['HUNGER']<20 else 'sleepy' if stats['ENERGY']<20 else 'excited' if stats['HAPPY']>80 else 'happy' if stats['HAPPY']>50 else 'normal'
         self.save()
-
-        # Weather effects (every ~10 minutes, i.e. every 20 ticks)
-        if not hasattr(self, '_last_weather_tick'):
-            self._last_weather_tick = 0
-        self._last_weather_tick += 1
-
-        if self._last_weather_tick >= 20:
-            self._last_weather_tick = 0
-            weather = get_weather()
-            if weather:
-                self.state['weather'] = weather
-                raw = weather.get('raw_name', '')
-                temp = weather.get('temp', 20)
-                if raw in ('Rain', 'Drizzle', 'Thunderstorm'):
-                    stats['HAPPY'] = max(0, stats['HAPPY'] - 5)
-                elif raw in ('Clear',):
-                    stats['HAPPY'] = min(100, stats['HAPPY'] + 2)
-                elif raw == 'Snow':
-                    stats['ENERGY'] = min(100, stats['ENERGY'] + 3)
-                if temp > 30:
-                    stats['HUNGER'] = max(0, stats['HUNGER'] - 3)
-                elif temp < 5:
-                    stats['ENERGY'] = max(0, stats['ENERGY'] - 3)
-                # Weather reminder
-                if raw in ('Rain', 'Drizzle', 'Thunderstorm'):
-                    msg = f"☔ It's {weather['description']} outside — bring an umbrella!"
-                    msg_time = now
-                elif temp > 35:
-                    msg = f"🔥 It's {round(temp)}°C outside — stay hydrated!"
-                    msg_time = now
-                elif temp < 0:
-                    msg = f"🥶 It's {round(temp)}°C outside — dress warm!"
-                    msg_time = now
 
         h, e, p = stats['HUNGER'], stats['ENERGY'], stats['HAPPY']
         msg, msg_time = None, 0
