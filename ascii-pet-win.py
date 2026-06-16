@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ASCII Desktop Pet — Windows 浮动桌面宠物 (Win32 API + ctypes)"""
 
-import os, sys, time, ctypes
+import os, sys, time, ctypes, subprocess, threading
 from pathlib import Path
 from ctypes import windll, c_int, c_uint, c_long, c_wchar_p, byref, sizeof, create_unicode_buffer
 from ctypes import wintypes, POINTER, c_void_p, c_char_p, c_size_t, memmove, c_byte
@@ -190,6 +190,93 @@ def export_to_clipboard(text):
     return True
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 开机自启动 (注册表方式: HKCU\...\Run, 无需管理员权限)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+AUTOSTART_REG_KEY = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+AUTOSTART_REG_VALUE = 'AsciiPet'
+
+# 调试日志
+_AUTOSTART_LOG_PATH = os.path.join(
+    os.environ.get('APPDATA', ''), 'ascii-pet', 'autostart_debug.log'
+)
+
+def _autostart_log(msg):
+    try:
+        d = os.path.dirname(_AUTOSTART_LOG_PATH)
+        if d: os.makedirs(d, exist_ok=True)
+        ts = time.strftime('%Y-%m-%d %H:%M:%S')
+        with open(_AUTOSTART_LOG_PATH, 'a', encoding='utf-8') as f:
+            f.write(f'[{ts}] {msg}\n')
+    except Exception:
+        pass
+
+def _get_autostart_cmd():
+    frozen = getattr(sys, 'frozen', False)
+    exe = sys.executable
+    _autostart_log(f'_get_autostart_cmd: frozen={frozen}, sys.executable={exe}')
+    if frozen:
+        return f'"{exe}"'
+    return f'"{exe}" "{os.path.abspath(sys.argv[0])}"'
+
+_autostart_cache = None
+_autostart_lock = threading.Lock()
+
+def _do_autostart_check():
+    _autostart_log('=== _do_autostart_check 开始 ===')
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_REG_KEY) as key:
+            val, _ = winreg.QueryValueEx(key, AUTOSTART_REG_VALUE)
+            _autostart_log(f'_do_autostart_check -> 找到注册表项: value={val}, 结果=True')
+            return True
+    except (OSError, ImportError) as e:
+        _autostart_log(f'_do_autostart_check -> 未找到或异常: {e}, 结果=False')
+        return False
+
+def _check_autostart_bg():
+    global _autostart_cache
+    val = _do_autostart_check()
+    with _autostart_lock:
+        _autostart_cache = val
+    _autostart_log(f'_check_autostart_bg 完成, cache={val}')
+
+def is_autostart_enabled():
+    with _autostart_lock:
+        if _autostart_cache is not None:
+            _autostart_log(f'is_autostart_enabled -> 使用缓存: {_autostart_cache}')
+            return _autostart_cache
+    _autostart_log('is_autostart_enabled -> 缓存为空，返回 False')
+    return False
+
+def refresh_autostart_cache():
+    threading.Thread(target=_check_autostart_bg, daemon=True).start()
+
+def refresh_autostart_cache_sync():
+    global _autostart_cache
+    val = _do_autostart_check()
+    with _autostart_lock:
+        _autostart_cache = val
+    _autostart_log(f'refresh_autostart_cache_sync 完成, cache={val}')
+
+def set_autostart(enable=True):
+    _autostart_log(f'set_autostart(enable={enable}) 开始')
+    try:
+        import winreg
+        cmd = _get_autostart_cmd()
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_REG_KEY, 0,
+                            winreg.KEY_SET_VALUE) as key:
+            if enable:
+                winreg.SetValueEx(key, AUTOSTART_REG_VALUE, 0, winreg.REG_SZ, cmd)
+                _autostart_log(f'set_autostart -> 已写入注册表: {cmd}')
+            else:
+                winreg.DeleteValue(key, AUTOSTART_REG_VALUE)
+                _autostart_log('set_autostart -> 已删除注册表项')
+    except OSError as e:
+        _autostart_log(f'set_autostart -> 操作失败: {e}')
+        raise RuntimeError(f'自启动设置失败: {e}')
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Win32 常量
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -237,6 +324,7 @@ NIM_DELETE     = 0x00000002
 
 ID_TRAY_SHOW   = 2001
 ID_TRAY_QUIT   = 2002
+ID_TRAY_AUTOSTART = 2003
 
 ID_FEED        = 1001
 ID_PLAY        = 1002
@@ -487,7 +575,17 @@ class PetWindow:
         user32.MoveWindow(self.hwnd, x, y, w, h, True)
 
     def _create_tray_icon(self):
-        size = 16
+        import base64, io
+        from PIL import Image
+
+        icon_b64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA50lEQVR4nGPMu7HhPwMFgIkSzUQbMEkjAIxJNmASVGPejQ041TBiC4OJzIFYFef/XU+8CxhVkcxV+YfTBUzoAiAn//jFwvD5aR/DF65esEGMjIw4XcaELgDy7x+BTjgfZND/24zEuwAEeKWLGGCA51sxAz7Agk0QbCMWjdgCkQWZM0FwN4TxCbttsLSAHK1MyAo+f3qN6Rq+LDCGuwwNMMEYjJ9/MJQ9cAUb8psznuHtR05wbMDlVf8zZDyYxZC+ezaKARgJCWTQjw+fsXqBQ4CX4T8vB4oYRiCCFLCjKYLLYRGjODcCAHAfUhG9QpSXAAAAAElFTkSuQmCC'
+
+        png_data = base64.b64decode(icon_b64)
+        img = Image.open(io.BytesIO(png_data)).convert('RGBA')
+        pixels = img.load()
+        w, h = img.size
+
+        size = max(w, h)
         hdc_screen = user32.GetDC(0)
         hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
         hbmp = gdi32.CreateCompatibleBitmap(hdc_screen, size, size)
@@ -497,37 +595,15 @@ class PetWindow:
         user32.FillRect(hdc_mem, byref(RECT(0, 0, size, size)), bg)
         gdi32.DeleteObject(bg)
 
-        green = rgb_to_colorref(0, 255, 65)
-        dark_green = rgb_to_colorref(0, 180, 45)
-        white = rgb_to_colorref(255, 255, 255)
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = pixels[x, y]
+                if a > 128:
+                    color = rgb_to_colorref(r, g, b)
+                    brush = gdi32.CreateSolidBrush(color)
+                    user32.FillRect(hdc_mem, byref(RECT(x, y, x+1, y+1)), brush)
+                    gdi32.DeleteObject(brush)
 
-        def pixel(x, y, color):
-            brush = gdi32.CreateSolidBrush(color)
-            user32.FillRect(hdc_mem, byref(RECT(x, y, x+1, y+1)), brush)
-            gdi32.DeleteObject(brush)
-
-        def rect(x1, y1, x2, y2, color):
-            brush = gdi32.CreateSolidBrush(color)
-            user32.FillRect(hdc_mem, byref(RECT(x1, y1, x2, y2)), brush)
-            gdi32.DeleteObject(brush)
-
-        # body (blob shape)
-        rect(4, 3, 12, 5, green)
-        rect(3, 5, 13, 11, green)
-        rect(4, 11, 12, 13, green)
-
-        # belly highlight
-        rect(5, 6, 11, 10, dark_green)
-
-        # eyes
-        pixel(5, 6, white)
-        pixel(10, 6, white)
-
-        # mouth
-        pixel(7, 9, white)
-        pixel(8, 9, white)
-
-        # Create mask bitmap
         hdc_mask = gdi32.CreateCompatibleDC(hdc_screen)
         hbmp_mask = gdi32.CreateCompatibleBitmap(hdc_screen, size, size)
         old_mask = gdi32.SelectObject(hdc_mask, hbmp_mask)
@@ -579,12 +655,24 @@ class PetWindow:
         hmenu = user32.CreatePopupMenu()
         user32.AppendMenuW(hmenu, MF_STRING, ID_TRAY_SHOW, '显示窗口')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        auto_flag = MF_CHECKED if is_autostart_enabled() else 0
+        user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, '开机自启动')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_TRAY_QUIT, '退出')
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
         user32.DestroyMenu(hmenu)
         if cmd == ID_TRAY_SHOW:
             user32.ShowWindow(self.hwnd, SC_RESTORE)
             user32.SetForegroundWindow(self.hwnd)
+        elif cmd == ID_TRAY_AUTOSTART:
+            try:
+                set_autostart(not is_autostart_enabled())
+                refresh_autostart_cache_sync()
+                self.game.message = '已更新开机自启动设置'
+            except Exception as e:
+                self.game.message = f'设置失败: {e}'
+            self.game.message_time = time.time()
+            user32.InvalidateRect(self.hwnd, None, False)
         elif cmd == ID_TRAY_QUIT:
             user32.DestroyWindow(self.hwnd)
 
@@ -636,6 +724,7 @@ class PetWindow:
         user32.SetForegroundWindow(self.hwnd)
         user32.SetFocus(self.hwnd)
         self.add_tray_icon()
+        refresh_autostart_cache_sync()
 
     def wnd_proc(self, hwnd, msg, wparam, lparam):
         if msg == WM_PAINT:
@@ -728,6 +817,9 @@ class PetWindow:
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'stats' else 0), ID_STATS, '属性面板 (T)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'achievements' else 0), ID_ACHIEVE, '成就面板 (A)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        auto_flag = MF_CHECKED if is_autostart_enabled() else 0
+        user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, '开机自启动')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_QUIT, '退出 (Q)')
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
         user32.DestroyMenu(hmenu)
@@ -772,6 +864,14 @@ class PetWindow:
             self.game.mode = 'stats'; self.resize_window(self.game.mode)
         elif cmd == ID_ACHIEVE:
             self.game.mode = 'achievements'; self.resize_window(self.game.mode)
+        elif cmd == ID_TRAY_AUTOSTART:
+            try:
+                set_autostart(not is_autostart_enabled())
+                refresh_autostart_cache_sync()
+                self.game.message = '已更新开机自启动设置'
+            except Exception as e:
+                self.game.message = f'设置失败: {e}'
+            self.game.message_time = now
         elif cmd == ID_QUIT:
             user32.DestroyWindow(self.hwnd); return
         user32.InvalidateRect(self.hwnd, None, False)

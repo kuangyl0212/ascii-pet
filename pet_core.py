@@ -614,30 +614,27 @@ class PetGame:
 
         now = datetime.now()
         critical = self.state.get('critical_since') is not None
-        if not critical:
-            cooldowns = {
-                'feed':  ('last_feed',  3600,  'Feed again in {m}min'),
-                'play':  ('last_play',  3600,  'Play again in {m}min'),
-                'sleep': ('last_sleep', 10800, 'Sleep again in {m}min'),
-            }
-            if action in cooldowns:
-                key, secs, msg_tpl = cooldowns[action]
-                last = self.state.get(key)
-                if last:
-                    elapsed = (now - datetime.fromisoformat(last)).total_seconds()
-                    if elapsed < secs:
-                        remaining = int((secs - elapsed) / 60) + 1
-                        return msg_tpl.format(m=remaining), None
+        if not critical and action in ('feed', 'play', 'sleep'):
+            stat_map = {'feed': 'HUNGER', 'play': 'HAPPY', 'sleep': 'ENERGY'}
+            stat_val = self.state['stats'][stat_map[action]]
+            limit = 3 if stat_val <= 10 else 1
+            minute_key = now.strftime('%Y-%m-%d %H:%M')
+            state_key = f'{action}_min'
+            state_minute = self.state.get(f'{state_key}_time')
+            if state_minute != minute_key:
+                self.state[f'{state_key}_time'] = minute_key
+                self.state[f'{state_key}_count'] = 0
+            count = self.state.get(f'{state_key}_count', 0)
+            if count >= limit:
+                return f'Wait a moment before {action}ing again.', None
+            self.state[f'{state_key}_count'] = count + 1
 
         if action == 'feed':
             msg, anim = feed_pet(self.state)
-            self.state['last_feed'] = now.isoformat()
         elif action == 'play':
             msg, anim = play_pet(self.state)
-            self.state['last_play'] = now.isoformat()
         elif action == 'sleep':
             msg, anim = sleep_pet(self.state)
-            self.state['last_sleep'] = now.isoformat()
         else:
             return None, None
 

@@ -23,6 +23,7 @@ def main():
         print('PyInstaller 未安装，正在安装...')
         subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
 
+    icon = Path(__file__).parent / 'pet_icon.ico'
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--onefile',
@@ -31,8 +32,10 @@ def main():
         '--distpath', 'dist',
         '--workpath', 'build',
         '--specpath', 'build',
-        str(script)
     ]
+    if icon.exists():
+        cmd.extend(['--icon', str(icon)])
+    cmd.append(str(script))
 
     print(f'执行: {" ".join(cmd)}')
     subprocess.run(cmd, check=True)
