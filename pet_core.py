@@ -35,17 +35,20 @@ MAX_PETS = 3
 MAX_DAILY_ADOPTIONS = 3
 
 RANDOM_EVENTS = [
-    ('sneeze',     'Achoo!',              {}),
-    ('find_item',  'Found something!',     {'item': True}),
-    ('mood_boost', 'Feeling great!',      {'HAPPY': 10}),
-    ('sparkle',    '✨ Sparkle!',          {}),
-    ('yawn',       '*yaaawn*',            {}),
-    ('find_coin',  'Found a coin!',       {'xp': 5}),
-    ('dance',      '♪ Dancing! ♪',        {'HAPPY': 5}),
-    ('nap',        '*zzz* quick nap',     {'ENERGY': 10}),
-    ('sing',       '♪ La la la ♪',        {'WISDOM': 5}),
-    ('tripped',    'Tripped! Ouch!',      {'HAPPY': -5}),
-    ('found_food', 'Found a snack!',      {'HUNGER': 10}),
+    ('sneeze',       'Achoo!',              {}),
+    ('find_item',    'Found something!',     {'item': True}),
+    ('mood_boost',   'Feeling great!',      {'HAPPY': 5}),
+    ('sparkle',      '✨ Sparkle!',          {}),
+    ('yawn',         '*yaaawn*',            {}),
+    ('find_coin',    'Found a coin!',       {'xp': 3}),
+    ('dance',        '♪ Dancing! ♪',        {'HAPPY': 3}),
+    ('nap',          '*zzz* quick nap',     {'ENERGY': 5}),
+    ('sing',         '♪ La la la ♪',        {'WISDOM': 3}),
+    ('tripped',      'Tripped! Ouch!',      {'HAPPY': -5}),
+    ('found_food',   'Found a snack!',      {'HUNGER': 5}),
+    ('stomach_ache', 'Stomach ache... ugh', {'HUNGER': -5}),
+    ('nightmare',    '*bad dream* nooo',    {'ENERGY': -5}),
+    ('boredom',      'so bored...',         {'HAPPY': -5}),
 ]
 
 PET_INTERACTIONS = [
@@ -369,7 +372,7 @@ def init_state(uid, bones, name):
 
 def update_state_over_time(state):
     now = datetime.now()
-    for key, decay, rate in [('last_fed',4,5),('last_played',2,3),('last_slept',6,4)]:
+    for key, decay, rate in [('last_fed',3,8),('last_played',1.5,5),('last_slept',4,6)]:
         hours = (now - datetime.fromisoformat(state[key])).total_seconds() / 3600
         if hours > decay:
             stat = {'last_fed':'HUNGER','last_played':'HAPPY','last_slept':'ENERGY'}[key]
@@ -447,6 +450,7 @@ class PetGame:
         self.anim_idx = 0
         self.warning_active = False
         self.last_tick_time = time.time()
+        self._decay_accum = {stat: 0.0 for stat in STAT_NAMES}
 
         state, pets_data, pet_idx = load_state(uid, data_dir)
         if state is None:
@@ -500,12 +504,14 @@ class PetGame:
             return None, 0
 
         stats = self.state['stats']
-        decay_config = [('last_fed', 4, 5, 'HUNGER'), ('last_played', 2, 3, 'HAPPY'), ('last_slept', 6, 4, 'ENERGY')]
+        decay_config = [('last_fed', 3, 8, 'HUNGER'), ('last_played', 1.5, 5, 'HAPPY'), ('last_slept', 4, 6, 'ENERGY')]
         for key, threshold, rate, stat in decay_config:
             hours_since = (datetime.now() - datetime.fromisoformat(self.state[key])).total_seconds() / 3600
             if hours_since > threshold:
-                decay = max(0, int(delta_hours * rate))
+                self._decay_accum[stat] += delta_hours * rate
+                decay = int(self._decay_accum[stat])
                 if decay > 0:
+                    self._decay_accum[stat] -= decay
                     stats[stat] = max(0, stats[stat] - decay)
 
         self.state['mood'] = 'hungry' if stats['HUNGER']<20 else 'sleepy' if stats['ENERGY']<20 else 'excited' if stats['HAPPY']>80 else 'happy' if stats['HAPPY']>50 else 'normal'
@@ -548,7 +554,7 @@ class PetGame:
             else:
                 self.warning_active = False
 
-        if now - self.last_event_time > 30 and random.random() < 0.05:
+        if now - self.last_event_time > 60 and random.random() < 0.02:
             evt = random.choice(RANDOM_EVENTS)
             msg = evt[1]; msg_time = now; self.last_event_time = now
             for k, v in evt[2].items():
@@ -557,7 +563,10 @@ class PetGame:
                     item_id = random.choice(list(ITEMS.keys()))
                     if self.add_item(item_id):
                         msg = f'Found a {ITEMS[item_id]["name"]}!'; msg_time = now
-                elif k in self.state['stats']: self.state['stats'][k] = min(100, self.state['stats'][k] + v)
+                elif k in self.state['stats']:
+                    if v > 0 and self.state['stats'][k] >= 80:
+                        continue
+                    self.state['stats'][k] = min(100, max(0, self.state['stats'][k] + v))
 
         return msg, msg_time
 
