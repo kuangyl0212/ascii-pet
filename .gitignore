@@ -6,3 +6,7 @@ __pycache__/
 build/
 dist/
 .trae/
+.coverage
+.pytest_cache/
+.vscode/
+htmlcov/
