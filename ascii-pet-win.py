@@ -302,6 +302,12 @@ WM_SYSCOMMAND  = 0x0112
 SC_MINIMIZE    = 0xF020
 SC_RESTORE     = 0xF120
 
+# ShowWindow nCmdShow 值（用于 ShowWindow，区别于 SC_* 系统命令值）
+SW_HIDE        = 0
+SW_SHOWNORMAL  = 1
+SW_SHOW        = 5
+SW_RESTORE     = 9
+
 HTCAPTION      = 2
 TRANSPARENT    = 1
 COLOR_WINDOW   = 5
@@ -318,6 +324,7 @@ NIM_DELETE     = 0x00000002
 ID_TRAY_SHOW   = 2001
 ID_TRAY_QUIT   = 2002
 ID_TRAY_AUTOSTART = 2003
+ID_TRAY_HIDE   = 2004
 
 ID_FEED        = 1001
 ID_PLAY        = 1002
@@ -511,6 +518,26 @@ user32.DestroyMenu.argtypes = [wintypes.HMENU]
 user32.DestroyMenu.restype = wintypes.BOOL
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 托盘菜单项配置（纯函数，便于单元测试）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_tray_menu_items(autostart_enabled):
+    """构建托盘右键菜单项列表。
+
+    返回 [(id, label, flags), ...]，分隔符以 (0, None, MF_SEPARATOR) 表示。
+    """
+    auto_flag = MF_CHECKED if autostart_enabled else 0
+    return [
+        (ID_TRAY_SHOW,      '显示窗口',    MF_STRING),
+        (ID_TRAY_HIDE,      '隐藏窗口',    MF_STRING),
+        (0,                 None,         MF_SEPARATOR),
+        (ID_TRAY_AUTOSTART, '开机自启动',  MF_STRING | auto_flag),
+        (0,                 None,         MF_SEPARATOR),
+        (ID_TRAY_QUIT,      '退出',        MF_STRING),
+    ]
+
+
 class PetWindow:
     """Win32 浮动宠物窗口"""
 
@@ -646,17 +673,29 @@ class PetWindow:
         pt = POINT()
         user32.GetCursorPos(byref(pt))
         hmenu = user32.CreatePopupMenu()
-        user32.AppendMenuW(hmenu, MF_STRING, ID_TRAY_SHOW, '显示窗口')
-        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        auto_flag = MF_CHECKED if is_autostart_enabled() else 0
-        user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, '开机自启动')
-        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING, ID_TRAY_QUIT, '退出')
+        for item_id, label, flags in build_tray_menu_items(is_autostart_enabled()):
+            user32.AppendMenuW(hmenu, flags, item_id, label)
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
         user32.DestroyMenu(hmenu)
+        if cmd:
+            self.dispatch_tray_command(cmd)
+
+    def minimize_to_tray(self):
+        user32.ShowWindow(self.hwnd, SW_HIDE)
+
+    def restore_from_tray(self):
+        user32.ShowWindow(self.hwnd, SW_SHOW)
+        user32.SetForegroundWindow(self.hwnd)
+
+    def dispatch_tray_command(self, cmd):
+        """分发托盘菜单命令，返回是否已处理。"""
         if cmd == ID_TRAY_SHOW:
-            user32.ShowWindow(self.hwnd, SC_RESTORE)
+            user32.ShowWindow(self.hwnd, SW_SHOW)
             user32.SetForegroundWindow(self.hwnd)
+            return True
+        elif cmd == ID_TRAY_HIDE:
+            self.minimize_to_tray()
+            return True
         elif cmd == ID_TRAY_AUTOSTART:
             try:
                 set_autostart(not is_autostart_enabled())
@@ -666,15 +705,11 @@ class PetWindow:
                 self.game.message = f'设置失败: {e}'
             self.game.message_time = time.time()
             user32.InvalidateRect(self.hwnd, None, False)
+            return True
         elif cmd == ID_TRAY_QUIT:
             user32.DestroyWindow(self.hwnd)
-
-    def minimize_to_tray(self):
-        user32.ShowWindow(self.hwnd, 0)
-
-    def restore_from_tray(self):
-        user32.ShowWindow(self.hwnd, SC_RESTORE)
-        user32.SetForegroundWindow(self.hwnd)
+            return True
+        return False
 
     def create_window(self):
         hinstance = kernel32.GetModuleHandleW(None)
