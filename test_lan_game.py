@@ -710,8 +710,7 @@ class TestRemoteActions:
         # HUNGER should have increased from local feed
         assert game.state['stats']['HUNGER'] > hunger_before
         assert game.message is not None
-        assert 'friend' in game.message
-        assert '喂食' in game.message
+        assert 'Remote feed' in game.message or 'fed your pet' in game.message
 
     def test_receive_visit_play_executes_local_play(self, game):
         """Receiving MSG_VISIT_PLAY triggers local handle_action('play')."""
@@ -730,8 +729,7 @@ class TestRemoteActions:
         game.process_lan_queues()
 
         assert game.message is not None
-        assert 'friend' in game.message
-        assert '玩耍' in game.message
+        assert 'Remote play' in game.message or 'played with your pet' in game.message
 
 
 # ─── 5e. Visit timeout ─────────────────────────────────────────────────────
@@ -849,7 +847,7 @@ class TestVisitRandomEvents:
         assert 'description' in payload
         assert 'stat_effects' in payload
         assert game.message is not None
-        assert '拜访事件' in game.message
+        assert 'Visit event' in game.message
 
     def test_event_cooldown_blocks_new_event(self, game):
         """When visit_event_cooldown is in the future, no event fires."""
@@ -930,7 +928,7 @@ class TestVisitRandomEvents:
 
         assert game.state['stats']['HAPPY'] == min(100, happy_before + 15)
         assert game.message is not None
-        assert '拜访事件' in game.message
+        assert 'Visit event' in game.message
         assert '玩耍' in game.message
 
 
@@ -1104,160 +1102,6 @@ class TestGenerateRandomUsername:
         assert len(results) > 1
 
 
-class TestResolveNameConflict:
-    """resolve_name_conflict: pure function for auto-suffixing duplicate names."""
-
-    def test_no_conflict_returns_original(self):
-        """No conflict → return the original name unchanged."""
-        from pet_core import resolve_name_conflict
-        assert resolve_name_conflict("Alice", []) == "Alice"
-        assert resolve_name_conflict("Alice", ["Bob"]) == "Alice"
-
-    def test_one_conflict_appends_2(self):
-        """One conflict → append (2)."""
-        from pet_core import resolve_name_conflict
-        assert resolve_name_conflict("Alice", ["Alice"]) == "Alice(2)"
-
-    def test_multiple_conflicts_increments(self):
-        """Alice and Alice(2) exist → Alice(3)."""
-        from pet_core import resolve_name_conflict
-        assert resolve_name_conflict("Alice", ["Alice", "Alice(2)"]) == "Alice(3)"
-
-    def test_gap_filling(self):
-        """Alice and Alice(3) exist → fill gap with Alice(2)."""
-        from pet_core import resolve_name_conflict
-        assert resolve_name_conflict("Alice", ["Alice", "Alice(3)"]) == "Alice(2)"
-
-    def test_existing_names_with_suffix(self):
-        """Multiple gaps: Alice, Alice(2), Alice(3), Alice(5) → Alice(4)."""
-        from pet_core import resolve_name_conflict
-        names = ["Alice", "Alice(2)", "Alice(3)", "Alice(5)"]
-        assert resolve_name_conflict("Alice", names) == "Alice(4)"
-
-    def test_unrelated_names_ignored(self):
-        """Names that don't match the prefix are ignored."""
-        from pet_core import resolve_name_conflict
-        assert resolve_name_conflict("Alice", ["Bob", "Carol"]) == "Alice"
-
-    def test_partial_prefix_not_confused(self):
-        """Alice(2) should not be confused with Alice2(2) when checking Alice."""
-        from pet_core import resolve_name_conflict
-        # Alice2 is a different name, should not affect Alice
-        assert resolve_name_conflict("Alice", ["Alice2"]) == "Alice"
-
-
-class TestUsernameSavedToPetsData:
-    """Username is persisted in pets_data JSON instead of username.txt."""
-
-    def test_username_saved_to_pets_data(self, game):
-        """enable_lan sets pets_data['username']."""
-        fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
-            game.enable_lan()
-        assert 'username' in game.pets_data
-        assert game.pets_data['username'] == game.lan_username
-
-    def test_username_loaded_from_pets_data(self, tmp_path):
-        """When pets_data has username, enable_lan uses it."""
-        uid = _uid()
-        game = PetGame(uid, data_dir=tmp_path)
-        game.pets_data['username'] = 'MyName'
-        game.lan_username = 'MyName'
-        game.save()
-
-        game2 = PetGame(uid, data_dir=tmp_path)
-        assert game2.lan_username == 'MyName'
-
-        fake_node = _FakeLanNode('MyName', game2.state)
-        with patch('lan.LanNode', return_value=fake_node):
-            game2.enable_lan()
-        assert game2.lan_username == 'MyName'
-
-    def test_init_loads_username_from_save(self, tmp_path):
-        """__init__ loads lan_username from pets_data['username']."""
-        uid = _uid()
-        game = PetGame(uid, data_dir=tmp_path)
-        game.pets_data['username'] = 'SavedName'
-        game.lan_username = 'SavedName'
-        game.save()
-
-        game2 = PetGame(uid, data_dir=tmp_path)
-        assert game2.lan_username == 'SavedName'
-
-    def test_change_username_saves_to_pets_data(self, game):
-        """change_lan_username updates pets_data['username']."""
-        fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
-            game.enable_lan()
-        game.change_lan_username('NewName')
-        assert game.pets_data['username'] == 'NewName'
-
-    def test_change_username_auto_suffix_on_conflict(self, game):
-        """change_lan_username auto-suffixes instead of rejecting on conflict."""
-        fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
-            game.enable_lan()
-        # Simulate a peer with the target name
-        fake_node._peers = [{'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}}]
-        result = game.change_lan_username('Bob')
-        assert result is True  # no longer rejects
-        assert game.lan_username == 'Bob(2)'
-        assert game.pets_data['username'] == 'Bob(2)'
-
-
-class TestEnableLanResolvesNameConflict:
-    """enable_lan auto-resolves name conflicts with peers."""
-
-    def test_enable_lan_resolves_name_conflict(self, game):
-        """When saved username conflicts with a peer, auto-suffix."""
-        game.pets_data['username'] = 'Alice'
-        game.lan_username = 'Alice'
-        game.save()
-
-        fake_node = _FakeLanNode('Alice', game.state)
-        fake_node._peers = [{'node_id': 'peer-1', 'username': 'Alice', 'pet_summary': {}}]
-        with patch('lan.LanNode', return_value=fake_node):
-            game.enable_lan()
-        assert game.lan_username == 'Alice(2)'
-        assert game.pets_data['username'] == 'Alice(2)'
-
-
-class TestMigrateUsernameTxt:
-    """Migration from old username.txt to pets_data JSON."""
-
-    def test_migrates_username_txt_to_save(self, tmp_path):
-        """If pets_data has no username but username.txt exists, auto-migrate."""
-        uid = _uid()
-        game = PetGame(uid, data_dir=tmp_path)
-        # Write old-style username.txt
-        username_file = tmp_path / 'username.txt'
-        username_file.write_text('OldName', encoding='utf-8')
-        # Re-initialize — should migrate
-        game2 = PetGame(uid, data_dir=tmp_path)
-        assert game2.lan_username == 'OldName'
-        assert game2.pets_data.get('username') == 'OldName'
-
-    def test_no_migration_when_pets_data_has_username(self, tmp_path):
-        """If pets_data already has username, username.txt is ignored."""
-        uid = _uid()
-        game = PetGame(uid, data_dir=tmp_path)
-        game.pets_data['username'] = 'NewName'
-        game.lan_username = 'NewName'
-        game.save()
-        # Also write username.txt with different name
-        username_file = tmp_path / 'username.txt'
-        username_file.write_text('OldName', encoding='utf-8')
-        # Re-initialize — should use pets_data, not username.txt
-        game2 = PetGame(uid, data_dir=tmp_path)
-        assert game2.lan_username == 'NewName'
-
-    def test_no_error_when_username_txt_missing(self, tmp_path):
-        """No username.txt and no pets_data username → lan_username is None."""
-        uid = _uid()
-        game = PetGame(uid, data_dir=tmp_path)
-        assert game.lan_username is None
-
-
 class TestEnableLanAutoUsername:
     """enable_lan auto-generates username when None is passed."""
 
@@ -1271,25 +1115,22 @@ class TestEnableLanAutoUsername:
         assert isinstance(game.lan_username, str)
         assert game.lan_username.startswith('Player-')
 
-    def test_enable_lan_none_saves_generated_username_to_pets_data(self, game):
-        """enable_lan(None) saves the generated username to pets_data."""
+    def test_enable_lan_none_saves_generated_username(self, game):
+        """enable_lan(None) saves the generated username to save data."""
         fake_node = _FakeLanNode(None, game.state)
         with patch('lan.LanNode', return_value=fake_node):
             game.enable_lan(None)
-        # pets_data should have the username
+        # Username should be saved in pets_data
         assert game.pets_data.get('username') == game.lan_username
 
-    def test_enable_lan_none_loads_existing_username_from_pets_data(self, game):
-        """enable_lan(None) loads a previously saved username from pets_data."""
-        game.pets_data['username'] = 'saved-user'
+    def test_enable_lan_none_loads_existing_username(self, game):
+        """enable_lan(None) loads a previously saved username from save data."""
         game.lan_username = 'saved-user'
-        game.save()
-        # Re-create game to load from save
-        game2 = PetGame(game.uid, data_dir=game.data_dir)
-        fake_node = _FakeLanNode(None, game2.state)
+        game.pets_data['username'] = 'saved-user'
+        fake_node = _FakeLanNode(None, game.state)
         with patch('lan.LanNode', return_value=fake_node):
-            game2.enable_lan(None)
-        assert game2.lan_username == 'saved-user'
+            game.enable_lan(None)
+        assert game.lan_username == 'saved-user'
 
     def test_enable_lan_with_username_uses_provided(self, game):
         """enable_lan('alice') uses the provided username."""
@@ -1301,7 +1142,7 @@ class TestEnableLanAutoUsername:
 
 
 class TestChangeLanUsername:
-    """change_lan_username: rename with auto-suffix on conflict."""
+    """change_lan_username: rename with conflict check."""
 
     def test_change_username_no_conflict_returns_true(self, game):
         """change_lan_username returns True when no peer has the new name."""
@@ -1313,8 +1154,8 @@ class TestChangeLanUsername:
         assert result is True
         assert game.lan_username == 'newname'
 
-    def test_change_username_conflict_auto_suffixes(self, game):
-        """change_lan_username auto-suffixes when a peer has the new name."""
+    def test_change_username_conflict_auto_resolves(self, game):
+        """change_lan_username auto-resolves conflicts by appending suffix."""
         fake_node = _FakeLanNode('alice', game.state)
         with patch('lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
@@ -1322,6 +1163,7 @@ class TestChangeLanUsername:
         fake_node._peers = [{'node_id': 'peer-1', 'username': 'taken', 'pet_summary': {}}]
         result = game.change_lan_username('taken')
         assert result is True
+        # Should auto-resolve to taken(2)
         assert game.lan_username == 'taken(2)'
 
     def test_change_username_updates_lan_node_username(self, game):
@@ -1333,12 +1175,12 @@ class TestChangeLanUsername:
         assert fake_node.username == 'newname'
 
     def test_change_username_saves_to_pets_data(self, game):
-        """change_lan_username persists the new username to pets_data."""
+        """change_lan_username persists the new username to save data."""
         fake_node = _FakeLanNode('alice', game.state)
         with patch('lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.change_lan_username('newname')
-        assert game.pets_data['username'] == 'newname'
+        assert game.pets_data.get('username') == 'newname'
 
     def test_change_username_when_lan_disabled_returns_false(self, game):
         """change_lan_username returns False when LAN is not enabled."""

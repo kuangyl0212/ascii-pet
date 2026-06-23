@@ -4,6 +4,7 @@
 import os, json, time, random, math, queue, string, shutil
 from pathlib import Path
 from datetime import datetime
+from i18n import _
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -300,17 +301,17 @@ def render_frame(bones, frame_idx, mood='normal'):
 # ─── Actions ──────────────────────────────────────────────────────────────────
 
 def feed_pet(state):
-    if state['stats']['HUNGER'] >= 100: return 'Already full!', None
+    if state['stats']['HUNGER'] >= 100: return _('Already full!'), None
     state['stats']['HUNGER'] = min(100, state['stats']['HUNGER']+25)
     state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+5)
     state['last_fed'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['feed_count'] = state.get('feed_count',0) + 1
     state['xp'] += 10; evo = check_level_up(state)
     if evo: return evo, None
-    return '+25 Hunger, +5 Happy', 'feed'
+    return _('+25 Hunger, +5 Happy'), 'feed'
 
 def play_pet(state):
-    if state['stats']['ENERGY'] < 10: return 'Too tired!', None
+    if state['stats']['ENERGY'] < 10: return _('Too tired!'), None
     state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+30)
     state['stats']['ENERGY'] = max(0, state['stats']['ENERGY']-15)
     state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-10)
@@ -318,17 +319,17 @@ def play_pet(state):
     state['total_interactions'] += 1; state['play_count'] = state.get('play_count',0) + 1
     state['xp'] += 15; evo = check_level_up(state)
     if evo: return evo, None
-    return '+30 Happy, -15 Energy', 'play'
+    return _('+30 Happy, -15 Energy'), 'play'
 
 def sleep_pet(state):
-    if state['stats']['ENERGY'] >= 100: return 'Not sleepy!', None
+    if state['stats']['ENERGY'] >= 100: return _('Not sleepy!'), None
     state['stats']['ENERGY'] = min(100, state['stats']['ENERGY']+40)
     state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-5)
     state['last_slept'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['sleep_count'] = state.get('sleep_count',0) + 1
     state['xp'] += 5; evo = check_level_up(state)
     if evo: return evo, None
-    return '+40 Energy', 'sleep'
+    return _('+40 Energy'), 'sleep'
 
 def check_level_up(state):
     xp_need = state['level'] * 100
@@ -348,7 +349,7 @@ def check_level_up(state):
             if state['level'] >= evo_level and state['species'] != evo_species:
                 state['species'] = evo_species
                 state['evolved'] = True
-                return f'Evolved into {evo_species}!'
+                return _('Evolved into {species}!').format(species=evo_species)
     return None
 
 def check_achievements(state, pets_data):
@@ -356,7 +357,7 @@ def check_achievements(state, pets_data):
     for aid, ach in ACHIEVEMENTS.items():
         if aid not in state.get('achievements', []) and ach['check'](state, pets_data):
             state.setdefault('achievements', []).append(aid)
-            unlocked.append(ach['name'])
+            unlocked.append(_(ach['name']))
     return unlocked
 
 # ─── State management ─────────────────────────────────────────────────────────
@@ -557,13 +558,14 @@ def resolve_name_conflict(username, existing_names):
     while n in used_numbers:
         n += 1
     return f"{username}({n})"
-
 # ─── Game class ───────────────────────────────────────────────────────────────
 
 class PetGame:
     """Platform-independent game state and logic."""
 
     def __init__(self, uid, data_dir=None):
+        from i18n import init_language
+        init_language(data_dir)
         self.uid = uid
         self.data_dir = data_dir
         self.frame_idx = 0
@@ -621,7 +623,7 @@ class PetGame:
                 item_id = random.choice(list(ITEMS.keys()))
                 self.add_item(item_id)
                 if self.message is None:
-                    self.message = f'Daily bonus: {ITEMS[item_id]["name"]}!'
+                    self.message = _('Daily bonus: {name}!').format(name=_(ITEMS[item_id]["name"]))
                     self.message_time = time.time()
             self.save()
 
@@ -696,28 +698,28 @@ class PetGame:
             if all_zero and critical_secs >= 300:
                 self.state['is_dead'] = True
                 self.save()
-                return 'Your pet has died...', now
+                return _('Your pet has died...'), now
             elif critical_secs >= 900:
                 self.state['is_dead'] = True
                 self.save()
-                return 'Your pet has died...', now
+                return _('Your pet has died...'), now
             if all_zero:
                 remaining = int((300 - critical_secs) / 60) + 1
-                msg = f'CRITICAL! All stats at zero! ({remaining}min left)'; msg_time = now
+                msg = _('CRITICAL! All stats at zero! ({remaining}min left)').format(remaining=remaining); msg_time = now
             else:
                 remaining = int((900 - critical_secs) / 60) + 1
-                msg = f'CRITICAL! A stat is at zero! ({remaining}min left)'; msg_time = now
+                msg = _('CRITICAL! A stat is at zero! ({remaining}min left)').format(remaining=remaining); msg_time = now
             self.warning_active = True
         else:
             if self.state.get('critical_since'):
                 self.state['critical_since'] = None
                 self.save()
             if h < 10:
-                msg = 'Your pet is starving!'; msg_time = now; self.warning_active = True
+                msg = _('Your pet is starving!'); msg_time = now; self.warning_active = True
             elif e < 10:
-                msg = 'Your pet is exhausted!'; msg_time = now; self.warning_active = True
+                msg = _('Your pet is exhausted!'); msg_time = now; self.warning_active = True
             elif p < 10:
-                msg = 'Your pet is lonely!'; msg_time = now; self.warning_active = True
+                msg = _('Your pet is lonely!'); msg_time = now; self.warning_active = True
             else:
                 self.warning_active = False
 
@@ -725,7 +727,7 @@ class PetGame:
         event_chance = 0.02 * (1 + chaos / 100)
         if now - self.last_event_time > 60 and random.random() < event_chance:
             evt = random.choice(RANDOM_EVENTS)
-            msg = evt[1]; msg_time = now; self.last_event_time = now
+            msg = _(evt[1]); msg_time = now; self.last_event_time = now
             # Negative events increase CHAOS
             negative_stats = {k: v for k, v in evt[2].items() if k in self.state['stats'] and v < 0}
             if negative_stats:
@@ -735,7 +737,7 @@ class PetGame:
                 elif k == 'item':
                     item_id = random.choice(list(ITEMS.keys()))
                     if self.add_item(item_id):
-                        msg = f'Found a {ITEMS[item_id]["name"]}!'; msg_time = now
+                        msg = _('Found a {name}!').format(name=_(ITEMS[item_id]["name"])); msg_time = now
                 elif k in self.state['stats']:
                     if v > 0 and self.state['stats'][k] >= 80:
                         continue
@@ -755,8 +757,8 @@ class PetGame:
         """Execute an action. Returns (message, anim_type)."""
         if self.state.get('is_dead'):
             if action in ('feed', 'play', 'sleep'):
-                return 'Your pet is dead... Use a Potion to revive!', None
-            return 'Your pet is dead...', None
+                return _('Your pet is dead... Use a Potion to revive!'), None
+            return _('Your pet is dead...'), None
 
         now = datetime.now()
         critical = self.state.get('critical_since') is not None
@@ -772,7 +774,7 @@ class PetGame:
                 self.state[f'{state_key}_count'] = 0
             count = self.state.get(f'{state_key}_count', 0)
             if count >= limit:
-                return f'Wait a moment before {action}ing again.', None
+                return _('Wait a moment before {action}ing again.').format(action=action), None
             self.state[f'{state_key}_count'] = count + 1
 
         if action == 'feed':
@@ -786,7 +788,7 @@ class PetGame:
 
         self.save()
         new_ach = check_achievements(self.state, self.pets_data)
-        if new_ach: msg = f'Achievement: {new_ach[0]}!'
+        if new_ach: msg = _('Achievement: {name}!').format(name=new_ach[0])
         return msg, anim
 
     def handle_pet(self):
@@ -819,8 +821,8 @@ class PetGame:
         self.pets_data['current'] = self.pet_idx
         save_pets(self.uid, self.pets_data, self.data_dir)
         new_ach = check_achievements(self.state, self.pets_data)
-        msg = f'Switched to {self.state["name"]}'
-        if new_ach: msg = f'Achievement: {new_ach[0]}!'
+        msg = _('Switched to {name}').format(name=self.state["name"])
+        if new_ach: msg = _('Achievement: {name}!').format(name=new_ach[0])
         interaction_msg = self.trigger_interaction()
         if interaction_msg: msg = f'{msg}\n  {interaction_msg}'
         return msg
@@ -841,7 +843,7 @@ class PetGame:
                 self.state['stats'][stat] = min(100, self.state['stats'][stat] + val)
         self.save()
         other = self.pets_data['pets'][(self.pet_idx - 1) % len(self.pets_data['pets'])]
-        return f'{self.state["name"]} and {other["name"]}{msg}'
+        return f'{self.state["name"]} and {other["name"]}{_(msg)}'
 
     def adopt_pet(self):
         """Adopt a new pet. Returns message or None if entering release mode."""
@@ -851,7 +853,7 @@ class PetGame:
             save_pets(self.uid, self.pets_data, self.data_dir)
             return None
         if self.count_today_adoptions() >= MAX_DAILY_ADOPTIONS:
-            return f'Daily limit reached ({MAX_DAILY_ADOPTIONS}/day). Try again tomorrow!'
+            return _('Daily limit reached ({max}/day). Try again tomorrow!').format(max=MAX_DAILY_ADOPTIONS)
         self.pets_data['pets'][self.pet_idx] = self.state
         new_state = init_state(self.uid, generate_companion(self.uid), generate_name(self.uid))
         self.pets_data['pets'].append(new_state)
@@ -862,16 +864,16 @@ class PetGame:
         self.pets_data['current'] = self.pet_idx
         save_pets(self.uid, self.pets_data, self.data_dir)
         new_ach = check_achievements(self.state, self.pets_data)
-        msg = f'Adopted {self.state["name"]}!'
-        if new_ach: msg = f'Achievement: {new_ach[0]}!'
+        msg = _('Adopted {name}!').format(name=self.state["name"])
+        if new_ach: msg = _('Achievement: {name}!').format(name=new_ach[0])
         return msg
 
     def release_pet(self, index):
         """Release a pet by index (0-based). Returns message."""
         if index < 0 or index >= len(self.pets_data['pets']):
-            return 'Invalid pet!'
+            return _('Invalid pet!')
         if len(self.pets_data['pets']) <= 1:
-            return 'Cannot release your last pet!'
+            return _('Cannot release your last pet!')
         name = self.pets_data['pets'][index]['name']
         self.pets_data['pets'].pop(index)
         if self.pet_idx >= len(self.pets_data['pets']):
@@ -883,7 +885,7 @@ class PetGame:
         self.pets_data['current'] = self.pet_idx
         self.mode = 'expanded'
         save_pets(self.uid, self.pets_data, self.data_dir)
-        return f'Released {name}!'
+        return _('Released {name}!').format(name=name)
 
     def get_release_list(self):
         """Return list of (index, name, species, rarity) for release mode."""
@@ -905,17 +907,17 @@ class PetGame:
         """Use an item from inventory. Returns message."""
         inv = self.pets_data.get('inventory', {})
         if inv.get(item_id, 0) <= 0:
-            return 'No such item!'
+            return _('No such item!')
         item = ITEMS.get(item_id)
         if not item:
-            return 'Unknown item!'
+            return _('Unknown item!')
         inv[item_id] -= 1
         if inv[item_id] <= 0:
             del inv[item_id]
         effect = item['effect']
         if effect.get('revive'):
             if not self.state.get('is_dead'):
-                return 'Pet is not dead!'
+                return _('Pet is not dead!')
             self.state['is_dead'] = False
             self.state['critical_since'] = None
             self.state['stats']['HUNGER'] = 25
@@ -929,7 +931,7 @@ class PetGame:
                 if stat in self.state['stats']:
                     self.state['stats'][stat] = min(100, self.state['stats'][stat] + val)
         self.save()
-        return f'Used {item["name"]}!'
+        return _('Used {name}!').format(name=_(item["name"]))
 
     def get_inventory_list(self):
         """Return list of (item_id, name, icon, count, desc) for display."""
@@ -938,7 +940,7 @@ class PetGame:
         for iid, count in inv.items():
             item = ITEMS.get(iid)
             if item and count > 0:
-                result.append((iid, item['name'], item['icon'], count, item['desc']))
+                result.append((iid, _(item['name']), item['icon'], count, _(item['desc'])))
         return result
 
     def handle_key(self, key):
@@ -965,11 +967,11 @@ class PetGame:
                 new_name = self._name_input.strip()
                 if new_name:
                     if self.change_lan_username(new_name):
-                        self.message = f'用户名已修改为: {self.lan_username}'
+                        self.message = _('Username changed to: {name}').format(name=self.lan_username)
                     else:
-                        self.message = '联机未启用'
+                        self.message = _('Username already in use')
                 else:
-                    self.message = '用户名不能为空'
+                    self.message = _('Username cannot be empty')
                 self.message_time = now
                 self.mode = 'lan'
                 return 'mode_change', self.mode
@@ -1108,30 +1110,30 @@ class PetGame:
                     peer = peers[idx]
                     peer_id = peer.get('node_id', '')
                     if self.invite_visit(peer_id):
-                        self.message = f'正在拜访 {peer.get("username","?")}'
+                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
                     else:
                         pass  # invite_visit 内部已设置 message
                     self.message_time = now
                     return 'action', self.message
             if key == 'e':
                 if self.end_visit():
-                    self.message = '拜访已结束'
+                    self.message = _('Visit ended')
                 else:
-                    self.message = '没有正在进行的拜访'
+                    self.message = _('No active visit')
                 self.message_time = now
                 return 'action', self.message
             if key == 'f':
                 if self.remote_feed():
-                    self.message = '已发送远程喂食'
+                    self.message = _('Remote feed sent')
                 else:
-                    self.message = '远程喂食失败（未在拜访中）'
+                    self.message = _('Remote feed failed (not visiting)')
                 self.message_time = now
                 return 'action', self.message
             if key == 'p':
                 if self.remote_play():
-                    self.message = '已发送远程玩耍'
+                    self.message = _('Remote play sent')
                 else:
-                    self.message = '远程玩耍失败（未在拜访中）'
+                    self.message = _('Remote play failed (not visiting)')
                 self.message_time = now
                 return 'action', self.message
             if key == 'u':
@@ -1141,12 +1143,12 @@ class PetGame:
             if key == 'o':
                 if self.lan_enabled:
                     self.disable_lan()
-                    self.message = '联机已关闭'
+                    self.message = _('LAN disabled')
                 else:
                     if self.enable_lan():
-                        self.message = f'联机已开启！用户名: {self.lan_username}'
+                        self.message = _('LAN enabled! Username: {username}').format(username=self.lan_username)
                     else:
-                        self.message = '联机开启失败（端口被占用或防火墙）'
+                        self.message = _('LAN failed to start (port in use or firewall)')
                 self.message_time = now
                 return 'action', self.message
 
@@ -1238,11 +1240,11 @@ class PetGame:
             return False
         # 拜访锁定检查
         if self.active_visit is not None:
-            self.message = "你正在拜访中，请先结束当前拜访"
+            self.message = _("You are visiting, please end current visit first")
             self.message_time = time.time()
             return False
         if self.being_visited is not None:
-            self.message = "你正在被拜访，无法发起拜访"
+            self.message = _("You are being visited, cannot initiate visit")
             self.message_time = time.time()
             return False
         from lan_protocol import MSG_VISIT_REQ, make_pet_snapshot
@@ -1359,7 +1361,7 @@ class PetGame:
             from_username = payload.get("from_username", "?")
             self.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot}
             self.visitor_pets.append(snapshot)
-            self.message = f"{from_username} 的宠物 {snapshot.get('name','?')} 来拜访了！"
+            self.message = _("{username}'s pet {name} came to visit!").format(username=from_username, name=snapshot.get('name','?'))
             self.message_time = now
 
         elif msg_type == MSG_VISIT_FEED:
@@ -1371,9 +1373,9 @@ class PetGame:
             delta = after - before
             from_name = payload.get("from", "?")
             if delta > 0:
-                self.message = f"{from_name} 喂食了你的宠物！{stat_key} {before}→{after}(+{delta})"
+                self.message = _("{name} fed your pet! {stat} {before}->{after}(+{delta})").format(name=from_name, stat=stat_key, before=before, after=after, delta=delta)
             else:
-                self.message = f"{from_name} 喂食了你的宠物！{result[0]}"
+                self.message = _("{name} fed your pet! {result}").format(name=from_name, result=result[0])
             self.message_time = now
 
         elif msg_type == MSG_VISIT_PLAY:
@@ -1385,9 +1387,9 @@ class PetGame:
             delta = after - before
             from_name = payload.get("from", "?")
             if delta > 0:
-                self.message = f"{from_name} 和你的宠物玩耍了！{stat_key} {before}→{after}(+{delta})"
+                self.message = _("{name} played with your pet! {stat} {before}->{after}(+{delta})").format(name=from_name, stat=stat_key, before=before, after=after, delta=delta)
             else:
-                self.message = f"{from_name} 和你的宠物玩耍了！{result[0]}"
+                self.message = _("{name} played with your pet! {result}").format(name=from_name, result=result[0])
             self.message_time = now
 
         elif msg_type == MSG_VISIT_EVENT:
@@ -1395,14 +1397,14 @@ class PetGame:
             description = payload.get("description", "")
             stat_effects = payload.get("stat_effects", {})
             self._apply_visit_event_effects(stat_effects)
-            self.message = f"拜访事件：{description}"
+            self.message = _("Visit event: {desc}").format(desc=description)
             self.message_time = now
 
         elif msg_type == MSG_VISIT_END:
             # 结束拜访
             if self.active_visit:
                 self.active_visit = None
-                self.message = "拜访已结束"
+                self.message = _("Visit ended")
                 self.message_time = now
             if self.being_visited:
                 snap = self.being_visited.get("pet_snapshot", {})
@@ -1412,13 +1414,13 @@ class PetGame:
                         self.visitor_pets.pop(i)
                         break
                 self.being_visited = None
-                self.message = "拜访已结束"
+                self.message = _("Visit ended")
                 self.message_time = now
 
         elif msg_type == MSG_VISIT_DATA:
             # 兼容旧客户端：直接加入访客列表
             self.receive_visitor(payload)
-            self.message = f"{payload.get('name','')} 来拜访了！"
+            self.message = _("{name} came to visit!").format(name=payload.get('name',''))
             self.message_time = now
 
         elif msg_type == MSG_VISIT_LEAVE:
@@ -1447,11 +1449,11 @@ class PetGame:
         now = time.time()
         if self.active_visit and now - self.active_visit.get("start_time", 0) > VISIT_TIMEOUT:
             self.end_visit()
-            self.message = "拜访超时，已自动结束"
+            self.message = _("Visit timed out, auto-ended")
             self.message_time = now
         elif self.being_visited and now - self.being_visited.get("start_time", 0) > VISIT_TIMEOUT:
             self.end_visit()
-            self.message = "拜访超时，已自动结束"
+            self.message = _("Visit timed out, auto-ended")
             self.message_time = now
 
     def _tick_visit_events(self):
@@ -1472,7 +1474,7 @@ class PetGame:
         event = random.choice(VISIT_EVENTS)
         # 应用本地效果
         self._apply_visit_event_effects(event.get("stat_effects", {}))
-        self.message = f"拜访事件：{event.get('description','')}"
+        self.message = _("Visit event: {desc}").format(desc=event.get('description',''))
         self.message_time = now
         # 设置冷却
         self.visit_event_cooldown = now + 30  # 30秒冷却

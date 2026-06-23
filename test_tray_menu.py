@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import i18n
+
 # Load ascii-pet-win.py via importlib (hyphen in filename prevents normal import)
 _MOD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascii-pet-win.py')
 _spec = importlib.util.spec_from_file_location('ascii_pet_win', _MOD_PATH)
@@ -45,39 +47,49 @@ class TestBuildTrayMenuItems:
     """验证托盘菜单项配置纯函数。"""
 
     def test_tray_menu_items_autostart_disabled(self):
-        """自启动未启用时，菜单应包含显示/隐藏/自启动/备份/恢复/退出及分隔符。"""
+        """自启动未启用时，菜单应包含显示/隐藏/自启动/备份/恢复/语言/退出及分隔符。"""
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False)
-        # 9 项: 显示, 隐藏, 分隔符, 自启动, 分隔符, 手动备份, 恢复存档, 分隔符, 退出
+        # 9 项: Show, Hide, sep, Autostart, sep, Backup, Restore, sep, Quit
         assert len(items) == 9
-        # 第一项: 显示窗口
-        assert items[0] == (ID_TRAY_SHOW, '显示窗口', MF_STRING)
-        # 第二项: 隐藏窗口
-        assert items[1] == (ID_TRAY_HIDE, '隐藏窗口', MF_STRING)
+        # 第一项: Show Window
+        assert items[0] == (ID_TRAY_SHOW, 'Show Window', MF_STRING)
+        # 第二项: Hide Window
+        assert items[1] == (ID_TRAY_HIDE, 'Hide Window', MF_STRING)
         # 第三项: 分隔符
         assert items[2][1] is None or items[2] == (0, None, MF_SEPARATOR)
-        # 第四项: 开机自启动（未勾选）
-        assert items[3] == (ID_TRAY_AUTOSTART, '开机自启动', MF_STRING)
+        # 第四项: Auto-start on Boot（未勾选）
+        assert items[3] == (ID_TRAY_AUTOSTART, 'Auto-start on Boot', MF_STRING)
         # 第五项: 分隔符
         assert items[4][1] is None or items[4] == (0, None, MF_SEPARATOR)
-        # 第六项: 手动备份
-        assert items[5] == (ascii_pet_win.ID_BACKUP, '手动备份', MF_STRING)
-        # 第七项: 恢复存档
+        # 第六项: Manual Backup
+        assert items[5] == (ascii_pet_win.ID_BACKUP, 'Manual Backup', MF_STRING)
+        # 第七项: Restore Save
         assert items[6][0] == ascii_pet_win.ID_RESTORE
         # 第八项: 分隔符
         assert items[7][1] is None or items[7] == (0, None, MF_SEPARATOR)
-        # 第九项: 退出
-        assert items[8] == (ID_TRAY_QUIT, '退出', MF_STRING)
+        # 第九项: Quit
+        assert items[8] == (ID_TRAY_QUIT, 'Quit', MF_STRING)
 
     def test_tray_menu_items_autostart_enabled(self):
         """自启动已启用时，自启动项应带 MF_CHECKED 标志，其余不变。"""
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=True)
         assert len(items) == 9
         # 隐藏窗口项不变
-        assert items[1] == (ID_TRAY_HIDE, '隐藏窗口', MF_STRING)
+        assert items[1] == (ID_TRAY_HIDE, 'Hide Window', MF_STRING)
         # 自启动项带勾选
         autostart_item = items[3]
         assert autostart_item[0] == ID_TRAY_AUTOSTART
         assert autostart_item[2] & MF_CHECKED == MF_CHECKED
+
+    def test_tray_menu_items_english(self):
+        """English language should return English labels."""
+        i18n.set_language('en')
+        items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False)
+        assert items[0] == (ID_TRAY_SHOW, 'Show Window', MF_STRING)
+        assert items[1] == (ID_TRAY_HIDE, 'Hide Window', MF_STRING)
+        assert items[3] == (ID_TRAY_AUTOSTART, 'Auto-start on Boot', MF_STRING)
+        assert items[5] == (ascii_pet_win.ID_BACKUP, 'Manual Backup', MF_STRING)
+        assert items[8] == (ID_TRAY_QUIT, 'Quit', MF_STRING)
 
     def test_tray_hide_id_is_2004(self):
         """ID_TRAY_HIDE 应为 2004，与现有常量不冲突。"""
@@ -155,7 +167,7 @@ class TestBuildTrayMenuItemsBackup:
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False, has_backups=True)
         backup_items = [i for i in items if i[0] == ID_BACKUP]
         assert len(backup_items) == 1
-        assert backup_items[0][1] == '手动备份'
+        assert backup_items[0][1] == 'Manual Backup'
         assert backup_items[0][2] & MF_GRAYED == 0  # 不应灰色
 
     def test_build_tray_menu_items_restore_grayed_without_backups(self):
@@ -182,7 +194,7 @@ class TestDispatchBackupRestore:
             result = pet_window.dispatch_tray_command(ID_BACKUP)
         assert result is True
         mock_create.assert_called_once()
-        assert pet_window.game.message == '备份成功'
+        assert pet_window.game.message == 'Backup successful'
 
     def test_dispatch_restore_reloads_game(self, pet_window):
         """分发 ID_RESTORE_START+N 应调用 restore_from_backup 并重新加载游戏。"""
@@ -195,7 +207,7 @@ class TestDispatchBackupRestore:
         assert result is True
         mock_restore.assert_called_once()
         mock_reload.assert_called_once()
-        assert pet_window.game.message == '已从备份恢复'
+        assert pet_window.game.message == 'Restored from backup'
 
 
 class TestBackupRestoreIds:

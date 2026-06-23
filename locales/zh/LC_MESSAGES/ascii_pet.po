@@ -1,0 +1,554 @@
+# Chinese translations for ascii-pet.
+# Copyright (C) 2026 ascii-pet
+# This file is distributed under the same license as the ascii-pet project.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: ascii-pet 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-23 00:00+0800\n"
+"PO-Revision-Date: 2026-06-23 00:00+0800\n"
+"Last-Translator: \n"
+"Language-Team: Chinese\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: pet_core.py - Action messages
+msgid "Already full!"
+msgstr "已经吃饱了！"
+
+msgid "+25 Hunger, +5 Happy"
+msgstr "+25 饱食, +5 快乐"
+
+msgid "Too tired!"
+msgstr "太累了！"
+
+msgid "+30 Happy, -15 Energy"
+msgstr "+30 快乐, -15 精力"
+
+msgid "Not sleepy!"
+msgstr "不想睡！"
+
+msgid "+40 Energy"
+msgstr "+40 精力"
+
+msgid "Evolved into {species}!"
+msgstr "进化为 {species}！"
+
+#: pet_core.py - Random events
+msgid "Achoo!"
+msgstr "阿嚏！"
+
+msgid "Found something!"
+msgstr "发现了东西！"
+
+msgid "Feeling great!"
+msgstr "感觉棒极了！"
+
+msgid "✨ Sparkle!"
+msgstr "✨ 闪闪发光！"
+
+msgid "*yaaawn*"
+msgstr "*打哈欠*"
+
+msgid "Found a coin!"
+msgstr "捡到硬币！"
+
+msgid "♪ Dancing! ♪"
+msgstr "♪ 跳舞！♪"
+
+msgid "*zzz* quick nap"
+msgstr "*zzz* 小睡一下"
+
+msgid "♪ La la la ♪"
+msgstr "♪ 啦啦啦 ♪"
+
+msgid "Tripped! Ouch!"
+msgstr "绊倒了！好痛！"
+
+msgid "Found a snack!"
+msgstr "找到零食！"
+
+msgid "Stomach ache... ugh"
+msgstr "肚子疼...呃"
+
+msgid "*bad dream* nooo"
+msgstr "*噩梦* 不要啊"
+
+msgid "so bored..."
+msgstr "好无聊..."
+
+#: pet_core.py - Pet interactions
+msgid " played together!"
+msgstr " 一起玩耍了！"
+
+msgid " shared a snack!"
+msgstr " 分享了零食！"
+
+msgid " had a nice chat!"
+msgstr " 聊得很开心！"
+
+msgid " had a race!"
+msgstr " 进行了赛跑！"
+
+#: pet_core.py - Items
+msgid "Apple"
+msgstr "苹果"
+
+msgid "Toy"
+msgstr "玩具"
+
+msgid "Bed"
+msgstr "床铺"
+
+msgid "Book"
+msgstr "书本"
+
+msgid "Potion"
+msgstr "药水"
+
+msgid "Crown"
+msgstr "皇冠"
+
+msgid "Top Hat"
+msgstr "礼帽"
+
+msgid "Chaos Crystal"
+msgstr "混沌水晶"
+
+msgid "Restores 30 hunger"
+msgstr "恢复30饱食"
+
+msgid "Restores 30 happiness"
+msgstr "恢复30快乐"
+
+msgid "Restores 30 energy"
+msgstr "恢复30精力"
+
+msgid "Grants 10 wisdom"
+msgstr "增加10智慧"
+
+msgid "Revives a dead pet"
+msgstr "复活死亡宠物"
+
+msgid "A fancy crown"
+msgstr "一顶华丽的皇冠"
+
+msgid "A classy top hat"
+msgstr "一顶优雅的礼帽"
+
+msgid "Grants 15 chaos"
+msgstr "增加15混沌"
+
+#: pet_core.py - Achievements
+msgid "First Meal"
+msgstr "第一餐"
+
+msgid "Gourmet"
+msgstr "美食家"
+
+msgid "Master Chef"
+msgstr "大厨"
+
+msgid "Playtime"
+msgstr "游戏时间"
+
+msgid "Best Friend"
+msgstr "最好的朋友"
+
+msgid "Sleepyhead"
+msgstr "瞌睡虫"
+
+msgid "Rising Star"
+msgstr "新星"
+
+msgid "Veteran"
+msgstr "老兵"
+
+msgid "Legend"
+msgstr "传说"
+
+msgid "Pet Collector"
+msgstr "宠物收藏家"
+
+msgid "Lucky Find"
+msgstr "幸运发现"
+
+msgid "Shiny Hunter"
+msgstr "闪光猎人"
+
+#: pet_core.py - Warnings and status
+msgid "Your pet has died..."
+msgstr "你的宠物死了..."
+
+msgid "CRITICAL! All stats at zero! ({remaining}min left)"
+msgstr "危险！所有属性为零！（剩余{remaining}分钟）"
+
+msgid "CRITICAL! A stat is at zero! ({remaining}min left)"
+msgstr "危险！有属性为零！（剩余{remaining}分钟）"
+
+msgid "Your pet is starving!"
+msgstr "你的宠物快饿死了！"
+
+msgid "Your pet is exhausted!"
+msgstr "你的宠物精疲力尽！"
+
+msgid "Your pet is lonely!"
+msgstr "你的宠物很孤独！"
+
+msgid "Daily bonus: {name}!"
+msgstr "每日奖励：{name}！"
+
+msgid "Found a {name}!"
+msgstr "发现了{name}！"
+
+msgid "Achievement: {name}!"
+msgstr "成就：{name}！"
+
+msgid "Switched to {name}"
+msgstr "切换到{name}"
+
+msgid "Adopted {name}!"
+msgstr "领养了{name}！"
+
+msgid "Daily limit reached ({max}/day). Try again tomorrow!"
+msgstr "已达每日上限（{max}/天）。明天再试！"
+
+msgid "Released {name}!"
+msgstr "释放了{name}！"
+
+msgid "Invalid pet!"
+msgstr "无效宠物！"
+
+msgid "Cannot release your last pet!"
+msgstr "不能释放你最后一只宠物！"
+
+msgid "No such item!"
+msgstr "没有此物品！"
+
+msgid "Unknown item!"
+msgstr "未知物品！"
+
+msgid "Pet is not dead!"
+msgstr "宠物没有死亡！"
+
+msgid "Used {name}!"
+msgstr "使用了{name}！"
+
+msgid "Your pet is dead... Use a Potion to revive!"
+msgstr "你的宠物死了...用药水复活！"
+
+msgid "Your pet is dead..."
+msgstr "你的宠物死了..."
+
+msgid "Wait a moment before {action}ing again."
+msgstr "请稍后再{action}。"
+
+#: pet_core.py - LAN messages
+msgid "LAN disabled"
+msgstr "联机已关闭"
+
+msgid "LAN enabled! Username: {username}"
+msgstr "联机已开启！用户名: {username}"
+
+msgid "LAN failed to start (port in use or firewall)"
+msgstr "联机开启失败（端口被占用或防火墙）"
+
+msgid "You are visiting, please end current visit first"
+msgstr "你正在拜访中，请先结束当前拜访"
+
+msgid "You are being visited, cannot initiate visit"
+msgstr "你正在被拜访，无法发起拜访"
+
+msgid "{username}'s pet {name} came to visit!"
+msgstr "{username} 的宠物 {name} 来拜访了！"
+
+msgid "Remote feed: {result}"
+msgstr "远程喂食：{result}"
+
+msgid "Remote play: {result}"
+msgstr "远程玩耍：{result}"
+
+msgid "Visit event: {desc}"
+msgstr "拜访事件：{desc}"
+
+msgid "Visit ended"
+msgstr "拜访已结束"
+
+msgid "Visit timed out, auto-ended"
+msgstr "拜访超时，已自动结束"
+
+msgid "Visiting {peer}"
+msgstr "正在拜访 {peer}"
+
+msgid "No active visit"
+msgstr "没有正在进行的拜访"
+
+msgid "Remote feed sent"
+msgstr "已发送远程喂食"
+
+msgid "Remote feed failed (not visiting)"
+msgstr "远程喂食失败（未在拜访中）"
+
+msgid "Remote play sent"
+msgstr "已发送远程玩耍"
+
+msgid "Remote play failed (not visiting)"
+msgstr "远程玩耍失败（未在拜访中）"
+
+msgid "Username changed to: {name}"
+msgstr "用户名已修改为: {name}"
+
+msgid "Username already in use"
+msgstr "该用户名已被使用"
+
+msgid "Username cannot be empty"
+msgstr "用户名不能为空"
+
+msgid "{name} came to visit!"
+msgstr "{name} 来拜访了！"
+
+#: ascii-pet-win.py - Context menu
+msgid "Feed (F)"
+msgstr "喂食 (F)"
+
+msgid "Play (P)"
+msgstr "玩耍 (P)"
+
+msgid "Sleep (S)"
+msgstr "睡觉 (S)"
+
+msgid "Adopt New Pet (W)"
+msgstr "领养新宠物 (W)"
+
+msgid "Export to Clipboard (E)"
+msgstr "导出到剪贴板 (E)"
+
+msgid "Previous Pet (B)"
+msgstr "上一个宠物 (B)"
+
+msgid "Next Pet (N)"
+msgstr "下一个宠物 (N)"
+
+msgid "Compact Mode"
+msgstr "紧凑模式"
+
+msgid "Expanded Mode"
+msgstr "展开模式"
+
+msgid "Stats Panel (T)"
+msgstr "属性面板 (T)"
+
+msgid "Achievements (A)"
+msgstr "成就面板 (A)"
+
+msgid "Items (U)"
+msgstr "物品栏 (U)"
+
+msgid "LAN Multiplayer (L)"
+msgstr "局域网联机 (L)"
+
+msgid "Auto-start on Boot"
+msgstr "开机自启动"
+
+msgid "Quit (Q)"
+msgstr "退出 (Q)"
+
+msgid "Language"
+msgstr "语言"
+
+#: ascii-pet-win.py - Language menu messages
+msgid "Language changed to Chinese"
+msgstr "已切换为中文"
+
+msgid "Language changed to English"
+msgstr "已切换为英文"
+
+#: ascii-pet-win.py - Tray menu
+msgid "Show Window"
+msgstr "显示窗口"
+
+msgid "Hide Window"
+msgstr "隐藏窗口"
+
+msgid "Quit"
+msgstr "退出"
+
+#: ascii-pet-win.py - Panel titles and labels
+msgid "★ Evolved"
+msgstr "★ 已进化"
+
+msgid "Stats for {}"
+msgstr "{} 的属性"
+
+msgid "Species:"
+msgstr "物种："
+
+msgid "Face:"
+msgstr "面部："
+
+msgid "Eye:"
+msgstr "眼睛："
+
+msgid "Hat:"
+msgstr "帽子："
+
+msgid "Pet:"
+msgstr "宠物："
+
+msgid "--- Activity ---"
+msgstr "--- 活动 ---"
+
+msgid "  Days adopted:  {}"
+msgstr "  领养天数：{}"
+
+msgid "  Hours online: {}"
+msgstr "  在线时长：{}"
+
+msgid "  Feed count:   {}"
+msgstr "  喂食次数：{}"
+
+msgid "  Play count:   {}"
+msgstr "  玩耍次数：{}"
+
+msgid "  Sleep count:  {}"
+msgstr "  睡觉次数：{}"
+
+msgid "  Total acts:   {}"
+msgstr "  总互动：{}"
+
+msgid "--- Growth ---"
+msgstr "--- 成长 ---"
+
+msgid "  Level: {}  XP: {}/{}"
+msgstr "  等级：{}  XP: {}/{}"
+
+msgid "  Rarity: {}  Shiny: {}"
+msgstr "  稀有度：{}  闪光：{}"
+
+msgid "Yes"
+msgstr "是"
+
+msgid "No"
+msgstr "否"
+
+msgid "Achievements for {}"
+msgstr "{} 的成就"
+
+msgid "unlocked"
+msgstr "已解锁"
+
+msgid "  ??? Locked"
+msgstr "  ??? 未解锁"
+
+msgid "Inventory ({}/{})"
+msgstr "物品栏 ({}/{})"
+
+msgid "Select item [1-7] or [c]cancel"
+msgstr "选择物品 [1-7] 或 [c]取消"
+
+msgid "  Empty — items drop from random events"
+msgstr "  空 — 物品从随机事件中掉落"
+
+msgid "Select a pet to release:"
+msgstr "选择要释放的宠物："
+
+msgid "Max {} pets. Choose 1-3, or [c]cancel"
+msgstr "最多{}只宠物。选择1-3，或 [c]取消"
+
+msgid "[1-3]select [c]cancel"
+msgstr "[1-3]选择 [c]取消"
+
+msgid "[f]feed, [p]play, or [s]sleep to revive"
+msgstr "[f]喂食, [p]玩耍, 或 [s]睡觉来复活"
+
+msgid "Copied to clipboard!"
+msgstr "已复制到剪贴板！"
+
+msgid "Failed to copy"
+msgstr "复制失败"
+
+msgid "Auto-start setting updated"
+msgstr "已更新开机自启动设置"
+
+msgid "Setting failed: {}"
+msgstr "设置失败: {}"
+
+#: ascii-pet-win.py - LAN panel
+msgid "═ LAN Multiplayer ═"
+msgstr "═ 局域网联机 ═"
+
+msgid "═ Edit Username ═"
+msgstr "═ 修改用户名 ═"
+
+msgid "(not set)"
+msgstr "(未设置)"
+
+msgid "Current username: {}"
+msgstr "当前用户名: {}"
+
+msgid "New username: {}_"
+msgstr "新用户名: {}_"
+
+msgid "[Enter]Confirm [ESC]Cancel"
+msgstr "[Enter]确认 [ESC]取消"
+
+msgid "Username: {} [{}] Nodes: {}"
+msgstr "用户名: {} [{}] 节点: {}"
+
+msgid "Master"
+msgstr "主节点"
+
+msgid "Slave"
+msgstr "从节点"
+
+msgid "Status: Disconnected"
+msgstr "状态: 未连接"
+
+msgid "Error: {}"
+msgstr "错误: {}"
+
+msgid "★ Visiting ({}m{}s)"
+msgstr "★ 正在拜访中 ({}分{}秒)"
+
+msgid "★ {} is visiting you ({}m{}s)"
+msgstr "★ {} 正在拜访你 ({}分{}秒)"
+
+msgid "─ Online Players ─"
+msgstr "─ 在线玩家 ─"
+
+msgid "(No other players)"
+msgstr "（暂无其他玩家）"
+
+msgid "─ Current Visitors ─"
+msgstr "─ 当前访客 ─"
+
+msgid "─ Actions ─"
+msgstr "─ 操作 ─"
+
+msgid "[e]End Visit [f]Remote Feed [p]Remote Play"
+msgstr "[e]结束拜访 [f]远程喂食 [p]远程玩耍"
+
+msgid "[1-9]Visit Player [u]Edit Username"
+msgstr "[1-9]拜访玩家 [u]修改用户名"
+
+msgid "[o]Disable LAN"
+msgstr "[o]关闭联机"
+
+msgid "[o]Enable LAN"
+msgstr "[o]开启联机"
+
+msgid "[l]Back [c]Compact Mode"
+msgstr "[l]返回 [c]紧凑模式"
+
+msgid "  [Visitor] {} (from {})"
+msgstr "  [访客] {} (来自 {})"
+
+msgid "from {}"
+msgstr "来自 {}"
+
+#: ascii-pet-win.py - Help line
+msgid "[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit"
+msgstr "[f]喂食 [p]玩耍 [s]睡觉 [w]领养 [b]上一只 [n]下一只 [t]属性 [a]成就 [u]物品 [e]导出 [Enter]紧凑 [q]退出"
