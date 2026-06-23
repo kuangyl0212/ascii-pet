@@ -45,10 +45,10 @@ class TestBuildTrayMenuItems:
     """验证托盘菜单项配置纯函数。"""
 
     def test_tray_menu_items_autostart_disabled(self):
-        """自启动未启用时，菜单应包含显示/隐藏/自启动/退出四项及两个分隔符。"""
+        """自启动未启用时，菜单应包含显示/隐藏/自启动/备份/恢复/退出及分隔符。"""
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False)
-        # 6 项: 显示, 隐藏, 分隔符, 自启动, 分隔符, 退出
-        assert len(items) == 6
+        # 9 项: 显示, 隐藏, 分隔符, 自启动, 分隔符, 手动备份, 恢复存档, 分隔符, 退出
+        assert len(items) == 9
         # 第一项: 显示窗口
         assert items[0] == (ID_TRAY_SHOW, '显示窗口', MF_STRING)
         # 第二项: 隐藏窗口
@@ -59,13 +59,19 @@ class TestBuildTrayMenuItems:
         assert items[3] == (ID_TRAY_AUTOSTART, '开机自启动', MF_STRING)
         # 第五项: 分隔符
         assert items[4][1] is None or items[4] == (0, None, MF_SEPARATOR)
-        # 第六项: 退出
-        assert items[5] == (ID_TRAY_QUIT, '退出', MF_STRING)
+        # 第六项: 手动备份
+        assert items[5] == (ascii_pet_win.ID_BACKUP, '手动备份', MF_STRING)
+        # 第七项: 恢复存档
+        assert items[6][0] == ascii_pet_win.ID_RESTORE
+        # 第八项: 分隔符
+        assert items[7][1] is None or items[7] == (0, None, MF_SEPARATOR)
+        # 第九项: 退出
+        assert items[8] == (ID_TRAY_QUIT, '退出', MF_STRING)
 
     def test_tray_menu_items_autostart_enabled(self):
         """自启动已启用时，自启动项应带 MF_CHECKED 标志，其余不变。"""
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=True)
-        assert len(items) == 6
+        assert len(items) == 9
         # 隐藏窗口项不变
         assert items[1] == (ID_TRAY_HIDE, '隐藏窗口', MF_STRING)
         # 自启动项带勾选
@@ -97,7 +103,7 @@ class TestDispatchTrayCommand:
         """分发未知命令应返回 False，不触发任何窗口操作。"""
         with patch.object(pet_window, 'minimize_to_tray') as mock_minimize, \
              patch.object(pet_window, 'restore_from_tray') as mock_restore:
-            result = pet_window.dispatch_tray_command(9999)
+            result = pet_window.dispatch_tray_command(3000)
         assert result is False
         mock_minimize.assert_not_called()
         mock_restore.assert_not_called()
@@ -131,4 +137,83 @@ class TestDispatchTrayCommand:
         assert ncmdshow in (1, 5, 9), (
             f'无效的 nCmdShow: {ncmdshow} (应为 SW_SHOWNORMAL=1/SW_SHOW=5/SW_RESTORE=9)'
         )
+
+
+# ─── Task: 存档备份/恢复菜单功能测试 ─────────────────────────────────────────
+
+ID_BACKUP = ascii_pet_win.ID_BACKUP
+ID_RESTORE = ascii_pet_win.ID_RESTORE
+ID_RESTORE_START = ascii_pet_win.ID_RESTORE_START
+MF_GRAYED = ascii_pet_win.MF_GRAYED
+
+
+class TestBuildTrayMenuItemsBackup:
+    """验证 build_tray_menu_items 包含备份/恢复菜单项。"""
+
+    def test_build_tray_menu_items_includes_backup(self):
+        """build_tray_menu_items 应包含手动备份项。"""
+        items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False, has_backups=True)
+        backup_items = [i for i in items if i[0] == ID_BACKUP]
+        assert len(backup_items) == 1
+        assert backup_items[0][1] == '手动备份'
+        assert backup_items[0][2] & MF_GRAYED == 0  # 不应灰色
+
+    def test_build_tray_menu_items_restore_grayed_without_backups(self):
+        """无备份时恢复存档项应为灰色。"""
+        items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False, has_backups=False)
+        restore_items = [i for i in items if i[0] == ID_RESTORE]
+        assert len(restore_items) == 1
+        assert restore_items[0][2] & MF_GRAYED == MF_GRAYED
+
+    def test_build_tray_menu_items_restore_enabled_with_backups(self):
+        """有备份时恢复存档项应可点击。"""
+        items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False, has_backups=True)
+        restore_items = [i for i in items if i[0] == ID_RESTORE]
+        assert len(restore_items) == 1
+        assert restore_items[0][2] & MF_GRAYED == 0
+
+
+class TestDispatchBackupRestore:
+    """验证备份/恢复命令分发。"""
+
+    def test_dispatch_backup_creates_backup(self, pet_window):
+        """分发 ID_BACKUP 应调用 create_backup 并设置消息。"""
+        with patch('pet_core.create_backup') as mock_create:
+            result = pet_window.dispatch_tray_command(ID_BACKUP)
+        assert result is True
+        mock_create.assert_called_once()
+        assert pet_window.game.message == '备份成功'
+
+    def test_dispatch_restore_reloads_game(self, pet_window):
+        """分发 ID_RESTORE_START+N 应调用 restore_from_backup 并重新加载游戏。"""
+        from datetime import datetime
+        fake_dt = datetime(2026, 1, 15, 10, 30, 0)
+        with patch('pet_core.list_backups', return_value=[('backup_20260115_103000.json', fake_dt)]), \
+             patch('pet_core.restore_from_backup', return_value=True) as mock_restore, \
+             patch.object(pet_window, '_reload_game') as mock_reload:
+            result = pet_window.dispatch_tray_command(ID_RESTORE_START)
+        assert result is True
+        mock_restore.assert_called_once()
+        mock_reload.assert_called_once()
+        assert pet_window.game.message == '已从备份恢复'
+
+
+class TestBackupRestoreIds:
+    """验证新 ID 常量不与现有 ID 冲突。"""
+
+    def test_backup_and_restore_ids_are_unique(self):
+        """ID_BACKUP、ID_RESTORE、ID_RESTORE_START 不应与现有 ID 冲突。"""
+        existing_ids = {
+            ID_TRAY_SHOW, ID_TRAY_HIDE, ID_TRAY_AUTOSTART, ID_TRAY_QUIT,
+            ascii_pet_win.ID_FEED, ascii_pet_win.ID_PLAY, ascii_pet_win.ID_SLEEP,
+            ascii_pet_win.ID_ADOPT, ascii_pet_win.ID_PREV_PET, ascii_pet_win.ID_NEXT_PET,
+            ascii_pet_win.ID_EXPORT, ascii_pet_win.ID_COMPACT, ascii_pet_win.ID_EXPANDED,
+            ascii_pet_win.ID_STATS, ascii_pet_win.ID_ACHIEVE, ascii_pet_win.ID_ITEMS,
+            ascii_pet_win.ID_LAN, ascii_pet_win.ID_QUIT,
+        }
+        assert ID_BACKUP not in existing_ids
+        assert ID_RESTORE not in existing_ids
+        assert ID_RESTORE_START not in existing_ids
+        assert ID_BACKUP != ID_RESTORE
+        assert ID_RESTORE_START > 4999  # 确保起始值足够大以容纳子菜单
 

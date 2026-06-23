@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Platform-independent game logic for ASCII Desktop Pet."""
 
-import os, json, time, random, math, queue, string
+import os, json, time, random, math, queue, string, shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -394,6 +394,86 @@ def get_state_path(uid, data_dir=None):
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / f'{hash_string(uid) & 0xFFFFFFFF:08x}.json'
 
+def validate_save_file(path):
+    """Validate that a save file exists, is readable, valid JSON, and has 'pets' field."""
+    if not path.exists():
+        return False
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        return isinstance(data, dict) and 'pets' in data
+    except (json.JSONDecodeError, OSError, ValueError):
+        return False
+
+MAX_BACKUPS = 10
+
+def _get_backup_dir(uid, data_dir=None):
+    if data_dir is None: data_dir = _default_data_dir()
+    backup_dir = data_dir / 'backups'
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    return backup_dir
+
+def create_backup(uid, data_dir=None):
+    """Create a backup of the current save file. Returns the backup Path."""
+    src = get_state_path(uid, data_dir)
+    backup_dir = _get_backup_dir(uid, data_dir)
+    h = f'{hash_string(uid) & 0xFFFFFFFF:08x}'
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    dst = backup_dir / f'{h}_{ts}.json'
+    shutil.copy2(src, dst)
+    # Cleanup: keep only MAX_BACKUPS newest
+    backups = sorted(backup_dir.glob(f'{h}_*.json'), key=lambda p: p.stat().st_mtime)
+    while len(backups) > MAX_BACKUPS:
+        backups.pop(0).unlink()
+    return dst
+
+def list_backups(uid, data_dir=None):
+    """List backups for a uid, sorted by mtime descending. Returns [(filename, datetime)]."""
+    backup_dir = _get_backup_dir(uid, data_dir)
+    h = f'{hash_string(uid) & 0xFFFFFFFF:08x}'
+    result = []
+    for p in backup_dir.glob(f'{h}_*.json'):
+        # Parse timestamp from filename: {hash}_YYYYMMDD_HHMMSS.json
+        ts_str = p.name[len(h)+1:-5]  # strip hash_ and .json
+        try:
+            ts = datetime.strptime(ts_str, '%Y%m%d_%H%M%S')
+        except ValueError:
+            continue
+        result.append((p.name, ts))
+    result.sort(key=lambda x: x[1], reverse=True)
+    return result
+
+def restore_from_backup(uid, backup_filename, data_dir=None):
+    """Restore save from a backup file. Returns True on success, False if backup not found."""
+    backup_dir = _get_backup_dir(uid, data_dir)
+    src = backup_dir / backup_filename
+    if not src.exists():
+        return False
+    dst = get_state_path(uid, data_dir)
+    shutil.copy2(src, dst)
+    return True
+
+def load_pets_with_fallback(uid, data_dir=None):
+    """Load pets with backup fallback. Returns (data, status).
+    status: 'ok', 'no_file', 'restored', 'corrupt_no_backup'
+    """
+    save_path = get_state_path(uid, data_dir)
+    if not save_path.exists():
+        return None, 'no_file'
+    try:
+        data = load_pets(uid, data_dir)
+    except (json.JSONDecodeError, OSError, ValueError):
+        data = None
+    if data is not None and validate_save_file(save_path):
+        return data, 'ok'
+    # Corrupt — try to restore from backup
+    backups = list_backups(uid, data_dir)
+    if backups:
+        restore_from_backup(uid, backups[0][0], data_dir)
+        data = load_pets(uid, data_dir)
+        return data, 'restored'
+    return None, 'corrupt_no_backup'
+
 def load_pets(uid, data_dir=None):
     p = get_state_path(uid, data_dir)
     if not p.exists(): return None
@@ -464,8 +544,25 @@ class PetGame:
         self.last_tick_time = time.time()
         self._decay_accum = {stat: 0.0 for stat in STAT_NAMES}
 
-        state, pets_data, pet_idx = load_state(uid, data_dir)
-        if state is None:
+        data, fallback_status = load_pets_with_fallback(uid, data_dir)
+        if fallback_status == 'ok':
+            idx = data.get('current', 0)
+            if idx >= len(data['pets']): idx = 0
+            state, pets_data, pet_idx = data['pets'][idx], data, idx
+        elif fallback_status == 'restored':
+            idx = data.get('current', 0)
+            if idx >= len(data['pets']): idx = 0
+            state, pets_data, pet_idx = data['pets'][idx], data, idx
+            self.message = '存档损坏，已从备份恢复'
+            self.message_time = time.time()
+        elif fallback_status == 'corrupt_no_backup':
+            bones = generate_companion(uid); name = generate_name(uid)
+            state = init_state(uid, bones, name)
+            pets_data = {'pets': [state], 'current': 0, 'adoption_log': []}; pet_idx = 0
+            save_pets(uid, pets_data, data_dir)
+            self.message = '存档损坏且无备份，已创建新存档'
+            self.message_time = time.time()
+        else:  # 'no_file'
             bones = generate_companion(uid); name = generate_name(uid)
             state = init_state(uid, bones, name)
             pets_data = {'pets': [state], 'current': 0, 'adoption_log': []}; pet_idx = 0
@@ -483,12 +580,14 @@ class PetGame:
         # Daily login bonus
         today = datetime.now().date().isoformat()
         if self.pets_data.get('last_login') != today:
+            create_backup(uid, data_dir)
             self.pets_data['last_login'] = today
             if sum(self.pets_data.get('inventory', {}).values()) < MAX_INVENTORY:
                 item_id = random.choice(list(ITEMS.keys()))
                 self.add_item(item_id)
-                self.message = f'Daily bonus: {ITEMS[item_id]["name"]}!'
-                self.message_time = time.time()
+                if self.message is None:
+                    self.message = f'Daily bonus: {ITEMS[item_id]["name"]}!'
+                    self.message_time = time.time()
             self.save()
 
         # LAN multiplayer state (disabled by default)
