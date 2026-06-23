@@ -135,8 +135,13 @@ class TestCreateBackup:
         name = backup_path.name
         assert name.startswith(h + '_')
         assert name.endswith('.json')
-        # Middle part should be YYYYMMDD_HHMMSS
-        ts_part = name[len(h)+1:-5]  # strip hash_ prefix and .json suffix
+        # New format: {hash}_{type}_YYYYMMDD_HHMMSS.json
+        # Middle part after hash_ and before .json should be {type}_YYYYMMDD_HHMMSS
+        middle = name[len(h)+1:-5]  # strip hash_ prefix and .json suffix
+        parts = middle.split('_', 1)  # split into type and timestamp
+        assert len(parts) == 2
+        assert parts[0] in ('auto', 'manual')
+        ts_part = parts[1]
         assert len(ts_part) == 15  # YYYYMMDD_HHMMSS
         assert ts_part[8] == '_'
 
@@ -190,10 +195,11 @@ class TestListBackups:
         assert result[0][0] == created_names[2]
         assert result[1][0] == created_names[1]
         assert result[2][0] == created_names[0]
-        # Each item should be (filename: str, timestamp: datetime)
-        for filename, ts in result:
+        # Each item should be (filename: str, timestamp: datetime, backup_type: str)
+        for filename, ts, backup_type in result:
             assert isinstance(filename, str)
             assert isinstance(ts, datetime)
+            assert backup_type in ('auto', 'manual')
 
 
 # ─── restore_from_backup ────────────────────────────────────────────────────
@@ -296,3 +302,120 @@ class TestPetGameInitBackup:
         # A backup should have been created
         backups = pet_core.list_backups(uid, data_dir)
         assert len(backups) >= 1
+
+
+# ─── create_backup backup_type ──────────────────────────────────────────────
+
+class TestCreateBackupType:
+    def test_create_backup_auto_type_in_filename(self, data_dir, uid):
+        """create_backup with backup_type='auto' includes 'auto' in filename."""
+        pets_data = _make_pets_data()
+        pet_core.save_pets(uid, pets_data, data_dir)
+        backup_path = pet_core.create_backup(uid, data_dir, backup_type='auto')
+        h = f'{pet_core.hash_string(uid) & 0xFFFFFFFF:08x}'
+        name = backup_path.name
+        # Format: {hash}_auto_YYYYMMDD_HHMMSS.json
+        middle = name[len(h)+1:-5]
+        parts = middle.split('_', 1)
+        assert parts[0] == 'auto'
+
+    def test_create_backup_manual_type_in_filename(self, data_dir, uid):
+        """create_backup with backup_type='manual' includes 'manual' in filename."""
+        pets_data = _make_pets_data()
+        pet_core.save_pets(uid, pets_data, data_dir)
+        backup_path = pet_core.create_backup(uid, data_dir, backup_type='manual')
+        h = f'{pet_core.hash_string(uid) & 0xFFFFFFFF:08x}'
+        name = backup_path.name
+        # Format: {hash}_manual_YYYYMMDD_HHMMSS.json
+        middle = name[len(h)+1:-5]
+        parts = middle.split('_', 1)
+        assert parts[0] == 'manual'
+
+    def test_create_backup_default_type_is_auto(self, data_dir, uid):
+        """create_backup without backup_type defaults to 'auto'."""
+        pets_data = _make_pets_data()
+        pet_core.save_pets(uid, pets_data, data_dir)
+        backup_path = pet_core.create_backup(uid, data_dir)
+        h = f'{pet_core.hash_string(uid) & 0xFFFFFFFF:08x}'
+        name = backup_path.name
+        middle = name[len(h)+1:-5]
+        parts = middle.split('_', 1)
+        assert parts[0] == 'auto'
+
+
+# ─── list_backups with backup_type ──────────────────────────────────────────
+
+class TestListBackupsType:
+    def test_list_backups_returns_type(self, data_dir, uid):
+        """list_backups returns 3-tuples with backup_type as third element."""
+        pets_data = _make_pets_data()
+        pet_core.save_pets(uid, pets_data, data_dir)
+        pet_core.create_backup(uid, data_dir, backup_type='auto')
+        result = pet_core.list_backups(uid, data_dir)
+        assert len(result) == 1
+        filename, ts, backup_type = result[0]
+        assert isinstance(filename, str)
+        assert isinstance(ts, datetime)
+        assert backup_type == 'auto'
+
+    def test_list_backups_distinguishes_auto_and_manual(self, data_dir, uid):
+        """list_backups correctly distinguishes auto and manual backups."""
+        pets_data = _make_pets_data()
+        pet_core.save_pets(uid, pets_data, data_dir)
+        base_time = datetime(2026, 1, 1, 12, 0, 0)
+        # Create an auto backup
+        fake_now = datetime.fromtimestamp(base_time.timestamp())
+        with patch.object(pet_core, 'datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            pet_core.create_backup(uid, data_dir, backup_type='auto')
+        # Create a manual backup 1 minute later
+        fake_now2 = datetime.fromtimestamp(base_time.timestamp() + 60)
+        with patch.object(pet_core, 'datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now2
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            pet_core.create_backup(uid, data_dir, backup_type='manual')
+        result = pet_core.list_backups(uid, data_dir)
+        assert len(result) == 2
+        # Newest first (manual), then auto
+        assert result[0][2] == 'manual'
+        assert result[1][2] == 'auto'
+
+    def test_list_backups_parses_old_format_as_auto(self, data_dir, uid):
+        """Old format backups (without type) are parsed as 'auto' for compatibility."""
+        pets_data = _make_pets_data()
+        pet_core.save_pets(uid, pets_data, data_dir)
+        # Manually create an old-format backup file: {hash}_YYYYMMDD_HHMMSS.json
+        h = f'{pet_core.hash_string(uid) & 0xFFFFFFFF:08x}'
+        backup_dir = data_dir / 'backups'
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        old_backup = backup_dir / f'{h}_20260101_120000.json'
+        shutil.copy2(pet_core.get_state_path(uid, data_dir), old_backup)
+        result = pet_core.list_backups(uid, data_dir)
+        assert len(result) == 1
+        assert result[0][2] == 'auto'  # old format defaults to 'auto'
+
+
+# ─── restore_from_backup pre-restore backup ─────────────────────────────────
+
+class TestRestorePreBackup:
+    def test_restore_creates_pre_restore_backup(self, data_dir, uid):
+        """restore_from_backup creates a backup of current state before restoring."""
+        pets_data = _make_pets_data(name='Original')
+        pet_core.save_pets(uid, pets_data, data_dir)
+        # Create a backup of the original data
+        backup_path = pet_core.create_backup(uid, data_dir, backup_type='manual')
+        # Modify the save file
+        pets_data['pets'][0]['name'] = 'Modified'
+        pet_core.save_pets(uid, pets_data, data_dir)
+        # Before restore, there should be 1 backup
+        assert len(pet_core.list_backups(uid, data_dir)) == 1
+        # Restore from backup
+        result = pet_core.restore_from_backup(uid, backup_path.name, data_dir)
+        assert result is True
+        # After restore, there should be 2 backups (original + pre-restore auto)
+        backups = pet_core.list_backups(uid, data_dir)
+        assert len(backups) == 2
+        # The pre-restore backup should be of type 'auto'
+        backup_types = [b[2] for b in backups]
+        assert 'auto' in backup_types

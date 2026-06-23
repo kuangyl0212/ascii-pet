@@ -769,8 +769,9 @@ class PetWindow:
             if item_id == ID_RESTORE and has_backups:
                 # 创建恢复子菜单
                 hsubmenu = user32.CreatePopupMenu()
-                for i, (filename, dt) in enumerate(backups):
-                    sub_label = dt.strftime('%Y-%m-%d %H:%M')
+                for i, (filename, dt, backup_type) in enumerate(backups):
+                    type_label = '自动' if backup_type == 'auto' else '手动'
+                    sub_label = f'[{type_label}] {dt.strftime("%Y-%m-%d %H:%M:%S")}'
                     user32.AppendMenuW(hsubmenu, MF_STRING, ID_RESTORE_START + i, sub_label)
                 user32.AppendMenuW(hmenu, MF_STRING | 0x10, hsubmenu, '恢复存档')  # 0x10 = MF_POPUP
             else:
@@ -823,7 +824,7 @@ class PetWindow:
             return True
         elif cmd == ID_BACKUP:
             from pet_core import create_backup
-            create_backup(self.game.uid, self.game.data_dir)
+            create_backup(self.game.uid, self.game.data_dir, backup_type='manual')
             self.game.message = '备份成功'
             self.game.message_time = time.time()
             user32.InvalidateRect(self.hwnd, None, False)
@@ -994,8 +995,9 @@ class PetWindow:
         has_backups = len(backups) > 0
         if has_backups:
             hsubmenu = user32.CreatePopupMenu()
-            for i, (filename, dt) in enumerate(backups):
-                sub_label = dt.strftime('%Y-%m-%d %H:%M')
+            for i, (filename, dt, backup_type) in enumerate(backups):
+                type_label = '自动' if backup_type == 'auto' else '手动'
+                sub_label = f'[{type_label}] {dt.strftime("%Y-%m-%d %H:%M:%S")}'
                 user32.AppendMenuW(hsubmenu, MF_STRING, ID_RESTORE_START + i, sub_label)
             user32.AppendMenuW(hmenu, MF_STRING | 0x10, hsubmenu, '恢复存档')  # 0x10 = MF_POPUP
         else:
@@ -1059,7 +1061,7 @@ class PetWindow:
             self.game.message_time = now
         elif cmd == ID_BACKUP:
             from pet_core import create_backup
-            create_backup(self.game.uid, self.game.data_dir)
+            create_backup(self.game.uid, self.game.data_dir, backup_type='manual')
             self.game.message = '备份成功'
             self.game.message_time = now
         elif cmd >= ID_RESTORE_START:
