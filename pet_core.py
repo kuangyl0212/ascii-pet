@@ -636,7 +636,7 @@ class PetGame:
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
         # Migrate old username.txt if no username in save
-        if self.lan_username is None:
+        if self.lan_username is None and self.data_dir is not None:
             old_file = Path(self.data_dir) / 'username.txt' if not isinstance(self.data_dir, Path) else self.data_dir / 'username.txt'
             if old_file.exists():
                 try:
