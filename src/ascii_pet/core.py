@@ -1179,10 +1179,11 @@ class PetGame:
                 return 'mode_change', self.mode
             return 'none', None
 
-        if self.mode == 'lan':
+        # LAN visit actions - work in expanded mode
+        if self.mode == 'expanded' and self.lan_enabled:
             if key in ('1','2','3','4','5','6','7','8','9'):
                 idx = int(key) - 1
-                peers = self.get_lan_peers() if self.lan_enabled else []
+                peers = self.get_lan_peers()
                 if idx < len(peers):
                     peer = peers[idx]
                     peer_id = peer.get('node_id', '')
