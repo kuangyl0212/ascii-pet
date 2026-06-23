@@ -141,5 +141,56 @@ def init_language(data_dir=None):
         set_language(_detect_system_language())
 
 
+_current_theme = 'green'
+
+
+def get_theme():
+    """Return current theme name."""
+    return _current_theme
+
+
+def set_theme(theme_name):
+    """Set current theme name."""
+    global _current_theme
+    _current_theme = theme_name
+
+
+def save_theme(theme_name, data_dir=None):
+    """Save theme preference to settings.json."""
+    global _current_theme
+    _current_theme = theme_name
+    settings_path = _get_settings_path(data_dir)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings = {}
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError):
+            settings = {}
+    settings['theme'] = theme_name
+    settings_path.write_text(json.dumps(settings, indent=2), encoding='utf-8')
+
+
+def load_theme(data_dir=None):
+    """Load theme preference from settings.json. Returns theme name or None."""
+    settings_path = _get_settings_path(data_dir)
+    if not settings_path.exists():
+        return None
+    try:
+        settings = json.loads(settings_path.read_text(encoding='utf-8'))
+        return settings.get('theme')
+    except (json.JSONDecodeError, OSError):
+        pass
+    return None
+
+
+def init_theme(data_dir=None):
+    """Initialize theme from settings."""
+    global _current_theme
+    saved = load_theme(data_dir)
+    if saved:
+        _current_theme = saved
+
+
 # Initialize with English by default (will be overridden by init_language in PetGame)
 set_language('en')

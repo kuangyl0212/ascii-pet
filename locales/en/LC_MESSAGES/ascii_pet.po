@@ -503,6 +503,21 @@ msgstr "Copied to clipboard!"
 msgid "Failed to copy"
 msgstr "Failed to copy"
 
+msgid "Green"
+msgstr "Green"
+
+msgid "Orange"
+msgstr "Orange"
+
+msgid "Theme"
+msgstr "Theme"
+
+msgid "Theme changed to Green"
+msgstr "Theme changed to Green"
+
+msgid "Theme changed to Orange"
+msgstr "Theme changed to Orange"
+
 msgid "Auto-start setting updated"
 msgstr "Auto-start setting updated"
 

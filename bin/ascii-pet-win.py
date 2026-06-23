@@ -14,10 +14,12 @@ from ctypes import wintypes, POINTER, c_void_p, c_char_p, c_size_t, memmove, c_b
 
 from ascii_pet.core import (
     SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ACHIEVEMENTS, MAX_PETS,
+    THEMES, DEFAULT_THEME,
     render_sprite, render_face, render_frame, export_text,
     PetGame,
 )
-from ascii_pet.i18n import _, get_language, set_language, save_settings
+from ascii_pet.i18n import (_, get_language, set_language, save_settings,
+                              get_theme, set_theme, save_theme, init_theme)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Win32 颜色映射
@@ -37,12 +39,25 @@ MOOD_RGB = {
     'hungry':  (255, 80, 80),
     'excited': (200, 0, 200),
 }
+
+# Theme colors - module-level variables updated by _refresh_theme()
 COLOR_DIM   = (0, 220, 50)
 COLOR_MSG   = (255, 215, 0)
 COLOR_WHITE = (0, 255, 65)
 COLOR_BAR_FILL = (0, 200, 0)
 COLOR_BAR_EMPTY = (80, 80, 80)
 COLOR_HOVER_BG = (25, 25, 45)
+
+def _refresh_theme():
+    """Update module-level color variables from current theme."""
+    global COLOR_DIM, COLOR_MSG, COLOR_WHITE, COLOR_BAR_FILL, COLOR_BAR_EMPTY, COLOR_HOVER_BG
+    theme = THEMES.get(get_theme(), THEMES[DEFAULT_THEME])
+    COLOR_DIM = theme['color_dim']
+    COLOR_MSG = theme['color_msg']
+    COLOR_WHITE = theme['color_white']
+    COLOR_BAR_FILL = theme['color_bar_fill']
+    COLOR_BAR_EMPTY = theme['color_bar_empty']
+    COLOR_HOVER_BG = theme['color_hover_bg']
 
 def rgb_to_colorref(r, g, b):
     return (b << 16) | (g << 8) | r
@@ -433,6 +448,8 @@ ID_RESTORE      = 1017
 ID_RESTORE_START = 5000  # 恢复子菜单的动态ID起始值
 ID_LANG_ZH     = 1018
 ID_LANG_EN     = 1019
+ID_THEME_GREEN = 1020
+ID_THEME_ORANGE = 1021
 ID_QUIT         = 1013
 
 MF_STRING     = 0x00000000
@@ -1024,6 +1041,13 @@ class PetWindow:
         user32.AppendMenuW(hlang, MF_STRING | zh_flag, ID_LANG_ZH, '中文')
         user32.AppendMenuW(hlang, MF_STRING | en_flag, ID_LANG_EN, 'English')
         user32.AppendMenuW(hmenu, MF_POPUP, hlang, _('Language'))
+        # Theme submenu
+        htheme = user32.CreatePopupMenu()
+        green_flag = MF_CHECKED if get_theme() == 'green' else 0
+        orange_flag = MF_CHECKED if get_theme() == 'orange' else 0
+        user32.AppendMenuW(htheme, MF_STRING | green_flag, ID_THEME_GREEN, _('Green'))
+        user32.AppendMenuW(htheme, MF_STRING | orange_flag, ID_THEME_ORANGE, _('Orange'))
+        user32.AppendMenuW(hmenu, MF_POPUP, htheme, _('Theme'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_QUIT, _('Quit (Q)'))
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
@@ -1090,6 +1114,16 @@ class PetWindow:
             set_language('en')
             save_settings()
             self.game.message = _('Language changed to English')
+            self.game.message_time = now
+        elif cmd == ID_THEME_GREEN:
+            save_theme('green', self.game.data_dir)
+            _refresh_theme()
+            self.game.message = _('Theme changed to Green')
+            self.game.message_time = now
+        elif cmd == ID_THEME_ORANGE:
+            save_theme('orange', self.game.data_dir)
+            _refresh_theme()
+            self.game.message = _('Theme changed to Orange')
             self.game.message_time = now
         elif cmd == ID_BACKUP:
             from ascii_pet.core import create_backup
@@ -1262,6 +1296,8 @@ def main():
         uid = arg
 
     game = PetGame(uid)
+    init_theme(game.data_dir)
+    _refresh_theme()
     pet_win = PetWindow(game)
     pet_win.run()
 

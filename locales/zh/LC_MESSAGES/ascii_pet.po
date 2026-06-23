@@ -503,6 +503,21 @@ msgstr "已复制到剪贴板！"
 msgid "Failed to copy"
 msgstr "复制失败"
 
+msgid "Green"
+msgstr "绿色"
+
+msgid "Orange"
+msgstr "橙色"
+
+msgid "Theme"
+msgstr "主题"
+
+msgid "Theme changed to Green"
+msgstr "已切换到绿色主题"
+
+msgid "Theme changed to Orange"
+msgstr "已切换到橙色主题"
+
 msgid "Auto-start setting updated"
 msgstr "已更新开机自启动设置"
 

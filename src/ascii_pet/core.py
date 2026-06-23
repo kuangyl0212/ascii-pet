@@ -28,6 +28,35 @@ RARITY_WEIGHTS = {'common':60,'uncommon':25,'rare':10,'epic':4,'legendary':1}
 RARITY_STARS = {'common':'★','uncommon':'★★','rare':'★★★','epic':'★★★★','legendary':'★★★★★'}
 RARITY_FLOOR = {'common':5,'uncommon':15,'rare':25,'epic':35,'legendary':50}
 STAT_NAMES = ['HUNGER','HAPPY','ENERGY','WISDOM','CHAOS']
+
+THEMES = {
+    'green': {
+        'name': 'Green',
+        'color_dim': (0, 220, 50),
+        'color_msg': (255, 215, 0),
+        'color_white': (0, 255, 65),
+        'color_bar_fill': (0, 200, 0),
+        'color_bar_empty': (80, 80, 80),
+        'color_hover_bg': (25, 25, 45),
+        'ansi_dim': '\033[90m',
+        'ansi_white': '\033[32m',
+        'ansi_bar_fill': '\033[32m',
+    },
+    'orange': {
+        'name': 'Orange',
+        'color_dim': (180, 120, 50),
+        'color_msg': (255, 200, 50),
+        'color_white': (255, 165, 0),
+        'color_bar_fill': (255, 140, 0),
+        'color_bar_empty': (80, 80, 80),
+        'color_hover_bg': (45, 25, 15),
+        'ansi_dim': '\033[33m',
+        'ansi_white': '\033[38;2;255;165;0m',
+        'ansi_bar_fill': '\033[38;2;255;140;0m',
+    },
+}
+
+DEFAULT_THEME = 'green'
 MOODS = {'happy':{'emoji':'♪'},'normal':{'emoji':'~'},
          'sleepy':{'emoji':'z'},'hungry':{'emoji':'!'},
          'excited':{'emoji':'★'}}
