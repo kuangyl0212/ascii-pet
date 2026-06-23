@@ -588,6 +588,7 @@ class PetGame:
         self.show_help = False
         self.message = None
         self.message_time = 0
+        self.visit_message_time = 0
         self.last_event_time = 0
         self.anim_end = 0
         self.anim_frames = []
@@ -765,6 +766,10 @@ class PetGame:
                 self._tick_visit_events()
             except Exception:
                 pass
+
+        # Don't let tick warnings overwrite recent visit messages (5s grace period)
+        if msg and now - self.visit_message_time < 5:
+            msg = None
 
         return msg, msg_time
 
@@ -1407,6 +1412,7 @@ class PetGame:
             self.visitor_pets.append(snapshot)
             self.message = _("{username}'s pet {name} came to visit!").format(username=from_username, name=snapshot.get('name','?'))
             self.message_time = now
+            self.visit_message_time = now
 
         elif msg_type == MSG_VISIT_FEED:
             # 收到远程喂食请求，执行本地 feed 并显示数值变化
@@ -1421,6 +1427,7 @@ class PetGame:
             else:
                 self.message = _("{name} fed your pet! {result}").format(name=from_name, result=result[0])
             self.message_time = now
+            self.visit_message_time = now
 
         elif msg_type == MSG_VISIT_PLAY:
             # 收到远程玩耍请求，执行本地 play 并显示数值变化
@@ -1435,6 +1442,7 @@ class PetGame:
             else:
                 self.message = _("{name} played with your pet! {result}").format(name=from_name, result=result[0])
             self.message_time = now
+            self.visit_message_time = now
 
         elif msg_type == MSG_VISIT_EVENT:
             # 收到随机事件，应用效果
@@ -1443,6 +1451,7 @@ class PetGame:
             self._apply_visit_event_effects(stat_effects)
             self.message = _("Visit event: {desc}").format(desc=description)
             self.message_time = now
+            self.visit_message_time = now
 
         elif msg_type == MSG_VISIT_END:
             # 结束拜访
