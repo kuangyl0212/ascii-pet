@@ -952,13 +952,42 @@ class PetGame:
             return 'quit', None
 
         if self.state.get('is_dead'):
+            # f/p/s: still return Potion guidance (no revive)
             if key in ('f', 'p', 's'):
                 msg, anim = self.handle_action(key if key != 'f' else 'feed')
                 if key == 'p': msg, anim = self.handle_action('play')
                 if key == 's': msg, anim = self.handle_action('sleep')
                 self.message = msg; self.message_time = now
                 return 'action', msg
-            return 'none', None
+            # r: direct revive with Potion
+            if key == 'r':
+                inv = self.pets_data.get('inventory', {})
+                if inv.get('potion', 0) > 0:
+                    msg = self.use_item('potion')
+                    self.message = msg; self.message_time = now
+                    return 'action', msg
+                else:
+                    msg = 'No Potion available!'
+                    self.message = msg; self.message_time = now
+                    return 'action', msg
+            # d: release dead pet
+            if key == 'd':
+                msg = self.release_pet(self.pet_idx)
+                self.message = msg; self.message_time = now
+                return 'action', msg
+            # b/n: switch pets
+            if key == 'b':
+                if len(self.pets_data['pets']) > 1:
+                    msg = self.switch_pet(-1)
+                    self.message = msg; self.message_time = now
+                    return 'pet_switch', msg
+                return 'none', None
+            if key == 'n':
+                msg = self.switch_pet(1)
+                self.message = msg; self.message_time = now
+                return 'pet_switch', msg
+            # Allow mode switching keys to fall through
+            # u, a, t, c, h, Enter, l, e will be handled by normal key processing below
 
         if self.mode == 'lan_name_edit':
             if key == '\r' or key == '\n':  # 回车确认
