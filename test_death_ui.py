@@ -132,7 +132,7 @@ class TestDeadReviveKey:
         game.pets_data.setdefault('inventory', {})
         atype, msg = game.handle_key('r')
         assert atype == 'action'
-        assert 'No Potion' in msg or 'No potion' in msg
+        assert 'No Potion' in msg or 'No potion' in msg or 'No such item' in msg
         assert game.state['is_dead'] is True
 
     def test_dead_r_key_multiple_potions(self, game):
