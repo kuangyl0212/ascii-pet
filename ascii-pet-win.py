@@ -237,7 +237,11 @@ def render_death_lines(game):
     for row in frame:
         lines.append((f'  {row}', (100, 100, 100)))
     lines.append(('', COLOR_DIM))
-    lines.append((_('[f]feed, [p]play, or [s]sleep to revive'), (255, 50, 50)))
+    potion_count = game.pets_data.get('inventory', {}).get('potion', 0)
+    revive_color = (255, 50, 50) if potion_count > 0 else COLOR_DIM
+    lines.append((_('[r]revive (Potion x{count})').format(count=potion_count), revive_color))
+    lines.append((_('[d]release'), (255, 50, 50)))
+    lines.append((_('[u]backpack'), COLOR_DIM))
     return lines
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1122,7 +1126,7 @@ class PetWindow:
 
     def get_render_lines(self):
         g = self.game
-        if g.state.get('is_dead'):
+        if g.state.get('is_dead') and g.mode in ('compact', 'expanded'):
             lines = render_death_lines(g)
         elif g.mode == 'compact':
             lines = render_compact_lines(g.bones, g.frame_idx, g.state)

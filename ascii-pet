@@ -222,14 +222,18 @@ def build_release(game):
     return '\n'.join(lines)
 
 def build_death(game):
-    RST='\033[0m'; BOLD='\033[1m'; RED='\033[31m'
+    RST='\033[0m'; BOLD='\033[1m'; RED='\033[31m'; DIM='\033[90m'
     frame = render_frame(game.bones, game.frame_idx, 'normal')
+    potion_count = game.pets_data.get('inventory', {}).get('potion', 0)
+    revive_color = RED if potion_count > 0 else DIM
     lines = [f'{RED}{BOLD}  Your pet has died...{RST}']
     lines.append('')
     for row in frame:
-        lines.append(f'  \033[90m{row}{RST}')
+        lines.append(f'  {DIM}{row}{RST}')
     lines.append('')
-    lines.append(f'{RED}  Press [f]feed, [p]play, or [s]sleep to revive{RST}')
+    lines.append(f'{revive_color}  [r]revive (Potion x{potion_count}){RST}')
+    lines.append(f'{RED}  [d]release{RST}')
+    lines.append(f'{DIM}  [u]backpack{RST}')
     return '\n'.join(lines)
 
 # ─── Layout ───────────────────────────────────────────────────────────────────
@@ -377,7 +381,7 @@ def main():
                 time.sleep(0.15)
 
             if need_redraw:
-                if game.state.get('is_dead'):
+                if game.state.get('is_dead') and game.mode in ('compact', 'expanded'):
                     display = build_death(game)
                 elif game.mode == 'compact': display = build_compact(game)
                 elif game.mode == 'expanded': display = build_expanded(game)
