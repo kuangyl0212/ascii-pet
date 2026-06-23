@@ -96,13 +96,14 @@ python build.py --all        # Build both versions
 ```
 pytest                        # Run all tests
 pytest -m "not slow"          # Skip slow tests
-pytest test_prng.py           # Run a single test file
+pytest test/test_prng.py      # Run a single test file
 pytest -k test_hash           # Run tests matching a name pattern
 pytest --cov=pet_core --cov-report=term-missing  # Coverage report
 ```
 
-- `conftest.py` auto-forces English locale before every test (`_set_english_language` fixture).
-- `pytest.ini` configures `testpaths=.` and `--strict-markers`.
+- Tests live in `test/` directory.
+- `test/conftest.py` auto-forces English locale before every test (`_set_english_language` fixture).
+- `pytest.ini` configures `testpaths=test` and `--strict-markers`.
 - `requirements-dev.txt`: pytest, pytest-cov, pytest-mock, pytest-xdist, coverage.
 - Coverage source is `pet_core` only; platform files and tests are excluded.
 
