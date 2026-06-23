@@ -1331,15 +1331,31 @@ class PetGame:
             self.message_time = now
 
         elif msg_type == MSG_VISIT_FEED:
-            # 收到远程喂食请求，执行本地 feed
+            # 收到远程喂食请求，执行本地 feed 并显示数值变化
+            stat_key = 'HUNGER'
+            before = self.state['stats'].get(stat_key, 0)
             result = self.handle_action('feed')
-            self.message = f"远程喂食：{result[0]}"
+            after = self.state['stats'].get(stat_key, 0)
+            delta = after - before
+            from_name = payload.get("from", "?")
+            if delta > 0:
+                self.message = f"{from_name} 喂食了你的宠物！{stat_key} {before}→{after}(+{delta})"
+            else:
+                self.message = f"{from_name} 喂食了你的宠物！{result[0]}"
             self.message_time = now
 
         elif msg_type == MSG_VISIT_PLAY:
-            # 收到远程玩耍请求，执行本地 play
+            # 收到远程玩耍请求，执行本地 play 并显示数值变化
+            stat_key = 'HAPPY'
+            before = self.state['stats'].get(stat_key, 0)
             result = self.handle_action('play')
-            self.message = f"远程玩耍：{result[0]}"
+            after = self.state['stats'].get(stat_key, 0)
+            delta = after - before
+            from_name = payload.get("from", "?")
+            if delta > 0:
+                self.message = f"{from_name} 和你的宠物玩耍了！{stat_key} {before}→{after}(+{delta})"
+            else:
+                self.message = f"{from_name} 和你的宠物玩耍了！{result[0]}"
             self.message_time = now
 
         elif msg_type == MSG_VISIT_EVENT:

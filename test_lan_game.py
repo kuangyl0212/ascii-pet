@@ -710,7 +710,8 @@ class TestRemoteActions:
         # HUNGER should have increased from local feed
         assert game.state['stats']['HUNGER'] > hunger_before
         assert game.message is not None
-        assert '远程' in game.message
+        assert 'friend' in game.message
+        assert '喂食' in game.message
 
     def test_receive_visit_play_executes_local_play(self, game):
         """Receiving MSG_VISIT_PLAY triggers local handle_action('play')."""
@@ -729,7 +730,8 @@ class TestRemoteActions:
         game.process_lan_queues()
 
         assert game.message is not None
-        assert '远程' in game.message
+        assert 'friend' in game.message
+        assert '玩耍' in game.message
 
 
 # ─── 5e. Visit timeout ─────────────────────────────────────────────────────
