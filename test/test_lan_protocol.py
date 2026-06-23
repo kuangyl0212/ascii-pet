@@ -440,7 +440,7 @@ class TestMakeVisitEvent:
 
 
 class TestVisitEventsCatalog:
-    """VISIT_EVENTS is a preset catalog of visit event templates."""
+    """VISIT_EVENTS is a preset catalog of visit event templates (Event objects)."""
 
     def test_is_list(self):
         assert isinstance(VISIT_EVENTS, list)
@@ -448,50 +448,59 @@ class TestVisitEventsCatalog:
     def test_has_at_least_five_events(self):
         assert len(VISIT_EVENTS) >= 5
 
-    def test_each_event_is_dict(self):
+    def test_each_event_is_event(self):
+        """Each entry in VISIT_EVENTS must be an Event instance."""
+        from ascii_pet.events import Event
         for evt in VISIT_EVENTS:
-            assert isinstance(evt, dict), f"event is not a dict: {evt!r}"
+            assert isinstance(evt, Event), f"event is not an Event: {evt!r}"
 
-    def test_each_event_has_required_keys(self):
+    def test_each_event_has_required_fields(self):
+        """Each Event must expose event_id, description, effects, target, category, metadata."""
         for evt in VISIT_EVENTS:
-            assert set(evt.keys()) == {"event_type", "description", "stat_effects"}, \
-                f"event has wrong keys: {evt!r}"
+            assert hasattr(evt, 'event_id')
+            assert hasattr(evt, 'description')
+            assert hasattr(evt, 'effects')
+            assert hasattr(evt, 'target')
+            assert hasattr(evt, 'category')
+            assert hasattr(evt, 'metadata')
 
-    def test_each_event_stat_effects_is_dict(self):
+    def test_each_event_effects_is_dict(self):
         for evt in VISIT_EVENTS:
-            assert isinstance(evt["stat_effects"], dict), \
-                f"stat_effects is not a dict: {evt!r}"
+            assert isinstance(evt.effects, dict), \
+                f"effects is not a dict: {evt!r}"
 
     def test_includes_required_event_types(self):
-        """Catalog must include the 5 required event types."""
+        """Catalog must include the 5 required original event types."""
         required = {"play_together", "share_food", "race", "chat", "nap_together"}
-        actual = {evt["event_type"] for evt in VISIT_EVENTS}
+        actual = {evt.metadata.get('original_event_type', evt.event_id) for evt in VISIT_EVENTS}
         assert required.issubset(actual), \
             f"missing event types: {required - actual}"
 
     def test_event_types_unique(self):
-        """Each event_type should be unique within the catalog."""
-        types = [evt["event_type"] for evt in VISIT_EVENTS]
+        """Each original_event_type should be unique within the catalog."""
+        types = [evt.metadata.get('original_event_type', evt.event_id) for evt in VISIT_EVENTS]
         assert len(types) == len(set(types)), \
             f"duplicate event types: {types}"
 
     def test_stat_effects_values_in_reasonable_range(self):
         """All stat effect values should be in [-20, +20]."""
         for evt in VISIT_EVENTS:
-            for stat, value in evt["stat_effects"].items():
+            for stat, value in evt.effects.items():
                 assert -20 <= value <= 20, \
-                    f"{evt['event_type']}.{stat}={value} out of [-20, 20]"
+                    f"{evt.event_id}.{stat}={value} out of [-20, 20]"
 
     def test_each_event_json_serializable(self):
-        """Every event in the catalog must be JSON-serializable."""
+        """Every event in the catalog must be JSON-serializable via serialize_event."""
+        from ascii_pet.events import serialize_event
         for evt in VISIT_EVENTS:
-            s = json.dumps(evt, ensure_ascii=False)
-            assert json.loads(s) == evt
+            serialized = serialize_event(evt)
+            s = json.dumps(serialized, ensure_ascii=False)
+            assert json.loads(s) == serialized
 
     def test_descriptions_are_non_empty_strings(self):
         for evt in VISIT_EVENTS:
-            assert isinstance(evt["description"], str)
-            assert len(evt["description"]) > 0
+            assert isinstance(evt.description, str)
+            assert len(evt.description) > 0
 
 
 # ─── encode/decode round-trip for new message types ─────────────────────────
@@ -567,9 +576,12 @@ class TestEncodeDecodeNewVisitMessages:
     def test_visit_event_from_catalog_roundtrips(self):
         """Each VISIT_EVENTS entry can be sent as a visit_event payload."""
         for evt in VISIT_EVENTS:
-            raw = encode_message(MSG_VISIT_EVENT, evt)
+            # Build the wire-format dict via make_visit_event (as production does)
+            event_type = evt.metadata.get('original_event_type', evt.event_id)
+            payload = make_visit_event(event_type, evt.description, evt.effects)
+            raw = encode_message(MSG_VISIT_EVENT, payload)
             result = decode_message(raw)
             assert result is not None
             msg_type, decoded = result
             assert msg_type == MSG_VISIT_EVENT
-            assert decoded == evt
+            assert decoded == payload

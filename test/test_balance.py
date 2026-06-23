@@ -31,12 +31,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from ascii_pet import core as pet_core
 from ascii_pet.core import PetGame, RANDOM_EVENTS
+from ascii_pet.events import Event
 
 
 def _find_event(name):
-    """Find an event in RANDOM_EVENTS by name. Returns the event tuple or None."""
+    """Find an event in RANDOM_EVENTS by name. Returns the Event or None."""
     for evt in RANDOM_EVENTS:
-        if evt[0] == name:
+        if evt.event_id == name:
             return evt
     return None
 
@@ -91,8 +92,8 @@ class TestHealingEventValuesHalved(unittest.TestCase):
         evt = _find_event('mood_boost')
         self.assertIsNotNone(evt, "mood_boost event should exist")
         self.assertEqual(
-            evt[2].get('HAPPY'), 5,
-            f"mood_boost HAPPY should be 5, got {evt[2].get('HAPPY')}",
+            evt.effects.get('HAPPY'), 5,
+            f"mood_boost HAPPY should be 5, got {evt.effects.get('HAPPY')}",
         )
 
     def test_found_food_hunger_is_5(self):
@@ -100,8 +101,8 @@ class TestHealingEventValuesHalved(unittest.TestCase):
         evt = _find_event('found_food')
         self.assertIsNotNone(evt, "found_food event should exist")
         self.assertEqual(
-            evt[2].get('HUNGER'), 5,
-            f"found_food HUNGER should be 5, got {evt[2].get('HUNGER')}",
+            evt.effects.get('HUNGER'), 5,
+            f"found_food HUNGER should be 5, got {evt.effects.get('HUNGER')}",
         )
 
     def test_nap_energy_is_5(self):
@@ -109,8 +110,8 @@ class TestHealingEventValuesHalved(unittest.TestCase):
         evt = _find_event('nap')
         self.assertIsNotNone(evt, "nap event should exist")
         self.assertEqual(
-            evt[2].get('ENERGY'), 5,
-            f"nap ENERGY should be 5, got {evt[2].get('ENERGY')}",
+            evt.effects.get('ENERGY'), 5,
+            f"nap ENERGY should be 5, got {evt.effects.get('ENERGY')}",
         )
 
     def test_dance_happy_is_3(self):
@@ -118,8 +119,8 @@ class TestHealingEventValuesHalved(unittest.TestCase):
         evt = _find_event('dance')
         self.assertIsNotNone(evt, "dance event should exist")
         self.assertEqual(
-            evt[2].get('HAPPY'), 3,
-            f"dance HAPPY should be 3, got {evt[2].get('HAPPY')}",
+            evt.effects.get('HAPPY'), 3,
+            f"dance HAPPY should be 3, got {evt.effects.get('HAPPY')}",
         )
 
     def test_sing_wisdom_is_3(self):
@@ -127,8 +128,8 @@ class TestHealingEventValuesHalved(unittest.TestCase):
         evt = _find_event('sing')
         self.assertIsNotNone(evt, "sing event should exist")
         self.assertEqual(
-            evt[2].get('WISDOM'), 3,
-            f"sing WISDOM should be 3, got {evt[2].get('WISDOM')}",
+            evt.effects.get('WISDOM'), 3,
+            f"sing WISDOM should be 3, got {evt.effects.get('WISDOM')}",
         )
 
     def test_find_coin_xp_is_3(self):
@@ -136,8 +137,8 @@ class TestHealingEventValuesHalved(unittest.TestCase):
         evt = _find_event('find_coin')
         self.assertIsNotNone(evt, "find_coin event should exist")
         self.assertEqual(
-            evt[2].get('xp'), 3,
-            f"find_coin xp should be 3, got {evt[2].get('xp')}",
+            evt.metadata.get('xp'), 3,
+            f"find_coin xp should be 3, got {evt.metadata.get('xp')}",
         )
 
 
@@ -152,8 +153,8 @@ class TestNewNegativeEvents(unittest.TestCase):
         evt = _find_event('stomach_ache')
         self.assertIsNotNone(evt, "stomach_ache event should exist in RANDOM_EVENTS")
         self.assertEqual(
-            evt[2].get('HUNGER'), -5,
-            f"stomach_ache should have HUNGER: -5, got {evt[2].get('HUNGER')}",
+            evt.effects.get('HUNGER'), -5,
+            f"stomach_ache should have HUNGER: -5, got {evt.effects.get('HUNGER')}",
         )
 
     def test_nightmare_event_exists(self):
@@ -161,8 +162,8 @@ class TestNewNegativeEvents(unittest.TestCase):
         evt = _find_event('nightmare')
         self.assertIsNotNone(evt, "nightmare event should exist in RANDOM_EVENTS")
         self.assertEqual(
-            evt[2].get('ENERGY'), -5,
-            f"nightmare should have ENERGY: -5, got {evt[2].get('ENERGY')}",
+            evt.effects.get('ENERGY'), -5,
+            f"nightmare should have ENERGY: -5, got {evt.effects.get('ENERGY')}",
         )
 
     def test_boredom_event_exists(self):
@@ -170,8 +171,8 @@ class TestNewNegativeEvents(unittest.TestCase):
         evt = _find_event('boredom')
         self.assertIsNotNone(evt, "boredom event should exist in RANDOM_EVENTS")
         self.assertEqual(
-            evt[2].get('HAPPY'), -5,
-            f"boredom should have HAPPY: -5, got {evt[2].get('HAPPY')}",
+            evt.effects.get('HAPPY'), -5,
+            f"boredom should have HAPPY: -5, got {evt.effects.get('HAPPY')}",
         )
 
 
@@ -322,7 +323,7 @@ class TestChaosAffectsEventProbability(unittest.TestCase):
         game.state['stats']['CHAOS'] = 50
         game.last_event_time = 0
         game.last_tick_time = time.time()
-        neutral_evt = ('test', 'test', {})
+        neutral_evt = Event('test', 'test', {})
         try:
             # random.random()=0.025 is > 2% but < 3%, so should trigger with CHAOS=50
             with patch('random.random', return_value=0.025), \
@@ -358,7 +359,7 @@ class TestChaosAffectsEventProbability(unittest.TestCase):
         """CHAOS=100 should give 4% probability; CHAOS=0 should not at same random."""
         tmpdir = Path(tempfile.mkdtemp())
         uid = f'test-chaos-100-{int(time.time() * 1000000)}'
-        neutral_evt = ('test', 'test', {})
+        neutral_evt = Event('test', 'test', {})
         try:
             # CHAOS=100: 0.02*(1+100/100)=0.04, random=0.035 is < 4% → triggers
             game = PetGame(uid, data_dir=tmpdir)
