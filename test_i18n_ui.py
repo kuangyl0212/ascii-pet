@@ -264,7 +264,9 @@ class TestDeathPanelI18n:
 
     def test_revive_zh(self):
         i18n.set_language('zh')
-        assert i18n._('[f]feed, [p]play, or [s]sleep to revive') == '[f]喂食, [p]玩耍, 或 [s]睡觉来复活'
+        assert i18n._('[r]revive (Potion x{count})') == '[r]复活 (药水 x{count})'
+        assert i18n._('[d]release') == '[d]遗弃'
+        assert i18n._('[u]backpack') == '[u]背包'
 
 
 class TestLANPanelI18n:

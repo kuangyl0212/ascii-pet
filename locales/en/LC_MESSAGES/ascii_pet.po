@@ -461,8 +461,23 @@ msgstr "Max {} pets. Choose 1-3, or [c]cancel"
 msgid "[1-3]select [c]cancel"
 msgstr "[1-3]select [c]cancel"
 
-msgid "[f]feed, [p]play, or [s]sleep to revive"
-msgstr "[f]feed, [p]play, or [s]sleep to revive"
+msgid "[r]revive (Potion x{count})"
+msgstr "[r]revive (Potion x{count})"
+
+msgid "[d]release"
+msgstr "[d]release"
+
+msgid "[u]backpack"
+msgstr "[u]backpack"
+
+msgid "Save corrupted, restored from backup"
+msgstr "Save corrupted, restored from backup"
+
+msgid "Save corrupted with no backup, created new save"
+msgstr "Save corrupted with no backup, created new save"
+
+msgid "No Potion available!"
+msgstr "No Potion available!"
 
 msgid "Copied to clipboard!"
 msgstr "Copied to clipboard!"

@@ -272,7 +272,7 @@ class TestPetGameInitBackup:
         path = pet_core.get_state_path(uid, data_dir)
         path.write_text('{corrupt!!!', encoding='utf-8')
         game = pet_core.PetGame(uid, data_dir)
-        assert game.message == '存档损坏，已从备份恢复'
+        assert game.message == 'Save corrupted, restored from backup'
 
     def test_corrupt_no_backup_creates_new_save(self, data_dir, uid):
         """When save is corrupt and no backup, PetGame creates new save with message."""
@@ -281,7 +281,7 @@ class TestPetGameInitBackup:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{corrupt!!!', encoding='utf-8')
         game = pet_core.PetGame(uid, data_dir)
-        assert game.message == '存档损坏且无备份，已创建新存档'
+        assert game.message == 'Save corrupted with no backup, created new save'
         # Should have a new pet
         assert game.state is not None
         assert game.pets_data is not None

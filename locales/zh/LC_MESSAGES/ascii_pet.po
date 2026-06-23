@@ -461,8 +461,23 @@ msgstr "最多{}只宠物。选择1-3，或 [c]取消"
 msgid "[1-3]select [c]cancel"
 msgstr "[1-3]选择 [c]取消"
 
-msgid "[f]feed, [p]play, or [s]sleep to revive"
-msgstr "[f]喂食, [p]玩耍, 或 [s]睡觉来复活"
+msgid "[r]revive (Potion x{count})"
+msgstr "[r]复活 (药水 x{count})"
+
+msgid "[d]release"
+msgstr "[d]遗弃"
+
+msgid "[u]backpack"
+msgstr "[u]背包"
+
+msgid "Save corrupted, restored from backup"
+msgstr "存档损坏，已从备份恢复"
+
+msgid "Save corrupted with no backup, created new save"
+msgstr "存档损坏且无备份，已创建新存档"
+
+msgid "No Potion available!"
+msgstr "没有药水可用！"
 
 msgid "Copied to clipboard!"
 msgstr "已复制到剪贴板！"

@@ -590,14 +590,14 @@ class PetGame:
             idx = data.get('current', 0)
             if idx >= len(data['pets']): idx = 0
             state, pets_data, pet_idx = data['pets'][idx], data, idx
-            self.message = '存档损坏，已从备份恢复'
+            self.message = _('Save corrupted, restored from backup')
             self.message_time = time.time()
         elif fallback_status == 'corrupt_no_backup':
             bones = generate_companion(uid); name = generate_name(uid)
             state = init_state(uid, bones, name)
             pets_data = {'pets': [state], 'current': 0, 'adoption_log': []}; pet_idx = 0
             save_pets(uid, pets_data, data_dir)
-            self.message = '存档损坏且无备份，已创建新存档'
+            self.message = _('Save corrupted with no backup, created new save')
             self.message_time = time.time()
         else:  # 'no_file'
             bones = generate_companion(uid); name = generate_name(uid)
@@ -969,7 +969,7 @@ class PetGame:
                     self.message = msg; self.message_time = now
                     return 'action', msg
                 else:
-                    msg = 'No Potion available!'
+                    msg = _('No Potion available!')
                     self.message = msg; self.message_time = now
                     return 'action', msg
             # d: release dead pet

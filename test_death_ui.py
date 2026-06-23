@@ -129,7 +129,7 @@ class TestDeadReviveKey:
 
     def test_dead_r_key_no_potion(self, game):
         """无 Potion 时按 r 键返回提示。"""
-        game.pets_data.setdefault('inventory', {})
+        game.pets_data['inventory'] = {}
         atype, msg = game.handle_key('r')
         assert atype == 'action'
         assert 'No Potion' in msg or 'No potion' in msg or 'No such item' in msg
