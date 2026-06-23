@@ -196,11 +196,31 @@ class TestDispatchBackupRestore:
         mock_create.assert_called_once()
         assert pet_window.game.message == 'Backup successful'
 
+    def test_dispatch_backup_passes_manual_type(self, pet_window):
+        """分发 ID_BACKUP 应调用 create_backup 时传入 backup_type='manual'。"""
+        with patch('pet_core.create_backup') as mock_create:
+            pet_window.dispatch_tray_command(ID_BACKUP)
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        assert kwargs.get('backup_type') == 'manual' or \
+               (len(args) >= 3 and args[2] == 'manual'), \
+               f'create_backup 未传入 backup_type="manual", call_args={mock_create.call_args}'
+
+    def test_execute_menu_backup_passes_manual_type(self, pet_window):
+        """execute_menu_command 中 ID_BACKUP 也应传入 backup_type='manual'。"""
+        with patch('pet_core.create_backup') as mock_create:
+            pet_window.execute_menu_command(ID_BACKUP)
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        assert kwargs.get('backup_type') == 'manual' or \
+               (len(args) >= 3 and args[2] == 'manual'), \
+               f'create_backup 未传入 backup_type="manual", call_args={mock_create.call_args}'
+
     def test_dispatch_restore_reloads_game(self, pet_window):
         """分发 ID_RESTORE_START+N 应调用 restore_from_backup 并重新加载游戏。"""
         from datetime import datetime
         fake_dt = datetime(2026, 1, 15, 10, 30, 0)
-        with patch('pet_core.list_backups', return_value=[('backup_20260115_103000.json', fake_dt)]), \
+        with patch('pet_core.list_backups', return_value=[('backup_20260115_103000.json', fake_dt, 'auto')]), \
              patch('pet_core.restore_from_backup', return_value=True) as mock_restore, \
              patch.object(pet_window, '_reload_game') as mock_reload:
             result = pet_window.dispatch_tray_command(ID_RESTORE_START)
@@ -208,6 +228,70 @@ class TestDispatchBackupRestore:
         mock_restore.assert_called_once()
         mock_reload.assert_called_once()
         assert pet_window.game.message == 'Restored from backup'
+
+
+class TestBackupSubmenuLabels:
+    """验证恢复子菜单标签格式：[Auto/Manual] YYYY-MM-DD HH:MM:SS"""
+
+    def test_show_tray_menu_submenu_label_format(self, pet_window):
+        """show_tray_menu 子菜单标签应包含类型标注和秒数。"""
+        from datetime import datetime
+        fake_auto = datetime(2026, 3, 10, 14, 5, 30)
+        fake_manual = datetime(2026, 3, 11, 9, 0, 15)
+        backups = [
+            ('auto_backup.json', fake_auto, 'auto'),
+            ('manual_backup.json', fake_manual, 'manual'),
+        ]
+        appended_labels = []
+
+        def fake_append_menu(menu, flags, item_id, label):
+            if label and isinstance(label, str) and (label.startswith('[Auto]') or label.startswith('[Manual]')):
+                appended_labels.append(label)
+            return True
+
+        with patch('pet_core.list_backups', return_value=backups), \
+             patch.object(ascii_pet_win.user32, 'GetCursorPos'), \
+             patch.object(ascii_pet_win.user32, 'CreatePopupMenu', return_value=2), \
+             patch.object(ascii_pet_win.user32, 'AppendMenuW', side_effect=fake_append_menu), \
+             patch.object(ascii_pet_win.user32, 'TrackPopupMenu', return_value=0), \
+             patch.object(ascii_pet_win.user32, 'DestroyMenu'), \
+             patch.object(ascii_pet_win, 'is_autostart_enabled', return_value=False), \
+             patch.object(ascii_pet_win, 'refresh_autostart_cache_sync'):
+            pet_window.show_tray_menu()
+
+        assert len(appended_labels) == 2
+        assert appended_labels[0] == '[Auto] 2026-03-10 14:05:30'
+        assert appended_labels[1] == '[Manual] 2026-03-11 09:00:15'
+
+    def test_show_context_menu_submenu_label_format(self, pet_window):
+        """show_context_menu 子菜单标签应包含类型标注和秒数。"""
+        from datetime import datetime
+        fake_auto = datetime(2026, 5, 20, 8, 30, 45)
+        fake_manual = datetime(2026, 5, 21, 16, 0, 0)
+        backups = [
+            ('auto_backup.json', fake_auto, 'auto'),
+            ('manual_backup.json', fake_manual, 'manual'),
+        ]
+        appended_labels = []
+
+        def fake_append_menu(menu, flags, item_id, label):
+            if label and isinstance(label, str) and (label.startswith('[Auto]') or label.startswith('[Manual]')):
+                appended_labels.append(label)
+            return True
+
+        with patch('pet_core.list_backups', return_value=backups), \
+             patch.object(ascii_pet_win.user32, 'GetCursorPos'), \
+             patch.object(ascii_pet_win.user32, 'CreatePopupMenu', return_value=2), \
+             patch.object(ascii_pet_win.user32, 'AppendMenuW', side_effect=fake_append_menu), \
+             patch.object(ascii_pet_win.user32, 'TrackPopupMenu', return_value=0), \
+             patch.object(ascii_pet_win.user32, 'DestroyMenu'), \
+             patch.object(ascii_pet_win, 'is_autostart_enabled', return_value=False), \
+             patch.object(ascii_pet_win, 'refresh_autostart_cache_sync'):
+            pet_window.show_context_menu(lparam=0)
+
+        assert len(appended_labels) == 2
+        assert appended_labels[0] == '[Auto] 2026-05-20 08:30:45'
+        assert appended_labels[1] == '[Manual] 2026-05-21 16:00:00'
 
 
 class TestBackupRestoreIds:

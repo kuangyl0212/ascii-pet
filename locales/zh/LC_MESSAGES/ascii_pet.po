@@ -479,6 +479,12 @@ msgstr "存档损坏且无备份，已创建新存档"
 msgid "No Potion available!"
 msgstr "没有药水可用！"
 
+msgid "Auto"
+msgstr "自动"
+
+msgid "Manual"
+msgstr "手动"
+
 msgid "Copied to clipboard!"
 msgstr "已复制到剪贴板！"
 

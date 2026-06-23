@@ -414,13 +414,13 @@ def _get_backup_dir(uid, data_dir=None):
     backup_dir.mkdir(parents=True, exist_ok=True)
     return backup_dir
 
-def create_backup(uid, data_dir=None):
+def create_backup(uid, data_dir=None, backup_type='auto'):
     """Create a backup of the current save file. Returns the backup Path."""
     src = get_state_path(uid, data_dir)
     backup_dir = _get_backup_dir(uid, data_dir)
     h = f'{hash_string(uid) & 0xFFFFFFFF:08x}'
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    dst = backup_dir / f'{h}_{ts}.json'
+    dst = backup_dir / f'{h}_{backup_type}_{ts}.json'
     shutil.copy2(src, dst)
     # Cleanup: keep only MAX_BACKUPS newest
     backups = sorted(backup_dir.glob(f'{h}_*.json'), key=lambda p: p.stat().st_mtime)
@@ -429,18 +429,27 @@ def create_backup(uid, data_dir=None):
     return dst
 
 def list_backups(uid, data_dir=None):
-    """List backups for a uid, sorted by mtime descending. Returns [(filename, datetime)]."""
+    """List backups for a uid, sorted by mtime descending. Returns [(filename, datetime, backup_type)]."""
     backup_dir = _get_backup_dir(uid, data_dir)
     h = f'{hash_string(uid) & 0xFFFFFFFF:08x}'
     result = []
     for p in backup_dir.glob(f'{h}_*.json'):
-        # Parse timestamp from filename: {hash}_YYYYMMDD_HHMMSS.json
+        # Parse timestamp and type from filename: {hash}_{type}_YYYYMMDD_HHMMSS.json
+        # Also support old format: {hash}_YYYYMMDD_HHMMSS.json (type defaults to 'auto')
         ts_str = p.name[len(h)+1:-5]  # strip hash_ and .json
+        parts = ts_str.split('_', 1)
+        if len(parts) == 2 and parts[0] in ('auto', 'manual'):
+            btype = parts[0]
+            ts_part = parts[1]
+        else:
+            # Old format: no type field, ts_str is YYYYMMDD_HHMMSS
+            btype = 'auto'
+            ts_part = ts_str
         try:
-            ts = datetime.strptime(ts_str, '%Y%m%d_%H%M%S')
+            ts = datetime.strptime(ts_part, '%Y%m%d_%H%M%S')
         except ValueError:
             continue
-        result.append((p.name, ts))
+        result.append((p.name, ts, btype))
     result.sort(key=lambda x: x[1], reverse=True)
     return result
 
@@ -450,8 +459,14 @@ def restore_from_backup(uid, backup_filename, data_dir=None):
     src = backup_dir / backup_filename
     if not src.exists():
         return False
+    # Read backup content first to avoid collision if pre-restore backup
+    # generates the same filename (same-second timestamp)
+    backup_data = src.read_bytes()
+    # Create a pre-restore backup of current state
     dst = get_state_path(uid, data_dir)
-    shutil.copy2(src, dst)
+    if dst.exists():
+        create_backup(uid, data_dir, backup_type='auto')
+    dst.write_bytes(backup_data)
     return True
 
 def load_pets_with_fallback(uid, data_dir=None):
@@ -617,7 +632,7 @@ class PetGame:
         # Daily login bonus
         today = datetime.now().date().isoformat()
         if self.pets_data.get('last_login') != today:
-            create_backup(uid, data_dir)
+            create_backup(uid, data_dir, backup_type='auto')
             self.pets_data['last_login'] = today
             if sum(self.pets_data.get('inventory', {}).values()) < MAX_INVENTORY:
                 item_id = random.choice(list(ITEMS.keys()))

@@ -479,6 +479,12 @@ msgstr "Save corrupted with no backup, created new save"
 msgid "No Potion available!"
 msgstr "No Potion available!"
 
+msgid "Auto"
+msgstr "Auto"
+
+msgid "Manual"
+msgstr "Manual"
+
 msgid "Copied to clipboard!"
 msgstr "Copied to clipboard!"
 
