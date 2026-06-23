@@ -673,13 +673,13 @@ class PetGame:
                     self.message_time = time.time()
             self.save()
 
-        # LAN multiplayer state (disabled by default)
+        # LAN multiplayer state - auto-enable on startup
         self.lan_enabled = False
         self.lan_node = None
         self.lan_peers = []
         self.visitor_pets = []
-        self.active_visit = None  # {"target", "start_time", "pet_snapshot"}
-        self.being_visited = None  # {"from", "start_time", "pet_snapshot"}
+        self.active_visit = None
+        self.being_visited = None
         self.visit_event_cooldown = 0.0
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
@@ -693,6 +693,11 @@ class PetGame:
                     self.save()
                 except Exception:
                     pass
+        # Auto-enable LAN (non-blocking, graceful failure)
+        try:
+            self.enable_lan()
+        except Exception:
+            pass  # Network unavailable, continue with local play
 
     def save(self):
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
@@ -1127,16 +1132,7 @@ class PetGame:
                 self.mode = 'items'
             return 'mode_change', self.mode
 
-        if key == 'l':
-            if self.mode == 'lan':
-                self.mode = 'expanded'
-            elif self.mode in ('expanded', 'stats', 'achievements', 'items'):
-                self.mode = 'lan'
-            else:
-                self.mode = 'lan'
-            return 'mode_change', self.mode
-
-        if key == 'e' and self.mode not in ('compact', 'lan'):
+        if key == 'e' and self.mode != 'compact':
             return 'export', None
 
         if key == 'f' and self.mode != 'lan':
@@ -1215,21 +1211,6 @@ class PetGame:
                     self.message = _('Remote play sent')
                 else:
                     self.message = _('Remote play failed (not visiting)')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'u':
-                self.mode = 'lan_name_edit'
-                self._name_input = ""
-                return 'mode_change', self.mode
-            if key == 'o':
-                if self.lan_enabled:
-                    self.disable_lan()
-                    self.message = _('LAN disabled')
-                else:
-                    if self.enable_lan():
-                        self.message = _('LAN enabled! Username: {username}').format(username=self.lan_username)
-                    else:
-                        self.message = _('LAN failed to start (port in use or firewall)')
                 self.message_time = now
                 return 'action', self.message
 
