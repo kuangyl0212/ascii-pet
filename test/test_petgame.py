@@ -198,7 +198,7 @@ class TestTick:
         game.last_event_time = 0  # bypass cooldown
         game.last_tick_time = time.time()
         game.state['stats']['HAPPY'] = 50  # ensure room for +5
-        mood_boost = next(e for e in RANDOM_EVENTS if e[0] == 'mood_boost')
+        mood_boost = next(e for e in RANDOM_EVENTS if e.event_id == 'mood_boost')
         with patch('random.random', return_value=0.001), \
              patch('random.choice', return_value=mood_boost):
             game.tick()
@@ -210,7 +210,7 @@ class TestTick:
         game.last_event_time = 0
         game.last_tick_time = time.time()
         game.state['stats']['HUNGER'] = 95
-        found_food = next(e for e in RANDOM_EVENTS if e[0] == 'found_food')
+        found_food = next(e for e in RANDOM_EVENTS if e.event_id == 'found_food')
         with patch('random.random', return_value=0.001), \
              patch('random.choice', return_value=found_food):
             game.tick()
@@ -220,7 +220,7 @@ class TestTick:
         """9.17: find_item event adds an item to inventory."""
         game.last_event_time = 0
         game.last_tick_time = time.time()
-        find_item_evt = next(e for e in RANDOM_EVENTS if e[0] == 'find_item')
+        find_item_evt = next(e for e in RANDOM_EVENTS if e.event_id == 'find_item')
         initial_inv_total = sum(game.pets_data.get('inventory', {}).values())
         with patch('random.random', return_value=0.001), \
              patch('random.choice', side_effect=[find_item_evt, 'apple']):
@@ -232,7 +232,7 @@ class TestTick:
         """9.18: find_coin event grants xp."""
         game.last_event_time = 0
         game.last_tick_time = time.time()
-        find_coin = next(e for e in RANDOM_EVENTS if e[0] == 'find_coin')
+        find_coin = next(e for e in RANDOM_EVENTS if e.event_id == 'find_coin')
         initial_xp = game.state['xp']
         with patch('random.random', return_value=0.001), \
              patch('random.choice', return_value=find_coin):
@@ -407,7 +407,7 @@ class TestTriggerInteraction:
     def test_trigger_interaction_both_target(self, game):
         """9.35: 'both' target affects all pets."""
         _add_second_pet(game)
-        play_together = next(i for i in PET_INTERACTIONS if i[0] == 'play_together')
+        play_together = next(i for i in PET_INTERACTIONS if i.event_id == 'play_together')
         for pet in game.pets_data['pets']:
             pet['stats']['HAPPY'] = 50
         with patch('random.random', return_value=0.1), \
@@ -419,7 +419,7 @@ class TestTriggerInteraction:
     def test_trigger_interaction_current_target(self, game):
         """9.36: 'current' target affects only current pet."""
         _add_second_pet(game)
-        share_food = next(i for i in PET_INTERACTIONS if i[0] == 'share_food')
+        share_food = next(i for i in PET_INTERACTIONS if i.event_id == 'share_food')
         for pet in game.pets_data['pets']:
             pet['stats']['HUNGER'] = 50
         other_idx = 1 if game.pet_idx == 0 else 0

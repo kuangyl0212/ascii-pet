@@ -918,6 +918,9 @@ class TestVisitRandomEvents:
         fake_node = _FakeLanNode('alice', game.state)
         with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
+        # Set HAPPY to a known value < 80 so the stat-gate (introduced by
+        # the apply_event refactor) does not block the +15 positive effect.
+        game.state['stats']['HAPPY'] = 50
         happy_before = game.state['stats']['HAPPY']
 
         event = make_visit_event(

@@ -25,6 +25,8 @@ import json
 import struct
 import time
 
+from ascii_pet.events import REGISTRY
+
 # ─── Message type constants ─────────────────────────────────────────────────
 
 MSG_HELLO = "hello"
@@ -175,19 +177,32 @@ def make_visit_event(event_type, description, stat_effects):
                       (e.g. ``{"happy": 15, "energy": -10}``).
 
     Returns:
-        dict with keys ``event_type, description, stat_effects``.
+        dict with keys ``event_type, description, stat_effects``. The
+        ``stat_effects`` keys are normalized to lowercase to preserve the
+        pre-migration wire format that receivers expect.
     """
+    from ascii_pet.events import Event, serialize_event
+    event = Event(
+        event_id=event_type,
+        description=description,
+        effects=stat_effects,
+        target='self',
+        category='visit',
+    )
+    serialized = serialize_event(event)
+    # Event normalizes effects keys to UPPERCASE; convert back to lowercase
+    # for wire compatibility with the pre-migration visit-event format.
+    lowercase_effects = {k.lower(): v for k, v in serialized['effects'].items()}
     return {
-        "event_type": event_type,
-        "description": description,
-        "stat_effects": stat_effects,
+        "event_type": serialized['event_id'],
+        "description": serialized['description'],
+        "stat_effects": lowercase_effects,
     }
 
 
-VISIT_EVENTS = [
-    {"event_type": "play_together", "description": "两只宠物一起玩耍，开心地追逐打闹！", "stat_effects": {"happy": 15, "energy": -10}},
-    {"event_type": "share_food", "description": "两只宠物分享了食物，都吃得很开心！", "stat_effects": {"hunger": 15, "happy": 5}},
-    {"event_type": "race", "description": "两只宠物进行了一场赛跑比赛，都消耗了体力！", "stat_effects": {"energy": -15, "happy": 10}},
-    {"event_type": "chat", "description": "两只宠物聊得很投机，心情都变好了！", "stat_effects": {"happy": 10, "wisdom": 5}},
-    {"event_type": "nap_together", "description": "两只宠物一起睡了个午觉，精力充沛！", "stat_effects": {"energy": 20, "hunger": -5}},
-]
+# VISIT_EVENTS is sourced from the unified REGISTRY in ascii_pet.events.
+# Each entry is an Event object (not a dict). Migration (Task 4): original
+# dict constants are now Event lists. Visit event_ids that would collide
+# with PET_INTERACTIONS ids are prefixed with 'visit_'; the original
+# event_type is preserved in metadata['original_event_type'].
+VISIT_EVENTS = REGISTRY.by_category('visit')

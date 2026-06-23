@@ -5,6 +5,7 @@ import os, json, time, random, math, queue, string, shutil
 from pathlib import Path
 from datetime import datetime
 from ascii_pet.i18n import _
+from ascii_pet.events import REGISTRY, apply_event, Event
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -64,29 +65,11 @@ SALT = 'ascii-pet-2026'
 MAX_PETS = 3
 MAX_DAILY_ADOPTIONS = 3
 
-RANDOM_EVENTS = [
-    ('sneeze',       'Achoo!',              {}),
-    ('find_item',    'Found something!',     {'item': True}),
-    ('mood_boost',   'Feeling great!',      {'HAPPY': 5}),
-    ('sparkle',      '✨ Sparkle!',          {}),
-    ('yawn',         '*yaaawn*',            {}),
-    ('find_coin',    'Found a coin!',       {'xp': 3}),
-    ('dance',        '♪ Dancing! ♪',        {'HAPPY': 3}),
-    ('nap',          '*zzz* quick nap',     {'ENERGY': 5}),
-    ('sing',         '♪ La la la ♪',        {'WISDOM': 3}),
-    ('tripped',      'Tripped! Ouch!',      {'HAPPY': -5}),
-    ('found_food',   'Found a snack!',      {'HUNGER': 5}),
-    ('stomach_ache', 'Stomach ache... ugh', {'HUNGER': -5}),
-    ('nightmare',    '*bad dream* nooo',    {'ENERGY': -5}),
-    ('boredom',      'so bored...',         {'HAPPY': -5}),
-]
-
-PET_INTERACTIONS = [
-    ('play_together', ' played together!',  {'HAPPY': 5},  'both'),
-    ('share_food',    ' shared a snack!',   {'HUNGER': 10}, 'current'),
-    ('chat',          ' had a nice chat!',  {'WISDOM': 5},  'both'),
-    ('race',          ' had a race!',       {'ENERGY': 10}, 'current'),
-]
+# RANDOM_EVENTS and PET_INTERACTIONS are sourced from the unified REGISTRY
+# in ascii_pet.events. Each entry is an Event object (not a tuple).
+# Migration (Task 4): original tuple/dict constants are now Event lists.
+RANDOM_EVENTS = REGISTRY.by_category('solo')
+PET_INTERACTIONS = REGISTRY.by_category('interaction')
 
 ITEMS = {
     'apple':   {'name':'Apple',    'icon':'🍎', 'effect':{'HUNGER':30},  'desc':'Restores 30 hunger'},
@@ -778,21 +761,23 @@ class PetGame:
         event_chance = 0.02 * (1 + chaos / 100)
         if now - self.last_event_time > 60 and random.random() < event_chance:
             evt = random.choice(RANDOM_EVENTS)
-            msg = _(evt[1]); msg_time = now; self.last_event_time = now
-            # Negative events increase CHAOS
-            negative_stats = {k: v for k, v in evt[2].items() if k in self.state['stats'] and v < 0}
-            if negative_stats:
-                self.state['stats']['CHAOS'] = min(100, self.state['stats']['CHAOS'] + 3)
-            for k, v in evt[2].items():
-                if k == 'xp': self.state['xp'] += v; evo = check_level_up(self.state)
-                elif k == 'item':
-                    item_id = random.choice(list(ITEMS.keys()))
-                    if self.add_item(item_id):
-                        msg = _('Found a {name}!').format(name=_(ITEMS[item_id]["name"])); msg_time = now
-                elif k in self.state['stats']:
-                    if v > 0 and self.state['stats'][k] >= 80:
-                        continue
-                    self.state['stats'][k] = min(100, max(0, self.state['stats'][k] + v))
+            msg = _(evt.description); msg_time = now; self.last_event_time = now
+            # Delegate stat-gate / CHAOS bump / item drop / xp to apply_event().
+            def _drop_random_item():
+                item_id = random.choice(list(ITEMS.keys()))
+                if self.add_item(item_id):
+                    return item_id
+                return None
+            result = apply_event(
+                self.state, evt,
+                inventory_adder=_drop_random_item,
+            )
+            if result.get('item_dropped'):
+                dropped = result['item_dropped']
+                msg = _('Found a {name}!').format(name=_(ITEMS[dropped]["name"])); msg_time = now
+            if result.get('xp_gained'):
+                check_level_up(self.state)
+            self.save()
 
         # 拜访相关检查
         if self.lan_enabled:
@@ -891,16 +876,13 @@ class PetGame:
         if random.random() > 0.3:
             return None
         interaction = random.choice(PET_INTERACTIONS)
-        iid, msg, effects, target = interaction
-        for stat, val in effects.items():
-            if target == 'both':
-                for pet in self.pets_data['pets']:
-                    pet['stats'][stat] = min(100, pet['stats'][stat] + val)
-            else:
-                self.state['stats'][stat] = min(100, self.state['stats'][stat] + val)
+        apply_event(
+            self.state, interaction,
+            pets_data=self.pets_data,
+        )
         self.save()
         other = self.pets_data['pets'][(self.pet_idx - 1) % len(self.pets_data['pets'])]
-        return f'{self.state["name"]} and {other["name"]}{_(msg)}'
+        return f'{self.state["name"]} and {other["name"]}{_(interaction.description)}'
 
     def adopt_pet(self):
         """Adopt a new pet. Returns message or None if entering release mode."""
@@ -1462,7 +1444,18 @@ class PetGame:
             # 收到随机事件，应用效果
             description = payload.get("description", "")
             stat_effects = payload.get("stat_effects", {})
-            self._apply_visit_event_effects(stat_effects)
+            event_type = payload.get("event_type", "visit_event")
+            # Build an Event from the wire-format payload and delegate to
+            # apply_event(). Event normalizes stat keys to UPPERCASE, so
+            # lowercase keys from the wire format are handled.
+            visit_evt = Event(
+                event_id=event_type,
+                description=description,
+                effects=stat_effects,
+                target='self',
+                category='visit',
+            )
+            apply_event(self.state, visit_evt)
             self.message = _("Visit event: {desc}").format(desc=description)
             self.message_time = now
             self.visit_message_time = now
@@ -1498,18 +1491,6 @@ class PetGame:
                     self.visitor_pets.pop(i)
                     break
 
-    def _apply_visit_event_effects(self, stat_effects):
-        """应用拜访随机事件的属性效果。"""
-        stats = self.state.get('stats', {})
-        for stat, delta in stat_effects.items():
-            stat_upper = stat.upper() if isinstance(stat, str) else stat
-            if stat_upper in stats:
-                current = stats[stat_upper]
-                stats[stat_upper] = max(0, min(100, current + delta))
-            elif stat in stats:
-                current = stats[stat]
-                stats[stat] = max(0, min(100, current + delta))
-
     def _tick_visit_timeout(self):
         """检查拜访超时（10分钟）。"""
         VISIT_TIMEOUT = 600  # 10分钟
@@ -1539,15 +1520,17 @@ class PetGame:
             return
         # 随机选择事件
         event = random.choice(VISIT_EVENTS)
-        # 应用本地效果
-        self._apply_visit_event_effects(event.get("stat_effects", {}))
-        self.message = _("Visit event: {desc}").format(desc=event.get('description',''))
+        # Delegate stat-gate / CHAOS bump to apply_event().
+        apply_event(self.state, event)
+        self.message = _("Visit event: {desc}").format(desc=event.description)
         self.message_time = now
         self.visit_message_time = now
         # 设置冷却
         self.visit_event_cooldown = now + 30  # 30秒冷却
-        # 发送给对方
-        event_msg = make_visit_event(event["event_type"], event["description"], event["stat_effects"])
+        # 发送给对方 - use make_visit_event to build the wire-format dict.
+        # Preserve the original event_type for backward compatibility.
+        event_type = event.metadata.get('original_event_type', event.event_id)
+        event_msg = make_visit_event(event_type, event.description, event.effects)
         try:
             if self.active_visit and self.lan_node:
                 target = self.active_visit.get("target", "")
