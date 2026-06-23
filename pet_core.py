@@ -523,6 +523,41 @@ def generate_random_username():
     suffix = ''.join(random.choices(chars, k=4))
     return f"Player-{suffix}"
 
+def resolve_name_conflict(username, existing_names):
+    """Resolve username conflict by auto-appending a numeric suffix.
+
+    If ``username`` is not in ``existing_names``, returns it unchanged.
+    Otherwise, finds the smallest available number N >= 2 such that
+    ``username(N)`` is not taken, and returns ``username(N)``.
+    Gaps are filled (e.g. if Alice and Alice(3) exist, returns Alice(2)).
+
+    Args:
+        username: Desired username.
+        existing_names: List of already-taken usernames.
+
+    Returns:
+        A username that does not conflict with existing_names.
+    """
+    if username not in existing_names:
+        return username
+    used_numbers = set()
+    prefix = username + "("
+    for name in existing_names:
+        if name == username:
+            used_numbers.add(1)  # original name counts as #1
+        elif name.startswith(prefix) and name.endswith(")"):
+            num_str = name[len(prefix):-1]
+            try:
+                num = int(num_str)
+                if num >= 2:
+                    used_numbers.add(num)
+            except ValueError:
+                pass
+    n = 2
+    while n in used_numbers:
+        n += 1
+    return f"{username}({n})"
+
 # ─── Game class ───────────────────────────────────────────────────────────────
 
 class PetGame:
@@ -598,7 +633,18 @@ class PetGame:
         self.active_visit = None  # {"target", "start_time", "pet_snapshot"}
         self.being_visited = None  # {"from", "start_time", "pet_snapshot"}
         self.visit_event_cooldown = 0.0
-        self.lan_username = None
+        # Load username from save data
+        self.lan_username = self.pets_data.get('username')
+        # Migrate old username.txt if no username in save
+        if self.lan_username is None:
+            old_file = Path(self.data_dir) / 'username.txt' if not isinstance(self.data_dir, Path) else self.data_dir / 'username.txt'
+            if old_file.exists():
+                try:
+                    self.lan_username = old_file.read_text(encoding='utf-8').strip()
+                    self.pets_data['username'] = self.lan_username
+                    self.save()
+                except Exception:
+                    pass
 
     def save(self):
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
@@ -919,9 +965,9 @@ class PetGame:
                 new_name = self._name_input.strip()
                 if new_name:
                     if self.change_lan_username(new_name):
-                        self.message = f'用户名已修改为: {new_name}'
+                        self.message = f'用户名已修改为: {self.lan_username}'
                     else:
-                        self.message = '该用户名已被使用'
+                        self.message = '联机未启用'
                 else:
                     self.message = '用户名不能为空'
                 self.message_time = now
@@ -1111,20 +1157,33 @@ class PetGame:
     def enable_lan(self, username=None):
         """启用联机。成功返回True，失败返回False不抛异常。
 
-        若未提供用户名，则尝试从文件加载；加载失败则生成随机用户名并保存。
+        若未提供用户名，则尝试从存档加载；加载失败则生成随机用户名。
+        启用后自动检测重名并追加后缀。
         """
         try:
             from lan import LanNode
-            # 如果未提供用户名，尝试加载或生成
+            # 如果未提供用户名，尝试从存档加载或生成
             if not username:
-                username = self.load_username()
-                if not username:
-                    username = generate_random_username()
-                    self.save_username(username)
+                username = self.lan_username
+            if not username:
+                username = generate_random_username()
             self.lan_username = username
+            self.pets_data['username'] = username
+            self.save()
             self.lan_node = LanNode(username, self.state)
             if self.lan_node.start():
                 self.lan_enabled = True
+                # 检查重名并自动解决
+                peers = self.lan_node.get_peers()
+                if peers:
+                    existing = [p.get('username', '') for p in peers]
+                    resolved = resolve_name_conflict(self.lan_username, existing)
+                    if resolved != self.lan_username:
+                        self.lan_username = resolved
+                        self.pets_data['username'] = resolved
+                        self.save()
+                        if hasattr(self.lan_node, 'username'):
+                            self.lan_node.username = resolved
                 return True
             else:
                 self.lan_node = None
@@ -1147,45 +1206,18 @@ class PetGame:
         self.being_visited = None
         self.visit_event_cooldown = 0.0
 
-    # ─── Username persistence ─────────────────────────────────────────────
-
-    def _get_username_file(self):
-        """获取用户名文件路径。"""
-        return os.path.join(self.data_dir, 'username.txt')
-
-    def load_username(self):
-        """从文件加载用户名。不存在返回None。"""
-        try:
-            path = self._get_username_file()
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    return f.read().strip()
-        except Exception:
-            pass
-        return None
-
-    def save_username(self, username):
-        """保存用户名到文件。"""
-        try:
-            path = self._get_username_file()
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(username)
-        except Exception:
-            pass
-
     def change_lan_username(self, new_name):
-        """修改用户名。重名时返回False，成功返回True。"""
+        """修改用户名。重名时自动追加后缀，始终返回True。"""
         if not self.lan_enabled or not self.lan_node:
             return False
-        from lan import check_name_conflict
         peers = self.lan_node.get_peers()
-        if check_name_conflict(new_name, peers):
-            return False
-        self.lan_username = new_name
-        self.save_username(new_name)
-        # 更新 LanNode 的 username 属性，使后续 HELLO 广播带上新用户名
+        existing = [p.get('username', '') for p in peers]
+        resolved = resolve_name_conflict(new_name, existing)
+        self.lan_username = resolved
+        self.pets_data['username'] = resolved
+        self.save()
         if hasattr(self.lan_node, 'username'):
-            self.lan_node.username = new_name
+            self.lan_node.username = resolved
         return True
 
     def get_lan_status(self):
