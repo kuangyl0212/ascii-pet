@@ -17,7 +17,7 @@ import pytest
 import i18n
 
 # Load ascii-pet-win.py via importlib (hyphen in filename prevents normal import)
-_MOD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascii-pet-win.py')
+_MOD_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ascii-pet-win.py')
 _spec = importlib.util.spec_from_file_location('ascii_pet_win', _MOD_PATH)
 ascii_pet_win = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ascii_pet_win)

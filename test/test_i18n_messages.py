@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import pytest
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from i18n import set_language, get_language, _, save_settings
 from pet_core import (

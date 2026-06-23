@@ -72,7 +72,7 @@ class TestLanguageMenuConstants:
     def _load_module(self):
         """Load ascii-pet-win.py via importlib (hyphen in filename)."""
         import importlib.util
-        mod_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascii-pet-win.py')
+        mod_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ascii-pet-win.py')
         spec = importlib.util.spec_from_file_location('ascii_pet_win', mod_path)
         self.mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.mod)
@@ -150,7 +150,7 @@ class TestLanguageMenuCommand:
     def _load_module(self):
         """Load ascii-pet-win.py via importlib."""
         import importlib.util
-        mod_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascii-pet-win.py')
+        mod_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ascii-pet-win.py')
         spec = importlib.util.spec_from_file_location('ascii_pet_win', mod_path)
         self.mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.mod)

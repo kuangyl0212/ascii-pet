@@ -17,7 +17,7 @@ import shutil
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pet_core import PetGame, generate_companion, init_state
 

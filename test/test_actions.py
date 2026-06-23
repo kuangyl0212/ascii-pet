@@ -12,7 +12,7 @@ from datetime import datetime
 import pytest
 
 # Allow importing pet_core from the same directory as this test file.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pet_core
 from pet_core import (
