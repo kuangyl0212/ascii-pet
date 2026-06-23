@@ -401,8 +401,11 @@ ID_EXPANDED    = 1009
 ID_STATS       = 1011
 ID_ACHIEVE     = 1012
 ID_ITEMS       = 1014
-ID_LAN         = 1015
-ID_QUIT        = 1013
+ID_LAN          = 1015
+ID_BACKUP       = 1016
+ID_RESTORE      = 1017
+ID_RESTORE_START = 5000  # 恢复子菜单的动态ID起始值
+ID_QUIT         = 1013
 
 MF_STRING     = 0x00000000
 MF_SEPARATOR  = 0x00000800
@@ -588,17 +591,21 @@ user32.DestroyMenu.restype = wintypes.BOOL
 # 托盘菜单项配置（纯函数，便于单元测试）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_tray_menu_items(autostart_enabled):
+def build_tray_menu_items(autostart_enabled, has_backups=True):
     """构建托盘右键菜单项列表。
 
     返回 [(id, label, flags), ...]，分隔符以 (0, None, MF_SEPARATOR) 表示。
     """
     auto_flag = MF_CHECKED if autostart_enabled else 0
+    restore_flag = MF_GRAYED if not has_backups else 0
     return [
         (ID_TRAY_SHOW,      '显示窗口',    MF_STRING),
         (ID_TRAY_HIDE,      '隐藏窗口',    MF_STRING),
         (0,                 None,         MF_SEPARATOR),
         (ID_TRAY_AUTOSTART, '开机自启动',  MF_STRING | auto_flag),
+        (0,                 None,         MF_SEPARATOR),
+        (ID_BACKUP,         '手动备份',    MF_STRING),
+        (ID_RESTORE,        '恢复存档',    MF_STRING | restore_flag),
         (0,                 None,         MF_SEPARATOR),
         (ID_TRAY_QUIT,      '退出',        MF_STRING),
     ]
@@ -738,9 +745,20 @@ class PetWindow:
             _fields_ = [('x', c_long), ('y', c_long)]
         pt = POINT()
         user32.GetCursorPos(byref(pt))
+        from pet_core import list_backups
+        backups = list_backups(self.game.uid, self.game.data_dir)
+        has_backups = len(backups) > 0
         hmenu = user32.CreatePopupMenu()
-        for item_id, label, flags in build_tray_menu_items(is_autostart_enabled()):
-            user32.AppendMenuW(hmenu, flags, item_id, label)
+        for item_id, label, flags in build_tray_menu_items(is_autostart_enabled(), has_backups):
+            if item_id == ID_RESTORE and has_backups:
+                # 创建恢复子菜单
+                hsubmenu = user32.CreatePopupMenu()
+                for i, (filename, dt) in enumerate(backups):
+                    sub_label = dt.strftime('%Y-%m-%d %H:%M')
+                    user32.AppendMenuW(hsubmenu, MF_STRING, ID_RESTORE_START + i, sub_label)
+                user32.AppendMenuW(hmenu, MF_STRING | 0x10, hsubmenu, '恢复存档')  # 0x10 = MF_POPUP
+            else:
+                user32.AppendMenuW(hmenu, flags, item_id, label)
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
         user32.DestroyMenu(hmenu)
         if cmd:
@@ -752,6 +770,21 @@ class PetWindow:
     def restore_from_tray(self):
         user32.ShowWindow(self.hwnd, SW_SHOW)
         user32.SetForegroundWindow(self.hwnd)
+
+    def _reload_game(self):
+        """从磁盘重新加载游戏状态（恢复备份后调用）。"""
+        from pet_core import load_pets_with_fallback, update_state_over_time, save_state
+        data, status = load_pets_with_fallback(self.game.uid, self.game.data_dir)
+        if data is not None:
+            idx = data.get('current', 0)
+            if idx >= len(data['pets']): idx = 0
+            state = data['pets'][idx]
+            state = update_state_over_time(state)
+            self.game.pets_data = data
+            self.game.pet_idx = idx
+            self.game.state = state
+            self.game.bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
+            save_state(self.game.uid, state, data, idx, self.game.data_dir)
 
     def dispatch_tray_command(self, cmd):
         """分发托盘菜单命令，返回是否已处理。"""
@@ -770,6 +803,25 @@ class PetWindow:
             except Exception as e:
                 self.game.message = f'设置失败: {e}'
             self.game.message_time = time.time()
+            user32.InvalidateRect(self.hwnd, None, False)
+            return True
+        elif cmd == ID_BACKUP:
+            from pet_core import create_backup
+            create_backup(self.game.uid, self.game.data_dir)
+            self.game.message = '备份成功'
+            self.game.message_time = time.time()
+            user32.InvalidateRect(self.hwnd, None, False)
+            return True
+        elif cmd >= ID_RESTORE_START:
+            from pet_core import list_backups, restore_from_backup
+            backups = list_backups(self.game.uid, self.game.data_dir)
+            idx = cmd - ID_RESTORE_START
+            if 0 <= idx < len(backups):
+                backup_filename = backups[idx][0]
+                if restore_from_backup(self.game.uid, backup_filename, self.game.data_dir):
+                    self._reload_game()
+                    self.game.message = '已从备份恢复'
+                    self.game.message_time = time.time()
             user32.InvalidateRect(self.hwnd, None, False)
             return True
         elif cmd == ID_TRAY_QUIT:
@@ -920,6 +972,19 @@ class PetWindow:
         auto_flag = MF_CHECKED if is_autostart_enabled() else 0
         user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, '开机自启动')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        user32.AppendMenuW(hmenu, MF_STRING, ID_BACKUP, '手动备份')
+        from pet_core import list_backups
+        backups = list_backups(self.game.uid, self.game.data_dir)
+        has_backups = len(backups) > 0
+        if has_backups:
+            hsubmenu = user32.CreatePopupMenu()
+            for i, (filename, dt) in enumerate(backups):
+                sub_label = dt.strftime('%Y-%m-%d %H:%M')
+                user32.AppendMenuW(hsubmenu, MF_STRING, ID_RESTORE_START + i, sub_label)
+            user32.AppendMenuW(hmenu, MF_STRING | 0x10, hsubmenu, '恢复存档')  # 0x10 = MF_POPUP
+        else:
+            user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, ID_RESTORE, '恢复存档')
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_QUIT, '退出 (Q)')
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
         user32.DestroyMenu(hmenu)
@@ -976,6 +1041,21 @@ class PetWindow:
             except Exception as e:
                 self.game.message = f'设置失败: {e}'
             self.game.message_time = now
+        elif cmd == ID_BACKUP:
+            from pet_core import create_backup
+            create_backup(self.game.uid, self.game.data_dir)
+            self.game.message = '备份成功'
+            self.game.message_time = now
+        elif cmd >= ID_RESTORE_START:
+            from pet_core import list_backups, restore_from_backup
+            backups = list_backups(self.game.uid, self.game.data_dir)
+            idx = cmd - ID_RESTORE_START
+            if 0 <= idx < len(backups):
+                backup_filename = backups[idx][0]
+                if restore_from_backup(self.game.uid, backup_filename, self.game.data_dir):
+                    self._reload_game()
+                    self.game.message = '已从备份恢复'
+                    self.game.message_time = now
         elif cmd == ID_QUIT:
             user32.DestroyWindow(self.hwnd); return
         user32.InvalidateRect(self.hwnd, None, False)
