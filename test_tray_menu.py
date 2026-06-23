@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import i18n
+
 # Load ascii-pet-win.py via importlib (hyphen in filename prevents normal import)
 _MOD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascii-pet-win.py')
 _spec = importlib.util.spec_from_file_location('ascii_pet_win', _MOD_PATH)
@@ -46,6 +48,7 @@ class TestBuildTrayMenuItems:
 
     def test_tray_menu_items_autostart_disabled(self):
         """自启动未启用时，菜单应包含显示/隐藏/自启动/退出四项及两个分隔符。"""
+        i18n.set_language('zh')
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False)
         # 6 项: 显示, 隐藏, 分隔符, 自启动, 分隔符, 退出
         assert len(items) == 6
@@ -64,6 +67,7 @@ class TestBuildTrayMenuItems:
 
     def test_tray_menu_items_autostart_enabled(self):
         """自启动已启用时，自启动项应带 MF_CHECKED 标志，其余不变。"""
+        i18n.set_language('zh')
         items = ascii_pet_win.build_tray_menu_items(autostart_enabled=True)
         assert len(items) == 6
         # 隐藏窗口项不变
@@ -72,6 +76,15 @@ class TestBuildTrayMenuItems:
         autostart_item = items[3]
         assert autostart_item[0] == ID_TRAY_AUTOSTART
         assert autostart_item[2] & MF_CHECKED == MF_CHECKED
+
+    def test_tray_menu_items_english(self):
+        """English language should return English labels."""
+        i18n.set_language('en')
+        items = ascii_pet_win.build_tray_menu_items(autostart_enabled=False)
+        assert items[0] == (ID_TRAY_SHOW, 'Show Window', MF_STRING)
+        assert items[1] == (ID_TRAY_HIDE, 'Hide Window', MF_STRING)
+        assert items[3] == (ID_TRAY_AUTOSTART, 'Auto-start on Boot', MF_STRING)
+        assert items[5] == (ID_TRAY_QUIT, 'Quit', MF_STRING)
 
     def test_tray_hide_id_is_2004(self):
         """ID_TRAY_HIDE 应为 2004，与现有常量不冲突。"""

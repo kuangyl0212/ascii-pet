@@ -11,6 +11,7 @@ from pet_core import (
     render_sprite, render_face, render_frame, export_text,
     PetGame,
 )
+from i18n import _, get_language, set_language, save_settings
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Win32 颜色映射
@@ -65,7 +66,7 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
     lines.append((f'{state["species"]}·{state["rarity"]} [{mood["emoji"]}]', mood_color))
     lines.append((f'Lv.{state["level"]} XP:{state["xp"]}/{state["level"]*100}', COLOR_DIM))
     if state.get('evolved'):
-        lines.append(('★ Evolved', color))
+        lines.append((_('★ Evolved'), color))
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
     for s in STAT_NAMES:
@@ -73,7 +74,7 @@ def render_expanded_lines(state, bones, frame_idx, show_help):
         filled, empty, val = stat_bar_text(v, 15)
         lines.append((f'{s[:4]}', COLOR_DIM, filled, COLOR_BAR_FILL, empty, COLOR_BAR_EMPTY, f' {val}', COLOR_WHITE))
     if show_help:
-        lines.append(('[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit', COLOR_DIM))
+        lines.append((_('[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit'), COLOR_DIM))
     return lines
 
 def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
@@ -86,41 +87,41 @@ def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
     evo = ' ★Evolved' if state.get('evolved') else ''
 
     lines = []
-    lines.append((f'Stats for {state["name"]}', color))
-    lines.append((f'Species: {state["species"]}', COLOR_DIM))
-    lines.append((f'Face: {render_face(bones)}', COLOR_DIM))
-    lines.append((f'Eye: {state["eye"]}', COLOR_DIM))
-    lines.append((f'Hat: {state["hat"]}', COLOR_DIM))
-    lines.append((f'Pet: {pet_idx+1}/{pet_count}{evo}', COLOR_DIM))
+    lines.append((_('Stats for {}').format(state["name"]), color))
+    lines.append((_('Species: {}').format(state["species"]), COLOR_DIM))
+    lines.append((_('Face: {}').format(render_face(bones)), COLOR_DIM))
+    lines.append((_('Eye: {}').format(state["eye"]), COLOR_DIM))
+    lines.append((_('Hat: {}').format(state["hat"]), COLOR_DIM))
+    lines.append((_('Pet: {}{}').format(f'{pet_idx+1}/{pet_count}', evo), COLOR_DIM))
     lines.append(('', COLOR_DIM))
     for row in frame:
         lines.append((f' {row}', COLOR_WHITE))
     lines.append(('', COLOR_DIM))
-    lines.append(('--- Activity ---', COLOR_DIM))
-    lines.append((f'  Days adopted:  {days}', COLOR_DIM))
-    lines.append((f'  Hours online: {hours:.1f}', COLOR_DIM))
-    lines.append((f'  Feed count:   {state.get("feed_count",0)}', COLOR_DIM))
-    lines.append((f'  Play count:   {state.get("play_count",0)}', COLOR_DIM))
-    lines.append((f'  Sleep count:  {state.get("sleep_count",0)}', COLOR_DIM))
-    lines.append((f'  Total acts:   {state["total_interactions"]}', COLOR_DIM))
+    lines.append((_('--- Activity ---'), COLOR_DIM))
+    lines.append((_('  Days adopted:  {}').format(days), COLOR_DIM))
+    lines.append((_('  Hours online: {}').format(f'{hours:.1f}'), COLOR_DIM))
+    lines.append((_('  Feed count:   {}').format(state.get("feed_count",0)), COLOR_DIM))
+    lines.append((_('  Play count:   {}').format(state.get("play_count",0)), COLOR_DIM))
+    lines.append((_('  Sleep count:  {}').format(state.get("sleep_count",0)), COLOR_DIM))
+    lines.append((_('  Total acts:   {}').format(state["total_interactions"]), COLOR_DIM))
     lines.append(('', COLOR_DIM))
-    lines.append(('--- Growth ---', COLOR_DIM))
-    lines.append((f'  Level: {state["level"]}  XP: {state["xp"]}/{state["level"]*100}', COLOR_DIM))
-    lines.append((f'  Rarity: {state["rarity"]}  Shiny: {"Yes" if state["shiny"] else "No"}', COLOR_DIM))
+    lines.append((_('--- Growth ---'), COLOR_DIM))
+    lines.append((_('  Level: {}  XP: {}/{}').format(state["level"], state["xp"], state["level"]*100), COLOR_DIM))
+    lines.append((_('  Rarity: {}  Shiny: {}').format(state["rarity"], _('Yes') if state["shiny"] else _('No')), COLOR_DIM))
     return lines
 
 def render_achievements_lines(state, bones):
     color = RARITY_RGB[state['rarity']]
     unlocked = state.get('achievements', [])
     lines = []
-    lines.append((f'Achievements for {state["name"]}', color))
-    lines.append((f'{len(unlocked)}/{len(ACHIEVEMENTS)} unlocked', COLOR_DIM))
+    lines.append((_('Achievements for {}').format(state["name"]), color))
+    lines.append(('{}/{} '.format(len(unlocked), len(ACHIEVEMENTS)) + _('unlocked'), COLOR_DIM))
     lines.append(('', COLOR_DIM))
     for aid, ach in ACHIEVEMENTS.items():
         if aid in unlocked:
-            lines.append((f'  {ach["icon"]} {ach["name"]}', color))
+            lines.append((f'  {ach["icon"]} {_(ach["name"])}', color))
         else:
-            lines.append(('  ??? Locked', COLOR_DIM))
+            lines.append((_('  ??? Locked'), COLOR_DIM))
     lines.append(('', COLOR_DIM))
     return lines
 
@@ -128,11 +129,11 @@ def render_items_lines(game):
     from pet_core import ITEMS, MAX_INVENTORY
     inv_list = game.get_inventory_list()
     total = sum(game.pets_data.get('inventory', {}).values())
-    lines = [(f'Inventory ({total}/{MAX_INVENTORY})', COLOR_WHITE)]
-    lines.append(('Select item [1-7] or [c]cancel', COLOR_DIM))
+    lines = [(_('Inventory ({}/{})').format(total, MAX_INVENTORY), COLOR_WHITE)]
+    lines.append((_('Select item [1-7] or [c]cancel'), COLOR_DIM))
     lines.append(('', COLOR_DIM))
     if not inv_list:
-        lines.append(('  Empty — items drop from random events', COLOR_DIM))
+        lines.append((_('  Empty — items drop from random events'), COLOR_DIM))
     else:
         for i, (iid, name, icon, count, desc) in enumerate(inv_list):
             lines.append((f'  {i+1}  {icon} {name} x{count}  {desc}', COLOR_WHITE))
@@ -143,26 +144,46 @@ def render_lan_lines(game):
     lines = []
     status = game.get_lan_status()
     enabled = status.get('enabled', False)
-    role = '主节点' if status.get('is_master') else '从节点'
-    peer_count = status.get('peer_count', 0)
-    error = status.get('error')
-    node_id = status.get('node_id', '')
 
-    lines.append(('═ 局域网联机 ═', COLOR_MSG))
+    # 用户名修改模式
+    if game.mode == 'lan_name_edit':
+        lines.append((_('═ Edit Username ═'), COLOR_MSG))
+        current = game.lan_username or _('(not set)')
+        lines.append((_('Current username: {}').format(current), COLOR_WHITE))
+        lines.append((_('New username: {}_').format(game._name_input), COLOR_BAR_FILL))
+        lines.append(('', COLOR_WHITE))
+        lines.append((_('[Enter]Confirm [ESC]Cancel'), COLOR_DIM))
+        return lines
+
+    lines.append((_('═ LAN Multiplayer ═'), COLOR_MSG))
     if enabled:
-        lines.append((f'状态: 已连接 [{role}] 对等节点: {peer_count}', COLOR_BAR_FILL))
-        if node_id:
-            lines.append((f'本机ID: {node_id[:40]}', COLOR_DIM))
+        role = _('Master') if status.get('is_master') else _('Slave')
+        peer_count = status.get('peer_count', 0)
+        lines.append((_('Username: {} [{}] Nodes: {}').format(game.lan_username or '?', role, peer_count), COLOR_BAR_FILL))
     else:
-        lines.append(('状态: 未连接', COLOR_BAR_EMPTY))
+        lines.append((_('Status: Disconnected'), COLOR_BAR_EMPTY))
+        error = status.get('error')
         if error:
-            lines.append((f'错误: {error}', COLOR_BAR_EMPTY))
+            lines.append((_('Error: {}').format(error), COLOR_BAR_EMPTY))
     lines.append(('', COLOR_WHITE))
+
+    # 拜访状态
+    if game.active_visit:
+        elapsed = int(time.time() - game.active_visit.get('start_time', 0))
+        minutes, seconds = divmod(elapsed, 60)
+        lines.append((_('★ Visiting ({}m{}s)').format(minutes, seconds), COLOR_MSG))
+        lines.append(('', COLOR_WHITE))
+    if game.being_visited:
+        elapsed = int(time.time() - game.being_visited.get('start_time', 0))
+        minutes, seconds = divmod(elapsed, 60)
+        visitor_name = game.being_visited.get('pet_snapshot', {}).get('name', '?')
+        lines.append((_('★ {} is visiting you ({}m{}s)').format(visitor_name, minutes, seconds), COLOR_MSG))
+        lines.append(('', COLOR_WHITE))
 
     # 对等节点列表
     peers = game.get_lan_peers() if enabled else []
     if peers:
-        lines.append(('─ 在线玩家 ─', COLOR_DIM))
+        lines.append((_('─ Online Players ─'), COLOR_DIM))
         for i, peer in enumerate(peers[:9]):
             username = peer.get('username', '?')
             pet = peer.get('pet_summary', {})
@@ -170,58 +191,53 @@ def render_lan_lines(game):
             species = pet.get('species', '?')
             lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
     else:
-        lines.append(('（暂无其他玩家）', COLOR_DIM))
+        lines.append((_('(No other players)'), COLOR_DIM))
     lines.append(('', COLOR_WHITE))
 
     # 访客列表
     visitors = game.visitor_pets
     if visitors:
-        lines.append(('─ 当前访客 ─', COLOR_DIM))
+        lines.append((_('─ Current Visitors ─'), COLOR_DIM))
         for i, v in enumerate(visitors):
-            lines.append((f'  {v.get("name","?")}({v.get("species","?")}) - 来自 {v.get("owner","?")}', COLOR_WHITE))
-    else:
-        lines.append(('（暂无访客）', COLOR_DIM))
+            lines.append((f'  {v.get("name","?")}({v.get("species","?")}) - ' + _('from {}').format(v.get("owner","?")), COLOR_WHITE))
     lines.append(('', COLOR_WHITE))
 
-    # 待确认请求
-    if game.pending_visit_request:
-        req = game.pending_visit_request
-        lines.append((f'★ {req.get("pet_name","?")} 想来拜访！', COLOR_MSG))
-        lines.append(('  [r]同意 [x]拒绝', COLOR_WHITE))
-        lines.append(('', COLOR_WHITE))
-
     # 操作提示
-    lines.append(('─ 操作 ─', COLOR_DIM))
+    lines.append((_('─ Actions ─'), COLOR_DIM))
     if enabled:
-        lines.append(('[1-9]邀请拜访 [o]关闭联机', COLOR_DIM))
+        if game.active_visit or game.being_visited:
+            lines.append((_('[e]End Visit [f]Remote Feed [p]Remote Play'), COLOR_DIM))
+        else:
+            lines.append((_('[1-9]Visit Player [u]Edit Username'), COLOR_DIM))
+        lines.append((_('[o]Disable LAN'), COLOR_DIM))
     else:
-        lines.append(('[o]开启联机', COLOR_DIM))
-    lines.append(('[l]返回 [c]紧凑模式', COLOR_DIM))
+        lines.append((_('[o]Enable LAN'), COLOR_DIM))
+    lines.append((_('[l]Back [c]Compact Mode'), COLOR_DIM))
     return lines
 
 def render_release_lines(game):
     pets = game.get_release_list()
     lines = []
-    lines.append(('Select a pet to release:', (255, 80, 80)))
-    lines.append((f'Max {MAX_PETS} pets. Choose 1-3, or [c]cancel', COLOR_DIM))
+    lines.append((_('Select a pet to release:'), (255, 80, 80)))
+    lines.append((_('Max {} pets. Choose 1-3, or [c]cancel').format(MAX_PETS), COLOR_DIM))
     lines.append(('', COLOR_DIM))
     for idx, name, species, rarity in pets:
         color = RARITY_RGB[rarity]
         stars = RARITY_STARS[rarity]
         lines.append((f'  {idx}  {name} {species}·{rarity} {stars}', color))
     lines.append(('', COLOR_DIM))
-    lines.append(('[1-3]select [c]cancel', COLOR_DIM))
+    lines.append((_('[1-3]select [c]cancel'), COLOR_DIM))
     return lines
 
 def render_death_lines(game):
     frame = render_frame(game.bones, game.frame_idx, 'normal')
     lines = []
-    lines.append(('Your pet has died...', (255, 50, 50)))
+    lines.append((_('Your pet has died...'), (255, 50, 50)))
     lines.append(('', COLOR_DIM))
     for row in frame:
         lines.append((f'  {row}', (100, 100, 100)))
     lines.append(('', COLOR_DIM))
-    lines.append(('[f]feed, [p]play, or [s]sleep to revive', (255, 50, 50)))
+    lines.append((_('[f]feed, [p]play, or [s]sleep to revive'), (255, 50, 50)))
     return lines
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -402,12 +418,15 @@ ID_STATS       = 1011
 ID_ACHIEVE     = 1012
 ID_ITEMS       = 1014
 ID_LAN         = 1015
+ID_LANG_ZH     = 1016
+ID_LANG_EN     = 1017
 ID_QUIT        = 1013
 
 MF_STRING     = 0x00000000
 MF_SEPARATOR  = 0x00000800
 MF_GRAYED     = 0x00000001
 MF_CHECKED    = 0x00000008
+MF_POPUP      = 0x00000010
 TPM_RIGHTBUTTON = 0x0002
 TPM_NONOTIFY   = 0x0080
 TPM_RETURNCMD  = 0x0100
@@ -429,6 +448,7 @@ LAYOUT_SIZES = {
     'items':        (44, 16),
     'release':      (44, 14),
     'lan':           (50, 20),
+    'lan_name_edit': (50, 20),
 }
 
 user32 = windll.user32
@@ -595,12 +615,12 @@ def build_tray_menu_items(autostart_enabled):
     """
     auto_flag = MF_CHECKED if autostart_enabled else 0
     return [
-        (ID_TRAY_SHOW,      '显示窗口',    MF_STRING),
-        (ID_TRAY_HIDE,      '隐藏窗口',    MF_STRING),
-        (0,                 None,         MF_SEPARATOR),
-        (ID_TRAY_AUTOSTART, '开机自启动',  MF_STRING | auto_flag),
-        (0,                 None,         MF_SEPARATOR),
-        (ID_TRAY_QUIT,      '退出',        MF_STRING),
+        (ID_TRAY_SHOW,      _('Show Window'),         MF_STRING),
+        (ID_TRAY_HIDE,      _('Hide Window'),         MF_STRING),
+        (0,                 None,                     MF_SEPARATOR),
+        (ID_TRAY_AUTOSTART, _('Auto-start on Boot'),  MF_STRING | auto_flag),
+        (0,                 None,                     MF_SEPARATOR),
+        (ID_TRAY_QUIT,      _('Quit'),                MF_STRING),
     ]
 
 
@@ -723,7 +743,7 @@ class PetWindow:
         nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP
         nid.uCallbackMessage = WM_TRAYICON
         nid.hIcon = self._create_tray_icon()
-        nid.szTip = 'ASCII Pet'
+        nid.szTip = _('ASCII Pet')
         shell32.Shell_NotifyIconW(NIM_ADD, byref(nid))
         self.tray_added = True
         self._tray_nid = nid
@@ -766,9 +786,9 @@ class PetWindow:
             try:
                 set_autostart(not is_autostart_enabled())
                 refresh_autostart_cache_sync()
-                self.game.message = '已更新开机自启动设置'
+                self.game.message = _('Auto-start setting updated')
             except Exception as e:
-                self.game.message = f'设置失败: {e}'
+                self.game.message = _('Setting failed: {}').format(e)
             self.game.message_time = time.time()
             user32.InvalidateRect(self.hwnd, None, False)
             return True
@@ -900,27 +920,35 @@ class PetWindow:
         user32.GetCursorPos(byref(pt))
         hmenu = user32.CreatePopupMenu()
         is_compact = self.game.mode == 'compact'
-        user32.AppendMenuW(hmenu, MF_STRING, ID_FEED, '喂食 (F)')
-        user32.AppendMenuW(hmenu, MF_STRING, ID_PLAY, '玩耍 (P)')
-        user32.AppendMenuW(hmenu, MF_STRING, ID_SLEEP, '睡觉 (S)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_FEED, _('Feed (F)'))
+        user32.AppendMenuW(hmenu, MF_STRING, ID_PLAY, _('Play (P)'))
+        user32.AppendMenuW(hmenu, MF_STRING, ID_SLEEP, _('Sleep (S)'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING, ID_ADOPT, '领养新宠物 (W)')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_EXPORT, '导出到剪贴板 (E)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_ADOPT, _('Adopt New Pet (W)'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_GRAYED if is_compact else 0), ID_EXPORT, _('Export to Clipboard (E)'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING, ID_PREV_PET, '上一个宠物 (B)')
-        user32.AppendMenuW(hmenu, MF_STRING, ID_NEXT_PET, '下一个宠物 (N)')
+        user32.AppendMenuW(hmenu, MF_STRING, ID_PREV_PET, _('Previous Pet (B)'))
+        user32.AppendMenuW(hmenu, MF_STRING, ID_NEXT_PET, _('Next Pet (N)'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'compact' else 0), ID_COMPACT, '紧凑模式')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'expanded' else 0), ID_EXPANDED, '展开模式')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'stats' else 0), ID_STATS, '属性面板 (T)')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'achievements' else 0), ID_ACHIEVE, '成就面板 (A)')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'items' else 0), ID_ITEMS, '物品栏 (U)')
-        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'lan' else 0), ID_LAN, '局域网联机 (L)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'compact' else 0), ID_COMPACT, _('Compact Mode'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'expanded' else 0), ID_EXPANDED, _('Expanded Mode'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'stats' else 0), ID_STATS, _('Stats Panel (T)'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'achievements' else 0), ID_ACHIEVE, _('Achievements (A)'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'items' else 0), ID_ITEMS, _('Items (U)'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'lan' else 0), ID_LAN, _('LAN Multiplayer (L)'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         auto_flag = MF_CHECKED if is_autostart_enabled() else 0
-        user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, '开机自启动')
+        user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, _('Auto-start on Boot'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(hmenu, MF_STRING, ID_QUIT, '退出 (Q)')
+        # Language submenu
+        hlang = user32.CreatePopupMenu()
+        zh_flag = MF_CHECKED if get_language() == 'zh' else 0
+        en_flag = MF_CHECKED if get_language() == 'en' else 0
+        user32.AppendMenuW(hlang, MF_STRING | zh_flag, ID_LANG_ZH, '中文')
+        user32.AppendMenuW(hlang, MF_STRING | en_flag, ID_LANG_EN, 'English')
+        user32.AppendMenuW(hmenu, MF_POPUP, hlang, _('Language'))
+        user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+        user32.AppendMenuW(hmenu, MF_STRING, ID_QUIT, _('Quit (Q)'))
         cmd = user32.TrackPopupMenu(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
         user32.DestroyMenu(hmenu)
         if cmd: self.execute_menu_command(cmd)
@@ -945,9 +973,9 @@ class PetWindow:
         elif cmd == ID_EXPORT and self.game.mode != 'compact':
             text = export_text(self.game.state, self.game.bones, self.game.frame_idx)
             if export_to_clipboard(text):
-                self.game.message = 'Copied to clipboard!'
+                self.game.message = _('Copied to clipboard!')
             else:
-                self.game.message = 'Failed to copy'
+                self.game.message = _('Failed to copy')
             self.game.message_time = now
         elif cmd == ID_PREV_PET:
             if len(self.game.pets_data['pets']) > 1:
@@ -972,9 +1000,19 @@ class PetWindow:
             try:
                 set_autostart(not is_autostart_enabled())
                 refresh_autostart_cache_sync()
-                self.game.message = '已更新开机自启动设置'
+                self.game.message = _('Auto-start setting updated')
             except Exception as e:
-                self.game.message = f'设置失败: {e}'
+                self.game.message = _('Setting failed: {}').format(e)
+            self.game.message_time = now
+        elif cmd == ID_LANG_ZH:
+            set_language('zh')
+            save_settings()
+            self.game.message = _('Language changed to Chinese')
+            self.game.message_time = now
+        elif cmd == ID_LANG_EN:
+            set_language('en')
+            save_settings()
+            self.game.message = _('Language changed to English')
             self.game.message_time = now
         elif cmd == ID_QUIT:
             user32.DestroyWindow(self.hwnd); return
@@ -1016,7 +1054,7 @@ class PetWindow:
             lines = render_achievements_lines(g.state, g.bones)
         elif g.mode == 'items':
             lines = render_items_lines(g)
-        elif g.mode == 'lan':
+        elif g.mode in ('lan', 'lan_name_edit'):
             lines = render_lan_lines(g)
         elif g.mode == 'release':
             lines = render_release_lines(g)
@@ -1040,7 +1078,7 @@ class PetWindow:
                     'rarity': visitor.get('rarity', 'common'),
                 }
                 v_frame = render_sprite(v_bones, g.frame_idx)
-                lines.append((f'  [访客] {visitor.get("name","?")} (来自 {visitor.get("owner","?")})', COLOR_MSG))
+                lines.append((_('  [Visitor] {} (from {})').format(visitor.get("name","?"), visitor.get("owner","?")), COLOR_MSG))
                 for row in v_frame:
                     lines.append((f'  {row}', COLOR_DIM))
         return lines

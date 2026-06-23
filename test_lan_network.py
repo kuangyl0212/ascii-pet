@@ -983,3 +983,40 @@ class TestBug3SlaveClosesTcpListener:
         # _start_tcp_listener should have been called (with mock socket)
         # We just verify it didn't crash and _tcp_socket was attempted
 
+
+# ─── Username conflict check ──────────────────────────────────────────────
+
+
+class TestCheckNameConflict:
+    """check_name_conflict: pure function checking username against peers."""
+
+    def test_returns_true_when_username_matches_peer(self):
+        """Returns True (conflict) when a peer has the same username."""
+        peers = [
+            {"node_id": "peer-1", "username": "alice", "pet_summary": {}},
+            {"node_id": "peer-2", "username": "bob", "pet_summary": {}},
+        ]
+        assert lan.check_name_conflict("alice", peers) is True
+
+    def test_returns_false_when_no_match(self):
+        """Returns False (no conflict) when no peer has the username."""
+        peers = [
+            {"node_id": "peer-1", "username": "alice", "pet_summary": {}},
+            {"node_id": "peer-2", "username": "bob", "pet_summary": {}},
+        ]
+        assert lan.check_name_conflict("carol", peers) is False
+
+    def test_returns_false_for_empty_peers(self):
+        """Returns False (no conflict) when peers list is empty."""
+        assert lan.check_name_conflict("alice", []) is False
+
+    def test_returns_true_when_single_peer_matches(self):
+        """Returns True when the only peer has the same username."""
+        peers = [{"node_id": "peer-1", "username": "alice", "pet_summary": {}}]
+        assert lan.check_name_conflict("alice", peers) is True
+
+    def test_returns_false_when_peer_missing_username_key(self):
+        """Returns False when peers lack 'username' key (no match)."""
+        peers = [{"node_id": "peer-1", "pet_summary": {}}]
+        assert lan.check_name_conflict("alice", peers) is False
+

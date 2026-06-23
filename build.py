@@ -17,6 +17,7 @@ PYTHON38 = r"C:\Python38\python.exe"
 
 SCRIPT = Path(__file__).parent / 'ascii-pet-win.py'
 ICON = Path(__file__).parent / 'pet_icon.ico'
+LOCALES_DIR = Path(__file__).parent / 'locales'
 
 
 def build(python_exe, name_suffix="", workpath_suffix=""):
@@ -57,7 +58,10 @@ def build(python_exe, name_suffix="", workpath_suffix=""):
         '--specpath', specpath,
         '--hidden-import', 'lan',
         '--hidden-import', 'lan_protocol',
+        '--hidden-import', 'i18n',
     ]
+    if LOCALES_DIR.exists():
+        cmd.extend(['--add-data', f'{LOCALES_DIR};locales'])
     if ICON.exists():
         cmd.extend(['--icon', str(ICON)])
     cmd.append(str(SCRIPT))
