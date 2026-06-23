@@ -6,12 +6,12 @@ from pathlib import Path
 from ctypes import windll, c_int, c_uint, c_long, c_wchar_p, byref, sizeof, create_unicode_buffer
 from ctypes import wintypes, POINTER, c_void_p, c_char_p, c_size_t, memmove, c_byte
 
-from pet_core import (
+from ascii_pet.core import (
     SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ACHIEVEMENTS, MAX_PETS,
     render_sprite, render_face, render_frame, export_text,
     PetGame,
 )
-from i18n import _, get_language, set_language, save_settings
+from ascii_pet.i18n import _, get_language, set_language, save_settings
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Win32 颜色映射
@@ -126,7 +126,7 @@ def render_achievements_lines(state, bones):
     return lines
 
 def render_items_lines(game):
-    from pet_core import ITEMS, MAX_INVENTORY
+    from ascii_pet.core import ITEMS, MAX_INVENTORY
     inv_list = game.get_inventory_list()
     total = sum(game.pets_data.get('inventory', {}).values())
     lines = [(_('Inventory ({}/{})').format(total, MAX_INVENTORY), COLOR_WHITE)]
@@ -769,7 +769,7 @@ class PetWindow:
             _fields_ = [('x', c_long), ('y', c_long)]
         pt = POINT()
         user32.GetCursorPos(byref(pt))
-        from pet_core import list_backups
+        from ascii_pet.core import list_backups
         backups = list_backups(self.game.uid, self.game.data_dir)
         has_backups = len(backups) > 0
         hmenu = user32.CreatePopupMenu()
@@ -798,7 +798,7 @@ class PetWindow:
 
     def _reload_game(self):
         """从磁盘重新加载游戏状态（恢复备份后调用）。"""
-        from pet_core import load_pets_with_fallback, update_state_over_time, save_state
+        from ascii_pet.core import load_pets_with_fallback, update_state_over_time, save_state
         data, status = load_pets_with_fallback(self.game.uid, self.game.data_dir)
         if data is not None:
             idx = data.get('current', 0)
@@ -831,14 +831,14 @@ class PetWindow:
             user32.InvalidateRect(self.hwnd, None, False)
             return True
         elif cmd == ID_BACKUP:
-            from pet_core import create_backup
+            from ascii_pet.core import create_backup
             create_backup(self.game.uid, self.game.data_dir, backup_type='manual')
             self.game.message = _('Backup successful')
             self.game.message_time = time.time()
             user32.InvalidateRect(self.hwnd, None, False)
             return True
         elif cmd >= ID_RESTORE_START:
-            from pet_core import list_backups, restore_from_backup
+            from ascii_pet.core import list_backups, restore_from_backup
             backups = list_backups(self.game.uid, self.game.data_dir)
             idx = cmd - ID_RESTORE_START
             if 0 <= idx < len(backups):
@@ -998,7 +998,7 @@ class PetWindow:
         user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, _('Auto-start on Boot'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hmenu, MF_STRING, ID_BACKUP, _('Manual Backup'))
-        from pet_core import list_backups
+        from ascii_pet.core import list_backups
         backups = list_backups(self.game.uid, self.game.data_dir)
         has_backups = len(backups) > 0
         if has_backups:
@@ -1086,12 +1086,12 @@ class PetWindow:
             self.game.message = _('Language changed to English')
             self.game.message_time = now
         elif cmd == ID_BACKUP:
-            from pet_core import create_backup
+            from ascii_pet.core import create_backup
             create_backup(self.game.uid, self.game.data_dir, backup_type='manual')
             self.game.message = _('Backup successful')
             self.game.message_time = now
         elif cmd >= ID_RESTORE_START:
-            from pet_core import list_backups, restore_from_backup
+            from ascii_pet.core import list_backups, restore_from_backup
             backups = list_backups(self.game.uid, self.game.data_dir)
             idx = cmd - ID_RESTORE_START
             if 0 <= idx < len(backups):
@@ -1154,7 +1154,7 @@ class PetWindow:
         elif g.anim_end and time.time() >= g.anim_end:
             g.anim_end = 0
         if g.visitor_pets and g.mode in ('compact', 'expanded'):
-            from pet_core import render_sprite
+            from ascii_pet.core import render_sprite
             for visitor in g.visitor_pets:
                 v_bones = {
                     'species': visitor.get('species', 'blob'),
@@ -1244,7 +1244,7 @@ def main():
                   '            t stats, a achieve, e export, h help, c compact, q quit')
             sys.exit(0)
         if arg == '--all':
-            from pet_core import EVOLVED_BODIES
+            from ascii_pet.core import EVOLVED_BODIES
             all_species = SPECIES + list(EVOLVED_BODIES.keys())
             print(f'\n  All {len(all_species)} species:\n')
             for sp in all_species:

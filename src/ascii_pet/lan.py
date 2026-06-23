@@ -15,8 +15,8 @@ import struct
 import threading
 import time
 
-import lan_protocol
-from lan_protocol import (
+from ascii_pet import protocol as lan_protocol
+from ascii_pet.protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
     MSG_VISIT_LEAVE, MSG_BYE,

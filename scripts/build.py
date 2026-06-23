@@ -15,9 +15,9 @@ from pathlib import Path
 # Python 3.8 路径（最后一个支持 Win7 的版本）
 PYTHON38 = r"C:\Python38\python.exe"
 
-SCRIPT = Path(__file__).parent / 'ascii-pet-win.py'
-ICON = Path(__file__).parent / 'pet_icon.ico'
-LOCALES_DIR = Path(__file__).parent / 'locales'
+SCRIPT = Path(__file__).parent.parent / 'bin' / 'ascii-pet-win.py'
+ICON = Path(__file__).parent.parent / 'pet_icon.ico'
+LOCALES_DIR = Path(__file__).parent.parent / 'locales'
 
 
 def build(python_exe, name_suffix="", workpath_suffix=""):

@@ -2,29 +2,71 @@
 
 ASCII desktop pet: shared core logic + platform-specific rendering, no external runtime deps.
 
-## Files
+## Project Structure
 
-| File | Platform | Notes |
-|------|----------|-------|
-| `pet_core.py` | — | Shared: constants, PRNG, pet generation, actions, persistence, `PetGame` class |
-| `weather.py` | — | OpenWeatherMap API client, caching, geolocation |
-| `i18n.py` | — | Internationalization (en/zh), gettext-based, runtime language switching |
-| `lan.py` | — | LAN P2P networking: UDP broadcast discovery + TCP reliable messaging |
-| `lan_protocol.py` | — | LAN message protocol: framing, encode/decode, pure-data, zero side effects |
-| `ascii-pet` | Linux | ANSI terminal rendering, xdotool window control, imports `pet_core` |
-| `ascii-pet-win.py` | Windows | Win32 GDI rendering via ctypes, system tray icon, imports `pet_core` |
-| `ascii-pet-launcher` | Linux (i3) | Bash — kills old instance, launches alacritty with `config/pet.toml` |
-| `build.py` | — | PyInstaller → `dist/ascii-pet-win.exe` (supports `--win7` and `--all` flags) |
-| `compile_locales.py` | — | Compiles `.po` → `.mo` for gettext (stdlib-only, no xgettext needed) |
-| `conftest.py` | — | Auto-forces English locale for all tests via `_set_english_language` fixture |
-| `reinstall.sh` | Linux | Copies files to `~/.local/bin/`, fixes launcher path, runs |
-| `config/pet.toml` | — | Alacritty config: transparent bg, monospace font, green-on-black |
-| `config/weather.json` | — | OpenWeatherMap API key and city config |
+```
+src/ascii_pet/        ← core package (importable as `ascii_pet`)
+    __init__.py
+    core.py           ← pet game logic (PetGame, actions, persistence, rendering data)
+    i18n.py           ← internationalization (en/zh), gettext-based
+    lan.py            ← LAN P2P networking (UDP discovery + TCP messaging)
+    protocol.py       ← LAN message protocol (framing, encode/decode, pure-data)
+    weather.py        ← OpenWeatherMap API client
+bin/                  ← entry point scripts
+    ascii-pet         ← Linux: ANSI terminal rendering, xdotool window control
+    ascii-pet-win.py  ← Windows: Win32 GDI rendering, system tray icon
+    ascii-pet-launcher← Linux (i3): bash launcher for alacritty
+scripts/              ← build/maintenance
+    build.py          ← PyInstaller → dist/ascii-pet-win.exe (--win7, --all flags)
+    compile_locales.py← Compiles .po → .mo for gettext
+    reinstall.sh      ← Linux: copies to ~/.local/bin/
+config/
+    pet.toml          ← Alacritty config
+    weather.json      ← OpenWeatherMap API key
+locales/
+    en/LC_MESSAGES/   ← English translations
+    zh/LC_MESSAGES/   ← Chinese translations
+test/                 ← pytest tests (conftest.py auto-forces English locale)
+```
+
+## Import Convention
+
+```python
+from ascii_pet.core import PetGame, SPECIES, render_sprite
+from ascii_pet.i18n import _, get_language, set_language
+from ascii_pet.lan import LanNode
+from ascii_pet.protocol import MSG_VISIT_FEED, encode_message
+```
+
+## Run
+
+```
+python bin/ascii-pet-win.py      # Windows
+python bin/ascii-pet             # Linux
+python scripts/build.py          # Build exe (auto-installs PyInstaller)
+python scripts/build.py --win7   # Build Win7-compatible exe
+python scripts/build.py --all    # Build both versions
+```
+
+## Tests
+
+```
+pytest                        # Run all tests
+pytest -m "not slow"          # Skip slow tests
+pytest test/test_prng.py      # Run a single test file
+pytest -k test_hash           # Run tests matching a name pattern
+pytest --cov=ascii_pet --cov-report=term-missing  # Coverage report
+```
+
+- Tests live in `test/` directory.
+- `test/conftest.py` auto-forces English locale before every test.
+- `pytest.ini` configures `testpaths=test`, `pythonpath=src`, and `--strict-markers`.
+- `requirements-dev.txt`: pytest, pytest-cov, pytest-mock, pytest-xdist, coverage.
 
 ## Architecture
 
 ```
-pet_core.py          ← platform-independent game logic
+src/ascii_pet/core.py    ← platform-independent game logic
 ├── Constants: SPECIES, BODIES, ACHIEVEMENTS, STAT_NAMES, etc.
 ├── PRNG: mulberry32, hash_string (FNV-1a)
 ├── Generation: generate_companion, generate_name, roll_rarity, roll_stats
@@ -39,84 +81,32 @@ pet_core.py          ← platform-independent game logic
 ├── LAN: lan_init, lan_tick, lan_visit_pet, lan_shutdown, lan_start_visit
 └── PetGame class: state machine wrapping all logic, handles key input
 
-weather.py           ← OpenWeatherMap API client
-├── get_weather(): fetches weather data with 30min cache
-├── format_weather_line(): one-line weather summary
-└── _get_ip_city(): IP-based geolocation fallback
-
-i18n.py              ← Internationalization
-├── SUPPORTED_LANGUAGES: ['en', 'zh']
-├── set_language(lang), get_language(), _(msgid) → translated string
-├── _detect_system_language(): locale detection (en/zh)
-└── init_language(): loads saved pref or detects system lang
-
-lan.py               ← LAN P2P networking (zero pip deps)
-├── LanNode: UDP discovery (broadcast hello/heartbeat) + TCP reliable messaging
-├── Peer tracking, visit requests/responses, pet snapshots
-└── All socket ops wrapped in try/except; threads never propagate exceptions
-
-lan_protocol.py      ← Pure-data LAN protocol (zero pip deps)
-├── Wire format: 4-byte BE length prefix + UTF-8 JSON body
-├── MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT, MSG_VISIT_REQ/ACK/DATA/LEAVE, MSG_BYE
-├── encode_message(), decode_message(), make_pet_snapshot(), make_hello()
-└── Intentionally side-effect free for isolated unit testing
-
-ascii-pet            ← Linux wrapper
+bin/ascii-pet             ← Linux wrapper
 ├── ANSI color constants (RARITY_COLORS, MOOD_COLORS)
 ├── Terminal I/O (get_key, clear_screen, etc.)
 ├── xdotool window control (set_window_geometry, get_screen_size)
-├── ANSI rendering (build_compact, build_expanded, build_stats, build_achievements, build_items, build_release)
+├── ANSI rendering (build_compact, build_expanded, build_stats, etc.)
 └── main(): event loop calling PetGame
 
-ascii-pet-win.py     ← Windows wrapper
+bin/ascii-pet-win.py     ← Windows wrapper
 ├── Win32 RGB colors (RARITY_RGB, MOOD_RGB, COLOR_*)
 ├── Win32 API structs and function signatures
-├── GDI rendering (render_compact_lines, render_expanded_lines, render_release_lines, render_items_lines, etc.)
+├── GDI rendering (render_compact_lines, render_expanded_lines, etc.)
 ├── PetWindow class (WndProc, on_paint, on_timer, on_char)
 ├── System tray icon with context menu (right-click)
 └── main(): creates PetGame + PetWindow, runs message loop
 ```
 
-## Run
-
-```
-./ascii-pet                  # Linux direct
-./ascii-pet --all            # List all species with sprites
-./ascii-pet [username]       # Specific profile
-./ascii-pet-launcher         # i3 + alacritty (kills existing instance)
-./reinstall.sh               # Install to ~/.local/bin/ and launch
-python ascii-pet-win.py      # Windows (or dist/ascii-pet-win.exe)
-python build.py              # Build Windows exe (default: current Python)
-python build.py --win7       # Build Win7-compatible exe (Python 3.8)
-python build.py --all        # Build both versions
-```
-
-## Tests
-
-```
-pytest                        # Run all tests
-pytest -m "not slow"          # Skip slow tests
-pytest test/test_prng.py      # Run a single test file
-pytest -k test_hash           # Run tests matching a name pattern
-pytest --cov=pet_core --cov-report=term-missing  # Coverage report
-```
-
-- Tests live in `test/` directory.
-- `test/conftest.py` auto-forces English locale before every test (`_set_english_language` fixture).
-- `pytest.ini` configures `testpaths=test` and `--strict-markers`.
-- `requirements-dev.txt`: pytest, pytest-cov, pytest-mock, pytest-xdist, coverage.
-- Coverage source is `pet_core` only; platform files and tests are excluded.
-
 ## Conventions
 
-- **Core logic in `pet_core.py`** — all game state, constants, and pure functions live here. Platform files only handle rendering and I/O.
+- **Core logic in `src/ascii_pet/core.py`** — all game state, constants, and pure functions live here. Platform files only handle rendering and I/O.
 - **Zero pip dependencies** at runtime (stdlib only). PyInstaller is build-time only.
 - **PetGame is the interface** — platform files call `game.tick()`, `game.handle_key()`, `game.handle_action()`. Never duplicate game logic in platform files.
-- **Rendering differs by design**: Linux returns ANSI strings, Windows returns `(text, (R,G,B))` tuples. Both call the same `pet_core` data functions.
+- **Rendering differs by design**: Linux returns ANSI strings, Windows returns `(text, (R,G,B))` tuples. Both call the same `ascii_pet.core` data functions.
 - **State path**: Linux → `~/.local/share/ascii-pet/`, Windows → `%APPDATA%\ascii-pet\`.
 - **Deterministic generation**: Custom FNV-1a hash (`hash_string()`) of uid+SALT (`'ascii-pet-2026'`) feeds a mulberry32 PRNG. Same uid = same pet.
-- **I18n**: All user-facing strings go through `_()` from `i18n.py`. Two locales: `en`, `zh`. Translations live in `locales/{lang}/LC_MESSAGES/ascii_pet.po`. Run `python compile_locales.py` after editing `.po` files.
-- **LAN protocol**: `lan_protocol.py` is intentionally side-effect free — no sockets, no threads. Test it in isolation. `lan.py` handles all networking (UDP discovery + TCP messaging).
+- **I18n**: All user-facing strings go through `_()` from `ascii_pet.i18n`. Two locales: `en`, `zh`. Translations in `locales/{lang}/LC_MESSAGES/ascii_pet.po`. Run `python scripts/compile_locales.py` after editing `.po` files.
+- **LAN protocol**: `ascii_pet.protocol` is side-effect free — no sockets, no threads. `ascii_pet.lan` handles all networking.
 
 ## Gameplay mechanics
 
@@ -141,5 +131,4 @@ Not pip — system packages: `xdotool`, `xprop`, `xterm`. `picom` optional for t
 ## What to skip
 
 - `.trae/` contains historical design specs; not needed for current work.
-- `build/`, `dist/`, `build-win7/` are PyInstaller artifacts.
-- Merge conflict artifacts (`*_REMOTE_*`, `*_LOCAL_*`, `*_BASE_*`, `*_BACKUP_*`) in working tree — resolve before building.
+- `build/`, `dist/`, `build-win7/`, `dist-win7/` are PyInstaller artifacts.

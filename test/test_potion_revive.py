@@ -14,7 +14,7 @@ import shutil
 
 import pytest
 
-from pet_core import PetGame
+from ascii_pet.core import PetGame
 
 
 @pytest.fixture

@@ -23,17 +23,17 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-import lan_protocol  # noqa: F401  — ensure protocol module is importable
-from lan_protocol import (
+from ascii_pet import protocol as lan_protocol  # noqa: F401  — ensure protocol module is importable
+from ascii_pet.protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
     MSG_VISIT_LEAVE, MSG_BYE,
     encode_message,
 )
 
-import lan
+from ascii_pet import lan
 
 
 # ─── Test helpers ───────────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ class TestIsPeerExpired:
 class TestLanNodeStart:
     """LanNode.start() behavior with mocked sockets."""
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=True))
     def test_start_failure_returns_false_no_exception(self, mock_sock, mock_ip):
         """start() returns False on socket.error, does not raise (test 4)."""
@@ -227,7 +227,7 @@ class TestLanNodeStart:
         assert node.get_status()["enabled"] is False
         node.stop()  # cleanup, should not crash
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
     def test_start_success_returns_true(self, mock_sock, mock_ip):
         """start() returns True when sockets bind successfully."""
@@ -237,7 +237,7 @@ class TestLanNodeStart:
         assert node.get_status()["enabled"] is True
         node.stop()
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(recv_should_error=True))
     def test_network_thread_exception_exits_gracefully(self, mock_sock, mock_ip):
         """Network thread exception doesn't crash main thread (test 9)."""
@@ -263,7 +263,7 @@ class TestLanNodeStop:
         node = lan.LanNode("alice", _minimal_pet_state())
         node.stop()  # should not raise
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
     def test_start_then_stop_cleans_up(self, mock_sock, mock_ip):
         """start() → stop() properly cleans up resources (test 10)."""
@@ -290,7 +290,7 @@ class TestLanNodeGetStatus:
         assert isinstance(status["node_id"], str)
         assert len(status["node_id"]) > 0
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
     def test_get_status_after_start_returns_enabled_with_node_id(self, mock_sock, mock_ip):
         """get_status() after start returns enabled=True and correct node_id (test 7)."""
@@ -322,7 +322,7 @@ class TestLanNodeSendBroadcast:
         result = node.send_broadcast(MSG_HEARTBEAT, {"ts": time.time()})
         assert result is False
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
     def test_send_broadcast_started_returns_true(self, mock_sock, mock_ip):
         """send_broadcast returns True when node is started."""
@@ -342,7 +342,7 @@ class TestLanNodeSendToPeer:
         result = node.send_to_peer("peer-1", MSG_HEARTBEAT, {"ts": time.time()})
         assert result is False
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
     def test_send_to_peer_unknown_peer_returns_false(self, mock_sock, mock_ip):
         """send_to_peer returns False when peer is not in peers list."""
@@ -717,7 +717,7 @@ class TestFailover:
 class TestThreadExceptionNotification:
     """Thread exceptions notify the UI via ui_queue."""
 
-    @patch('lan._get_local_ip', return_value='192.168.1.100')
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(recv_should_error=True))
     def test_thread_exception_puts_error_in_ui_queue(self, mock_sock, mock_ip):
         """Network thread exception puts an error message in ui_queue."""

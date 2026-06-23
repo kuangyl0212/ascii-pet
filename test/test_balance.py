@@ -27,10 +27,10 @@ from unittest.mock import patch
 from datetime import datetime
 
 # Add the project directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-import pet_core
-from pet_core import PetGame, RANDOM_EVENTS
+from ascii_pet import core as pet_core
+from ascii_pet.core import PetGame, RANDOM_EVENTS
 
 
 def _find_event(name):

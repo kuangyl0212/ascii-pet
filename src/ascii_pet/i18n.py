@@ -20,12 +20,13 @@ def _get_locales_dir():
 
     When running from PyInstaller bundle (sys._MEIPASS), locales are
     extracted to the temp dir alongside the main script.
-    When running as a plain script, locales are next to i18n.py.
+    When running as a plain script, locales are in the project root.
     """
     if getattr(sys, 'frozen', False):
         # PyInstaller bundle: locales are in the _MEIPASS temp dir
         return Path(sys._MEIPASS) / 'locales'
-    return Path(__file__).parent / 'locales'
+    # From src/ascii_pet/i18n.py, go up to project root
+    return Path(__file__).parent.parent.parent / 'locales'
 
 
 def _detect_system_language():

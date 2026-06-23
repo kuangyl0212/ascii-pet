@@ -7,7 +7,7 @@ if sys.platform == 'win32':
 else:
     import termios, tty
 
-from pet_core import (
+from ascii_pet.core import (
     SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ANIMATIONS, ACHIEVEMENTS, MAX_PETS,
     render_sprite, render_face, render_frame, export_text,
     PetGame,

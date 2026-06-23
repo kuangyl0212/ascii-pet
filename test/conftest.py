@@ -3,10 +3,14 @@
 Ensures the i18n language is set to English before each test,
 so that tests asserting English strings work regardless of system locale.
 """
+import os, sys
 from unittest.mock import patch
 
+# Add src/ to path so ascii_pet package is importable
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
+
 import pytest
-import i18n
+from ascii_pet import i18n
 
 
 @pytest.fixture(autouse=True)

@@ -145,7 +145,7 @@ def write_mo(mo_path, entries):
 
 def compile_all():
     """Compile all .po files in the locales directory to .mo files."""
-    locales_dir = Path(__file__).parent / 'locales'
+    locales_dir = Path(__file__).parent.parent / 'locales'
 
     for po_path in locales_dir.glob('*/LC_MESSAGES/*.po'):
         mo_path = po_path.with_suffix('.mo')

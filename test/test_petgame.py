@@ -13,10 +13,10 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-import pet_core
-from pet_core import (
+from ascii_pet import core as pet_core
+from ascii_pet.core import (
     PetGame, MAX_PETS, MAX_DAILY_ADOPTIONS, MAX_INVENTORY,
     ITEMS, STAT_NAMES, RANDOM_EVENTS, PET_INTERACTIONS,
     init_state, generate_companion, generate_name,

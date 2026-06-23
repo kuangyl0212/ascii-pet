@@ -6,7 +6,7 @@ that will be wrapped with _() in ascii-pet-win.py.
 Tests the _() function directly with English msgid keys, verifying
 Chinese translations match the .po file.
 """
-import i18n
+from ascii_pet import i18n
 
 
 class TestTrayMenuI18n:

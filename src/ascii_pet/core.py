@@ -4,7 +4,7 @@
 import os, json, time, random, math, queue, string, shutil
 from pathlib import Path
 from datetime import datetime
-from i18n import _
+from ascii_pet.i18n import _
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -579,7 +579,7 @@ class PetGame:
     """Platform-independent game state and logic."""
 
     def __init__(self, uid, data_dir=None):
-        from i18n import init_language
+        from ascii_pet.i18n import init_language
         init_language(data_dir)
         self.uid = uid
         self.data_dir = data_dir
@@ -1212,7 +1212,7 @@ class PetGame:
         启用后自动检测重名并追加后缀。
         """
         try:
-            from lan import LanNode
+            from ascii_pet.lan import LanNode
             # 如果未提供用户名，尝试从存档加载或生成
             if not username:
                 username = self.lan_username
@@ -1296,7 +1296,7 @@ class PetGame:
             self.message = _("You are being visited, cannot initiate visit")
             self.message_time = time.time()
             return False
-        from lan_protocol import MSG_VISIT_REQ, make_pet_snapshot
+        from ascii_pet.protocol import MSG_VISIT_REQ, make_pet_snapshot
         snapshot = make_pet_snapshot(self.state, self.lan_username or self.uid)
         ok = self.lan_node.send_to_peer(peer_node_id, MSG_VISIT_REQ, {
             "from": self.lan_node.get_status().get("node_id", ""),
@@ -1313,7 +1313,7 @@ class PetGame:
 
     def end_visit(self):
         """结束拜访。发起方和受访者均可调用。"""
-        from lan_protocol import MSG_VISIT_END
+        from ascii_pet.protocol import MSG_VISIT_END
         if self.active_visit:
             target = self.active_visit.get("target", "")
             if target and self.lan_node:
@@ -1343,9 +1343,9 @@ class PetGame:
 
     def remote_feed(self):
         """远程喂食对方宠物。"""
+        from ascii_pet.protocol import MSG_VISIT_FEED
         if not self.active_visit or not self.lan_node:
             return False
-        from lan_protocol import MSG_VISIT_FEED
         target = self.active_visit.get("target", "")
         try:
             return self.lan_node.send_to_peer(target, MSG_VISIT_FEED, {"from": self.lan_username})
@@ -1354,9 +1354,9 @@ class PetGame:
 
     def remote_play(self):
         """远程玩耍。"""
+        from ascii_pet.protocol import MSG_VISIT_PLAY
         if not self.active_visit or not self.lan_node:
             return False
-        from lan_protocol import MSG_VISIT_PLAY
         target = self.active_visit.get("target", "")
         try:
             return self.lan_node.send_to_peer(target, MSG_VISIT_PLAY, {"from": self.lan_username})
@@ -1372,7 +1372,7 @@ class PetGame:
         if 0 <= index < len(self.visitor_pets):
             visitor = self.visitor_pets.pop(index)
             if self.lan_enabled and self.lan_node:
-                from lan_protocol import MSG_VISIT_LEAVE
+                from ascii_pet.protocol import MSG_VISIT_LEAVE
                 owner_id = visitor.get("owner", "")
                 if owner_id:
                     self.lan_node.send_to_peer(owner_id, MSG_VISIT_LEAVE, {"pet_name": visitor.get("name","")})
@@ -1397,7 +1397,7 @@ class PetGame:
 
     def _handle_lan_message(self, msg):
         """处理单条网络消息。"""
-        from lan_protocol import (MSG_VISIT_REQ, MSG_VISIT_DATA, MSG_VISIT_LEAVE,
+        from ascii_pet.protocol import (MSG_VISIT_REQ, MSG_VISIT_DATA, MSG_VISIT_LEAVE,
                                   MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT, MSG_VISIT_END)
         msg_type = msg.get("type")
         payload = msg.get("payload", {})
@@ -1512,7 +1512,7 @@ class PetGame:
     def _tick_visit_events(self):
         """拜访期间随机触发互动事件。"""
         import random
-        from lan_protocol import VISIT_EVENTS, MSG_VISIT_EVENT, make_visit_event
+        from ascii_pet.protocol import VISIT_EVENTS, MSG_VISIT_EVENT, make_visit_event
         now = time.time()
         # 只在活跃拜访时触发
         if not self.active_visit and not self.being_visited:

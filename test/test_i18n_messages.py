@@ -8,10 +8,10 @@ from datetime import datetime
 from pathlib import Path
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-from i18n import set_language, get_language, _, save_settings
-from pet_core import (
+from ascii_pet.i18n import set_language, get_language, _, save_settings
+from ascii_pet.core import (
     feed_pet, play_pet, sleep_pet, init_state, generate_companion,
     generate_name, PetGame, ITEMS, ACHIEVEMENTS, RANDOM_EVENTS,
     PET_INTERACTIONS, MAX_DAILY_ADOPTIONS,
@@ -327,7 +327,7 @@ class TestPetGameI18n:
     def test_evolution_chinese(self):
         set_language('zh')
         state = _make_state(species='blob', level=4, xp=400)
-        from pet_core import check_level_up
+        from ascii_pet.core import check_level_up
         result = check_level_up(state)
         assert '进化为' in result
         assert 'slime' in result

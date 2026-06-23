@@ -19,9 +19,9 @@ import random
 import pytest
 
 # Ensure the project directory is importable when running from anywhere
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-import pet_core
+from ascii_pet import core as pet_core
 
 
 # ─── SubTask 2.1: mulberry32 determinism ─────────────────────────────────────

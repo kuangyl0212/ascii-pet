@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import i18n
+from ascii_pet import i18n
 
 
 class TestLanguagePersistence:
@@ -72,7 +72,7 @@ class TestLanguageMenuConstants:
     def _load_module(self):
         """Load ascii-pet-win.py via importlib (hyphen in filename)."""
         import importlib.util
-        mod_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ascii-pet-win.py')
+        mod_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ascii-pet-win.py')
         spec = importlib.util.spec_from_file_location('ascii_pet_win', mod_path)
         self.mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.mod)
@@ -138,7 +138,7 @@ class TestPetGameLanguageInit:
         # Reset to English
         i18n.set_language('en')
         # Create PetGame - should load Chinese
-        from pet_core import PetGame
+        from ascii_pet.core import PetGame
         game = PetGame('test-lang-init', data_dir=tmp_path)
         assert i18n.get_language() == 'zh'
 
@@ -150,7 +150,7 @@ class TestLanguageMenuCommand:
     def _load_module(self):
         """Load ascii-pet-win.py via importlib."""
         import importlib.util
-        mod_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ascii-pet-win.py')
+        mod_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ascii-pet-win.py')
         spec = importlib.util.spec_from_file_location('ascii_pet_win', mod_path)
         self.mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.mod)

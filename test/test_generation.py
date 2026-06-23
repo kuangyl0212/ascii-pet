@@ -16,10 +16,10 @@ import random
 from collections import Counter
 from unittest.mock import patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 import pytest
-from pet_core import (
+from ascii_pet.core import (
     generate_companion, generate_name, roll_rarity, roll_stats,
     mulberry32, hash_string,
     SPECIES, EYES, RARITIES, RARITY_WEIGHTS, RARITY_FLOOR, STAT_NAMES,
@@ -293,7 +293,7 @@ class TestShinyProbability:
     def test_shiny_ratio_about_1_percent(self):
         n = 10000
         shiny_count = 0
-        with patch('pet_core.mulberry32', side_effect=lambda s: random.Random(s).random):
+        with patch('ascii_pet.core.mulberry32', side_effect=lambda s: random.Random(s).random):
             for i in range(n):
                 c = generate_companion("testuser", str(i))
                 if c['shiny']:
@@ -313,7 +313,7 @@ class TestShinyProbability:
     def test_shiny_can_be_true_under_uniform_rng(self):
         """Under a uniform PRNG, at least one shiny pet must appear in 10000."""
         found_shiny = False
-        with patch('pet_core.mulberry32', side_effect=lambda s: random.Random(s).random):
+        with patch('ascii_pet.core.mulberry32', side_effect=lambda s: random.Random(s).random):
             for i in range(10000):
                 if generate_companion("testuser", str(i))['shiny']:
                     found_shiny = True

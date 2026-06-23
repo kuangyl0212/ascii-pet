@@ -16,10 +16,10 @@ import os
 from datetime import datetime, timedelta
 
 # Allow importing pet_core.py from this directory
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 import pytest
-import pet_core
+from ascii_pet import core as pet_core
 
 
 @pytest.fixture

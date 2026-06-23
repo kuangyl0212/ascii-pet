@@ -25,11 +25,11 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-import pet_core
-from pet_core import PetGame
-from lan_protocol import (
+from ascii_pet import core as pet_core
+from ascii_pet.core import PetGame
+from ascii_pet.protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
     MSG_VISIT_LEAVE, MSG_BYE,
@@ -173,7 +173,7 @@ class TestEnableDisableLan:
     def test_enable_lan_success(self, game):
         """enable_lan returns True and sets lan_enabled when start() succeeds."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             result = game.enable_lan('alice')
         assert result is True
         assert game.lan_enabled is True
@@ -183,7 +183,7 @@ class TestEnableDisableLan:
         """enable_lan returns False and does not raise when start() fails."""
         fake_node = _FakeLanNode('alice', game.state)
         fake_node._start_should_succeed = False
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             result = game.enable_lan('alice')
         assert result is False
         assert game.lan_enabled is False
@@ -200,7 +200,7 @@ class TestEnableDisableLan:
     def test_disable_lan_clears_state(self, game):
         """disable_lan sets lan_enabled=False and clears peers/visitors/visit state."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Add some state to verify it gets cleared
         game.lan_peers = [{'node_id': 'peer1'}]
@@ -227,7 +227,7 @@ class TestEnableDisableLan:
     def test_disable_lan_calls_stop_on_node(self, game):
         """disable_lan calls stop() on the lan_node."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         stop_called = []
         original_stop = fake_node.stop
@@ -260,7 +260,7 @@ class TestGetLanStatus:
     def test_status_when_enabled_returns_node_status(self, game):
         """When LAN enabled, returns the lan_node's get_status() result."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Configure fake status
         fake_node._status = {
@@ -341,7 +341,7 @@ class TestVisitorManagement:
     def test_visitor_pets_unaffected_by_switch_pet(self, game):
         """switch_pet does not affect visitor_pets."""
         # Add a second local pet
-        from pet_core import generate_companion, init_state
+        from ascii_pet.core import generate_companion, init_state
         game.pets_data['pets'][game.pet_idx] = game.state
         bones = generate_companion(game.uid + '-2')
         new_state = init_state(game.uid + '-2', bones, 'SecondPet')
@@ -361,7 +361,7 @@ class TestVisitorManagement:
     def test_dismiss_visitor_sends_visit_leave_when_lan_enabled(self, game):
         """dismiss_visitor sends MSG_VISIT_LEAVE to visitor's owner when LAN enabled."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         snap = _make_snapshot(name='Buddy', owner='friend-node-id')
@@ -391,7 +391,7 @@ class TestVisitInvitations:
     def test_invite_visit_sends_visit_req_with_snapshot(self, game):
         """invite_visit sends MSG_VISIT_REQ with pet_snapshot directly (no ACK wait)."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         result = game.invite_visit('peer-node-id')
@@ -414,7 +414,7 @@ class TestVisitInvitations:
     def test_invite_visit_sets_active_visit(self, game):
         """After successful invite_visit, active_visit is set with target/start_time/pet_snapshot."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         before = time.time()
@@ -430,7 +430,7 @@ class TestVisitInvitations:
     def test_invite_visit_active_visit_locks_returns_false(self, game):
         """invite_visit returns False when active_visit is already set."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Simulate an ongoing visit
         game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
@@ -445,7 +445,7 @@ class TestVisitInvitations:
     def test_invite_visit_being_visited_locks_returns_false(self, game):
         """invite_visit returns False when being_visited is already set."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Simulate being visited
         game.being_visited = {'from': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
@@ -466,7 +466,7 @@ class TestReceiveVisit:
     def test_visit_req_sets_being_visited(self, game):
         """VISIT_REQ message auto-sets being_visited (no manual confirmation)."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         snapshot = _make_snapshot(name='Buddy', owner='friend-1')
@@ -489,7 +489,7 @@ class TestReceiveVisit:
     def test_visit_req_adds_snapshot_to_visitor_pets(self, game):
         """VISIT_REQ auto-appends the pet snapshot to visitor_pets."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         snapshot = _make_snapshot(name='Buddy', owner='friend-1')
@@ -510,7 +510,7 @@ class TestReceiveVisit:
     def test_visit_req_does_not_set_pending_visit_request(self, game):
         """VISIT_REQ must not create pending_visit_request (field removed)."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         snapshot = _make_snapshot(name='Buddy', owner='friend-1')
@@ -530,7 +530,7 @@ class TestReceiveVisit:
     def test_visit_req_sets_message(self, game):
         """VISIT_REQ sets a friendly message about the visitor arriving."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         snapshot = _make_snapshot(name='Buddy', owner='friend-1')
@@ -558,7 +558,7 @@ class TestEndVisit:
     def test_end_visit_as_initiator_clears_active_visit(self, game):
         """Initiator calling end_visit sends VISIT_END and clears active_visit."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
 
@@ -574,7 +574,7 @@ class TestEndVisit:
     def test_end_visit_as_receiver_clears_being_visited(self, game):
         """Receiver calling end_visit sends VISIT_END and clears being_visited."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.being_visited = {'from': 'peer-1', 'start_time': time.time(), 'pet_snapshot': _make_snapshot(name='Buddy', owner='peer-1')}
         game.visitor_pets.append(game.being_visited['pet_snapshot'])
@@ -591,7 +591,7 @@ class TestEndVisit:
     def test_end_visit_no_active_visit_returns_false(self, game):
         """end_visit returns False when there is no active or incoming visit."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         result = game.end_visit()
@@ -601,7 +601,7 @@ class TestEndVisit:
     def test_receive_visit_end_clears_active_visit(self, game):
         """Receiving VISIT_END as initiator clears active_visit."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
 
@@ -617,7 +617,7 @@ class TestEndVisit:
     def test_receive_visit_end_clears_being_visited(self, game):
         """Receiving VISIT_END as receiver clears being_visited and removes visitor."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         snap = _make_snapshot(name='Buddy', owner='peer-1')
         game.being_visited = {'from': 'peer-1', 'start_time': time.time(), 'pet_snapshot': snap}
@@ -644,7 +644,7 @@ class TestRemoteActions:
     def test_remote_feed_sends_visit_feed(self, game):
         """remote_feed sends MSG_VISIT_FEED to the visit target."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
 
@@ -659,7 +659,7 @@ class TestRemoteActions:
     def test_remote_play_sends_visit_play(self, game):
         """remote_play sends MSG_VISIT_PLAY to the visit target."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
 
@@ -674,7 +674,7 @@ class TestRemoteActions:
     def test_remote_feed_no_active_visit_returns_false(self, game):
         """remote_feed returns False when there is no active visit."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         result = game.remote_feed()
@@ -684,7 +684,7 @@ class TestRemoteActions:
     def test_remote_play_no_active_visit_returns_false(self, game):
         """remote_play returns False when there is no active visit."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         result = game.remote_play()
@@ -694,7 +694,7 @@ class TestRemoteActions:
     def test_receive_visit_feed_executes_local_feed(self, game):
         """Receiving MSG_VISIT_FEED triggers local handle_action('feed')."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Ensure feed is not on cooldown and stat is low enough
         game.state['stats']['HUNGER'] = 50
@@ -715,7 +715,7 @@ class TestRemoteActions:
     def test_receive_visit_play_executes_local_play(self, game):
         """Receiving MSG_VISIT_PLAY triggers local handle_action('play')."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Ensure play is not on cooldown and stat is low enough
         game.state['stats']['ENERGY'] = 80
@@ -741,7 +741,7 @@ class TestVisitTimeout:
     def test_active_visit_timeout_ends_visit(self, game):
         """active_visit older than 600s is cleared by _tick_visit_timeout."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Simulate a visit that started 601 seconds ago
         game.active_visit = {
@@ -757,7 +757,7 @@ class TestVisitTimeout:
     def test_being_visited_timeout_ends_visit(self, game):
         """being_visited older than 600s is cleared by _tick_visit_timeout."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.being_visited = {
             'from': 'peer-1',
@@ -772,7 +772,7 @@ class TestVisitTimeout:
     def test_active_visit_not_expired_kept(self, game):
         """active_visit younger than 600s is NOT cleared."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {
             'target': 'peer-1',
@@ -787,7 +787,7 @@ class TestVisitTimeout:
     def test_tick_calls_visit_timeout_when_lan_enabled(self, game):
         """tick() invokes _tick_visit_timeout when LAN is enabled."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         called = []
         original = game._tick_visit_timeout
@@ -814,7 +814,7 @@ class TestVisitRandomEvents:
     def test_no_event_without_active_visit(self, game):
         """_tick_visit_events does nothing when no active visit or being_visited."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         with patch('random.random', return_value=0.05):  # would trigger 10%
@@ -827,7 +827,7 @@ class TestVisitRandomEvents:
     def test_event_triggers_with_active_visit(self, game):
         """With active_visit and random<0.10, an event fires and is sent to peer."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {
             'target': 'peer-1',
@@ -852,7 +852,7 @@ class TestVisitRandomEvents:
     def test_event_cooldown_blocks_new_event(self, game):
         """When visit_event_cooldown is in the future, no event fires."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {
             'target': 'peer-1',
@@ -871,7 +871,7 @@ class TestVisitRandomEvents:
     def test_event_high_random_no_trigger(self, game):
         """With random>=0.10, no event fires."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {
             'target': 'peer-1',
@@ -889,7 +889,7 @@ class TestVisitRandomEvents:
     def test_event_sets_cooldown(self, game):
         """After an event fires, visit_event_cooldown is set 30s in the future."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.active_visit = {
             'target': 'peer-1',
@@ -910,7 +910,7 @@ class TestVisitRandomEvents:
     def test_receive_visit_event_applies_effects(self, game):
         """Receiving MSG_VISIT_EVENT applies stat_effects and sets message."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         happy_before = game.state['stats']['HAPPY']
 
@@ -946,7 +946,7 @@ class TestProcessLanQueues:
     def test_process_lan_queues_empty_queue_no_error(self, game):
         """Empty ui_queue does not cause errors."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         # Queue is empty
@@ -957,7 +957,7 @@ class TestProcessLanQueues:
     def test_process_lan_queues_malformed_message_skipped(self, game):
         """A malformed message is skipped without affecting subsequent messages."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         # Put a malformed message (string instead of dict) then a valid one
@@ -981,7 +981,7 @@ class TestProcessLanQueues:
     def test_process_lan_queues_multiple_messages(self, game):
         """Multiple messages in queue are all processed in order."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         fake_node.ui_queue.put({
@@ -1018,7 +1018,7 @@ class TestGracefulDegradation:
         """feed/play/sleep/adopt/switch all work after enable_lan fails."""
         fake_node = _FakeLanNode('alice', game.state)
         fake_node._start_should_succeed = False
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             result = game.enable_lan('alice')
         assert result is False
 
@@ -1046,7 +1046,7 @@ class TestGracefulDegradation:
     def test_process_lan_queues_after_disable_no_error(self, game):
         """process_lan_queues after disable_lan does not raise."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.disable_lan()
 
@@ -1057,7 +1057,7 @@ class TestGracefulDegradation:
     def test_tick_unaffected_by_lan_state(self, game):
         """tick() works the same regardless of LAN enabled/disabled."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
 
         game.state['stats']['HUNGER'] = 50
@@ -1108,7 +1108,7 @@ class TestEnableLanAutoUsername:
     def test_enable_lan_none_auto_generates_username(self, game):
         """enable_lan(None) auto-generates a random username."""
         fake_node = _FakeLanNode(None, game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             result = game.enable_lan(None)
         assert result is True
         assert game.lan_username is not None
@@ -1118,7 +1118,7 @@ class TestEnableLanAutoUsername:
     def test_enable_lan_none_saves_generated_username(self, game):
         """enable_lan(None) saves the generated username to save data."""
         fake_node = _FakeLanNode(None, game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan(None)
         # Username should be saved in pets_data
         assert game.pets_data.get('username') == game.lan_username
@@ -1128,14 +1128,14 @@ class TestEnableLanAutoUsername:
         game.lan_username = 'saved-user'
         game.pets_data['username'] = 'saved-user'
         fake_node = _FakeLanNode(None, game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan(None)
         assert game.lan_username == 'saved-user'
 
     def test_enable_lan_with_username_uses_provided(self, game):
         """enable_lan('alice') uses the provided username."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             result = game.enable_lan('alice')
         assert result is True
         assert game.lan_username == 'alice'
@@ -1147,7 +1147,7 @@ class TestChangeLanUsername:
     def test_change_username_no_conflict_returns_true(self, game):
         """change_lan_username returns True when no peer has the new name."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # No peers → no conflict
         result = game.change_lan_username('newname')
@@ -1157,7 +1157,7 @@ class TestChangeLanUsername:
     def test_change_username_conflict_auto_resolves(self, game):
         """change_lan_username auto-resolves conflicts by appending suffix."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         # Simulate a peer with the target name
         fake_node._peers = [{'node_id': 'peer-1', 'username': 'taken', 'pet_summary': {}}]
@@ -1169,7 +1169,7 @@ class TestChangeLanUsername:
     def test_change_username_updates_lan_node_username(self, game):
         """change_lan_username updates the LanNode's username attribute."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.change_lan_username('newname')
         assert fake_node.username == 'newname'
@@ -1177,7 +1177,7 @@ class TestChangeLanUsername:
     def test_change_username_saves_to_pets_data(self, game):
         """change_lan_username persists the new username to save data."""
         fake_node = _FakeLanNode('alice', game.state)
-        with patch('lan.LanNode', return_value=fake_node):
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.change_lan_username('newname')
         assert game.pets_data.get('username') == 'newname'

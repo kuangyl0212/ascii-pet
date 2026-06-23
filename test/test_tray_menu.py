@@ -14,10 +14,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import i18n
+from ascii_pet import i18n
 
 # Load ascii-pet-win.py via importlib (hyphen in filename prevents normal import)
-_MOD_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ascii-pet-win.py')
+_MOD_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ascii-pet-win.py')
 _spec = importlib.util.spec_from_file_location('ascii_pet_win', _MOD_PATH)
 ascii_pet_win = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ascii_pet_win)
@@ -190,7 +190,7 @@ class TestDispatchBackupRestore:
 
     def test_dispatch_backup_creates_backup(self, pet_window):
         """分发 ID_BACKUP 应调用 create_backup 并设置消息。"""
-        with patch('pet_core.create_backup') as mock_create:
+        with patch('ascii_pet.core.create_backup') as mock_create:
             result = pet_window.dispatch_tray_command(ID_BACKUP)
         assert result is True
         mock_create.assert_called_once()
@@ -198,7 +198,7 @@ class TestDispatchBackupRestore:
 
     def test_dispatch_backup_passes_manual_type(self, pet_window):
         """分发 ID_BACKUP 应调用 create_backup 时传入 backup_type='manual'。"""
-        with patch('pet_core.create_backup') as mock_create:
+        with patch('ascii_pet.core.create_backup') as mock_create:
             pet_window.dispatch_tray_command(ID_BACKUP)
         mock_create.assert_called_once()
         args, kwargs = mock_create.call_args
@@ -208,7 +208,7 @@ class TestDispatchBackupRestore:
 
     def test_execute_menu_backup_passes_manual_type(self, pet_window):
         """execute_menu_command 中 ID_BACKUP 也应传入 backup_type='manual'。"""
-        with patch('pet_core.create_backup') as mock_create:
+        with patch('ascii_pet.core.create_backup') as mock_create:
             pet_window.execute_menu_command(ID_BACKUP)
         mock_create.assert_called_once()
         args, kwargs = mock_create.call_args
@@ -220,8 +220,8 @@ class TestDispatchBackupRestore:
         """分发 ID_RESTORE_START+N 应调用 restore_from_backup 并重新加载游戏。"""
         from datetime import datetime
         fake_dt = datetime(2026, 1, 15, 10, 30, 0)
-        with patch('pet_core.list_backups', return_value=[('backup_20260115_103000.json', fake_dt, 'auto')]), \
-             patch('pet_core.restore_from_backup', return_value=True) as mock_restore, \
+        with patch('ascii_pet.core.list_backups', return_value=[('backup_20260115_103000.json', fake_dt, 'auto')]), \
+             patch('ascii_pet.core.restore_from_backup', return_value=True) as mock_restore, \
              patch.object(pet_window, '_reload_game') as mock_reload:
             result = pet_window.dispatch_tray_command(ID_RESTORE_START)
         assert result is True
@@ -249,7 +249,7 @@ class TestBackupSubmenuLabels:
                 appended_labels.append(label)
             return True
 
-        with patch('pet_core.list_backups', return_value=backups), \
+        with patch('ascii_pet.core.list_backups', return_value=backups), \
              patch.object(ascii_pet_win.user32, 'GetCursorPos'), \
              patch.object(ascii_pet_win.user32, 'CreatePopupMenu', return_value=2), \
              patch.object(ascii_pet_win.user32, 'AppendMenuW', side_effect=fake_append_menu), \
@@ -279,7 +279,7 @@ class TestBackupSubmenuLabels:
                 appended_labels.append(label)
             return True
 
-        with patch('pet_core.list_backups', return_value=backups), \
+        with patch('ascii_pet.core.list_backups', return_value=backups), \
              patch.object(ascii_pet_win.user32, 'GetCursorPos'), \
              patch.object(ascii_pet_win.user32, 'CreatePopupMenu', return_value=2), \
              patch.object(ascii_pet_win.user32, 'AppendMenuW', side_effect=fake_append_menu), \

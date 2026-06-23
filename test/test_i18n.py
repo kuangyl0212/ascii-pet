@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import i18n
+from ascii_pet import i18n
 
 
 class TestTranslateEnglish:
