@@ -589,6 +589,7 @@ class PetGame:
         self.message = None
         self.message_time = 0
         self.visit_message_time = 0
+        self.action_message_time = 0
         self.last_event_time = 0
         self.anim_end = 0
         self.anim_frames = []
@@ -767,8 +768,10 @@ class PetGame:
             except Exception:
                 pass
 
-        # Don't let tick warnings overwrite recent visit messages (5s grace period)
+        # Don't let tick warnings overwrite recent visit or action messages (2s grace)
         if msg and now - self.visit_message_time < 5:
+            msg = None
+        if msg and now - self.action_message_time < 2:
             msg = None
 
         return msg, msg_time
@@ -1109,19 +1112,19 @@ class PetGame:
 
         if key == 'f' and self.mode != 'lan':
             msg, anim = self.handle_action('feed')
-            self.message = msg; self.message_time = now
+            self.message = msg; self.message_time = now; self.action_message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
         if key == 'p' and self.mode != 'lan':
             msg, anim = self.handle_action('play')
-            self.message = msg; self.message_time = now
+            self.message = msg; self.message_time = now; self.action_message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
         if key == 's':
             msg, anim = self.handle_action('sleep')
-            self.message = msg; self.message_time = now
+            self.message = msg; self.message_time = now; self.action_message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
@@ -1529,6 +1532,7 @@ class PetGame:
         self._apply_visit_event_effects(event.get("stat_effects", {}))
         self.message = _("Visit event: {desc}").format(desc=event.get('description',''))
         self.message_time = now
+        self.visit_message_time = now
         # 设置冷却
         self.visit_event_cooldown = now + 30  # 30秒冷却
         # 发送给对方
