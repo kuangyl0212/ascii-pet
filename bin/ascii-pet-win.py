@@ -3,6 +3,12 @@
 
 import os, sys, time, ctypes, subprocess, threading
 from pathlib import Path
+
+# Add src/ to path so ascii_pet package is importable when run directly
+_src = Path(__file__).resolve().parent.parent / 'src'
+if str(_src) not in sys.path:
+    sys.path.insert(0, str(_src))
+
 from ctypes import windll, c_int, c_uint, c_long, c_wchar_p, byref, sizeof, create_unicode_buffer
 from ctypes import wintypes, POINTER, c_void_p, c_char_p, c_size_t, memmove, c_byte
 

@@ -2,6 +2,13 @@
 """ASCII Desktop Pet - Terminal Companion (Linux)"""
 
 import os, sys, signal, subprocess, select, time
+
+# Add src/ to path so ascii_pet package is importable when run directly
+from pathlib import Path
+_src = Path(__file__).resolve().parent.parent / 'src'
+if str(_src) not in sys.path:
+    sys.path.insert(0, str(_src))
+
 if sys.platform == 'win32':
     import msvcrt, ctypes
 else:
@@ -193,7 +200,7 @@ def build_achievements(game):
     return '\n'.join(lines)
 
 def build_items(game):
-    from pet_core import ITEMS, MAX_INVENTORY
+    from ascii_pet.core import ITEMS, MAX_INVENTORY
     RST='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
     inv_list = game.get_inventory_list()
     total = sum(game.pets_data.get('inventory', {}).values())
@@ -335,7 +342,7 @@ def main():
             print('  ascii-pet — Terminal companion pet\n\n  Usage:\n    ascii-pet              Start pet\n    ascii-pet [username]   Specific username\n    ascii-pet --all        Show all species\n    ascii-pet --help       Help\n\n  Compact mode: just the pet\n  Expanded mode: full stats (Enter to toggle)\n  Commands: f feed, p play, s sleep, w adopt, b prev, n next, t stats, a achieve, e export, h help, c compact, m move, q quit')
             sys.exit(0)
         if arg == '--all':
-            from pet_core import EVOLVED_BODIES
+            from ascii_pet.core import EVOLVED_BODIES
             all_species = SPECIES + list(EVOLVED_BODIES.keys())
             print(f'\n  All {len(all_species)} species:\n')
             for sp in all_species:

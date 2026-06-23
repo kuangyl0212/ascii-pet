@@ -56,9 +56,12 @@ def build(python_exe, name_suffix="", workpath_suffix=""):
         '--distpath', distpath,
         '--workpath', workpath,
         '--specpath', specpath,
-        '--hidden-import', 'lan',
-        '--hidden-import', 'lan_protocol',
-        '--hidden-import', 'i18n',
+        '--paths', str(Path(__file__).parent.parent / 'src'),
+        '--hidden-import', 'ascii_pet',
+        '--hidden-import', 'ascii_pet.core',
+        '--hidden-import', 'ascii_pet.i18n',
+        '--hidden-import', 'ascii_pet.lan',
+        '--hidden-import', 'ascii_pet.protocol',
     ]
     if LOCALES_DIR.exists():
         cmd.extend(['--add-data', f'{LOCALES_DIR};locales'])
