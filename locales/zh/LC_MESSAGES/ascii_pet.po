@@ -485,6 +485,18 @@ msgstr "自动"
 msgid "Manual"
 msgstr "手动"
 
+msgid "Manual Backup"
+msgstr "手动备份"
+
+msgid "Restore Save"
+msgstr "恢复存档"
+
+msgid "Backup successful"
+msgstr "备份成功"
+
+msgid "Restored from backup"
+msgstr "已从备份恢复"
+
 msgid "Copied to clipboard!"
 msgstr "已复制到剪贴板！"
 

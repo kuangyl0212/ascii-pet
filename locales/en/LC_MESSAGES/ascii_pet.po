@@ -485,6 +485,18 @@ msgstr "Auto"
 msgid "Manual"
 msgstr "Manual"
 
+msgid "Manual Backup"
+msgstr "Manual Backup"
+
+msgid "Restore Save"
+msgstr "Restore Save"
+
+msgid "Backup successful"
+msgstr "Backup successful"
+
+msgid "Restored from backup"
+msgstr "Restored from backup"
+
 msgid "Copied to clipboard!"
 msgstr "Copied to clipboard!"
 
