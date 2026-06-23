@@ -143,21 +143,41 @@ def render_lan_lines(game):
     lines = []
     status = game.get_lan_status()
     enabled = status.get('enabled', False)
-    role = '主节点' if status.get('is_master') else '从节点'
-    peer_count = status.get('peer_count', 0)
-    error = status.get('error')
-    node_id = status.get('node_id', '')
+
+    # 用户名修改模式
+    if game.mode == 'lan_name_edit':
+        lines.append(('═ 修改用户名 ═', COLOR_MSG))
+        current = game.lan_username or '(未设置)'
+        lines.append((f'当前用户名: {current}', COLOR_WHITE))
+        lines.append((f'新用户名: {game._name_input}_', COLOR_BAR_FILL))
+        lines.append(('', COLOR_WHITE))
+        lines.append(('[Enter]确认 [ESC]取消', COLOR_DIM))
+        return lines
 
     lines.append(('═ 局域网联机 ═', COLOR_MSG))
     if enabled:
-        lines.append((f'状态: 已连接 [{role}] 对等节点: {peer_count}', COLOR_BAR_FILL))
-        if node_id:
-            lines.append((f'本机ID: {node_id[:40]}', COLOR_DIM))
+        role = '主节点' if status.get('is_master') else '从节点'
+        peer_count = status.get('peer_count', 0)
+        lines.append((f'用户名: {game.lan_username or "?"} [{role}] 节点: {peer_count}', COLOR_BAR_FILL))
     else:
         lines.append(('状态: 未连接', COLOR_BAR_EMPTY))
+        error = status.get('error')
         if error:
             lines.append((f'错误: {error}', COLOR_BAR_EMPTY))
     lines.append(('', COLOR_WHITE))
+
+    # 拜访状态
+    if game.active_visit:
+        elapsed = int(time.time() - game.active_visit.get('start_time', 0))
+        minutes, seconds = divmod(elapsed, 60)
+        lines.append((f'★ 正在拜访中 ({minutes}分{seconds}秒)', COLOR_MSG))
+        lines.append(('', COLOR_WHITE))
+    if game.being_visited:
+        elapsed = int(time.time() - game.being_visited.get('start_time', 0))
+        minutes, seconds = divmod(elapsed, 60)
+        visitor_name = game.being_visited.get('pet_snapshot', {}).get('name', '?')
+        lines.append((f'★ {visitor_name} 正在拜访你 ({minutes}分{seconds}秒)', COLOR_MSG))
+        lines.append(('', COLOR_WHITE))
 
     # 对等节点列表
     peers = game.get_lan_peers() if enabled else []
@@ -179,21 +199,16 @@ def render_lan_lines(game):
         lines.append(('─ 当前访客 ─', COLOR_DIM))
         for i, v in enumerate(visitors):
             lines.append((f'  {v.get("name","?")}({v.get("species","?")}) - 来自 {v.get("owner","?")}', COLOR_WHITE))
-    else:
-        lines.append(('（暂无访客）', COLOR_DIM))
     lines.append(('', COLOR_WHITE))
-
-    # 待确认请求
-    if game.pending_visit_request:
-        req = game.pending_visit_request
-        lines.append((f'★ {req.get("pet_name","?")} 想来拜访！', COLOR_MSG))
-        lines.append(('  [r]同意 [x]拒绝', COLOR_WHITE))
-        lines.append(('', COLOR_WHITE))
 
     # 操作提示
     lines.append(('─ 操作 ─', COLOR_DIM))
     if enabled:
-        lines.append(('[1-9]邀请拜访 [o]关闭联机', COLOR_DIM))
+        if game.active_visit or game.being_visited:
+            lines.append(('[e]结束拜访 [f]远程喂食 [p]远程玩耍', COLOR_DIM))
+        else:
+            lines.append(('[1-9]拜访玩家 [u]修改用户名', COLOR_DIM))
+        lines.append(('[o]关闭联机', COLOR_DIM))
     else:
         lines.append(('[o]开启联机', COLOR_DIM))
     lines.append(('[l]返回 [c]紧凑模式', COLOR_DIM))
@@ -429,6 +444,7 @@ LAYOUT_SIZES = {
     'items':        (44, 16),
     'release':      (44, 14),
     'lan':           (50, 20),
+    'lan_name_edit': (50, 20),
 }
 
 user32 = windll.user32
@@ -1016,7 +1032,7 @@ class PetWindow:
             lines = render_achievements_lines(g.state, g.bones)
         elif g.mode == 'items':
             lines = render_items_lines(g)
-        elif g.mode == 'lan':
+        elif g.mode in ('lan', 'lan_name_edit'):
             lines = render_lan_lines(g)
         elif g.mode == 'release':
             lines = render_release_lines(g)

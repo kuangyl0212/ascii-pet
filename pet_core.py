@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Platform-independent game logic for ASCII Desktop Pet."""
 
-import os, json, time, random, math, queue
+import os, json, time, random, math, queue, string
 from pathlib import Path
 from datetime import datetime
 
@@ -432,6 +432,17 @@ def export_text(state, bones, frame_idx):
         lines.append(f'{s[:4]}  {"█"*round(v/5)}{"░"*(20-round(v/5))} {v}')
     return '\n'.join(lines)
 
+# ─── LAN username helpers ─────────────────────────────────────────────────────
+
+def generate_random_username():
+    """Generate a random username in the form ``Player-XXXX``.
+
+    The suffix is 4 uppercase alphanumeric characters (A-Z, 0-9).
+    """
+    chars = string.ascii_uppercase + string.digits
+    suffix = ''.join(random.choices(chars, k=4))
+    return f"Player-{suffix}"
+
 # ─── Game class ───────────────────────────────────────────────────────────────
 
 class PetGame:
@@ -485,7 +496,10 @@ class PetGame:
         self.lan_node = None
         self.lan_peers = []
         self.visitor_pets = []
-        self.pending_visit_request = None  # 待确认的拜访请求
+        self.active_visit = None  # {"target", "start_time", "pet_snapshot"}
+        self.being_visited = None  # {"from", "start_time", "pet_snapshot"}
+        self.visit_event_cooldown = 0.0
+        self.lan_username = None
 
     def save(self):
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
@@ -581,6 +595,14 @@ class PetGame:
                     if v > 0 and self.state['stats'][k] >= 80:
                         continue
                     self.state['stats'][k] = min(100, max(0, self.state['stats'][k] + v))
+
+        # 拜访相关检查
+        if self.lan_enabled:
+            try:
+                self._tick_visit_timeout()
+                self._tick_visit_events()
+            except Exception:
+                pass
 
         return msg, msg_time
 
@@ -793,6 +815,30 @@ class PetGame:
                 return 'action', msg
             return 'none', None
 
+        if self.mode == 'lan_name_edit':
+            if key == '\r' or key == '\n':  # 回车确认
+                new_name = self._name_input.strip()
+                if new_name:
+                    if self.change_lan_username(new_name):
+                        self.message = f'用户名已修改为: {new_name}'
+                    else:
+                        self.message = '该用户名已被使用'
+                else:
+                    self.message = '用户名不能为空'
+                self.message_time = now
+                self.mode = 'lan'
+                return 'mode_change', self.mode
+            if key == '\x1b':  # ESC 取消
+                self.mode = 'lan'
+                return 'mode_change', self.mode
+            if key == '\x08':  # 退格
+                self._name_input = self._name_input[:-1]
+                return 'none', None
+            if len(key) == 1 and key.isprintable():
+                self._name_input += key
+                return 'none', None
+            return 'none', None
+
         if key in ('\r', '\n'):
             if self.mode == 'compact':
                 self.mode = 'expanded'; self.show_help = False
@@ -821,11 +867,6 @@ class PetGame:
             return 'none', None
 
         if key == 'n':
-            if self.mode == 'lan' and getattr(self, '_pending_visit_target', None):
-                self._pending_visit_target = None
-                self.message = '已取消邀请'
-                self.message_time = now
-                return 'action', self.message
             msg = self.switch_pet(1)
             self.message = msg; self.message_time = now
             return 'pet_switch', msg
@@ -849,7 +890,7 @@ class PetGame:
             else: self.mode = 'achievements'
             return 'mode_change', self.mode
 
-        if key == 'u':
+        if key == 'u' and self.mode != 'lan':
             if self.mode == 'items':
                 self.mode = 'expanded'
             elif self.mode in ('expanded', 'stats', 'achievements'):
@@ -867,16 +908,16 @@ class PetGame:
                 self.mode = 'lan'
             return 'mode_change', self.mode
 
-        if key == 'e' and self.mode != 'compact':
+        if key == 'e' and self.mode not in ('compact', 'lan'):
             return 'export', None
 
-        if key == 'f':
+        if key == 'f' and self.mode != 'lan':
             msg, anim = self.handle_action('feed')
             self.message = msg; self.message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
             return 'action', msg
 
-        if key == 'p':
+        if key == 'p' and self.mode != 'lan':
             msg, anim = self.handle_action('play')
             self.message = msg; self.message_time = now
             if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
@@ -920,54 +961,47 @@ class PetGame:
                 peers = self.get_lan_peers() if self.lan_enabled else []
                 if idx < len(peers):
                     peer = peers[idx]
-                    self._pending_visit_target = peer.get('node_id', '')
-                    self.message = f'邀请 {peer.get("username","?")} 的宠物拜访？(y/n)'
+                    peer_id = peer.get('node_id', '')
+                    if self.invite_visit(peer_id):
+                        self.message = f'正在拜访 {peer.get("username","?")}'
+                    else:
+                        pass  # invite_visit 内部已设置 message
                     self.message_time = now
                     return 'action', self.message
-            if key == 'y' and hasattr(self, '_pending_visit_target') and self._pending_visit_target:
-                target = self._pending_visit_target
-                self._pending_visit_target = None
-                if self.invite_visit(target):
-                    self.message = '拜访邀请已发送，等待确认...'
+            if key == 'e':
+                if self.end_visit():
+                    self.message = '拜访已结束'
                 else:
-                    self.message = '邀请发送失败'
+                    self.message = '没有正在进行的拜访'
                 self.message_time = now
                 return 'action', self.message
-            if key == 'n' and hasattr(self, '_pending_visit_target') and self._pending_visit_target:
-                self._pending_visit_target = None
-                self.message = '已取消邀请'
+            if key == 'f':
+                if self.remote_feed():
+                    self.message = '已发送远程喂食'
+                else:
+                    self.message = '远程喂食失败（未在拜访中）'
                 self.message_time = now
                 return 'action', self.message
-            # o 键开关联机
+            if key == 'p':
+                if self.remote_play():
+                    self.message = '已发送远程玩耍'
+                else:
+                    self.message = '远程玩耍失败（未在拜访中）'
+                self.message_time = now
+                return 'action', self.message
+            if key == 'u':
+                self.mode = 'lan_name_edit'
+                self._name_input = ""
+                return 'mode_change', self.mode
             if key == 'o':
                 if self.lan_enabled:
                     self.disable_lan()
                     self.message = '联机已关闭'
                 else:
-                    if self.enable_lan(self.uid):
-                        self.message = '联机已开启！'
+                    if self.enable_lan():
+                        self.message = f'联机已开启！用户名: {self.lan_username}'
                     else:
                         self.message = '联机开启失败（端口被占用或防火墙）'
-                self.message_time = now
-                return 'action', self.message
-            # r 键响应拜访请求
-            if key == 'r' and self.pending_visit_request:
-                # 同意拜访
-                req = self.pending_visit_request
-                self.pending_visit_request = None
-                if self.respond_visit(req.get('from',''), True):
-                    self.message = f'已同意 {req.get("pet_name","?")} 来拜访'
-                else:
-                    self.message = '响应失败'
-                self.message_time = now
-                return 'action', self.message
-            if key == 'x' and self.pending_visit_request:
-                req = self.pending_visit_request
-                self.pending_visit_request = None
-                if self.respond_visit(req.get('from',''), False):
-                    self.message = '已拒绝拜访请求'
-                else:
-                    self.message = '响应失败'
                 self.message_time = now
                 return 'action', self.message
 
@@ -975,10 +1009,20 @@ class PetGame:
 
     # ─── LAN multiplayer ──────────────────────────────────────────────────
 
-    def enable_lan(self, username):
-        """启用联机。成功返回True，失败返回False不抛异常。"""
+    def enable_lan(self, username=None):
+        """启用联机。成功返回True，失败返回False不抛异常。
+
+        若未提供用户名，则尝试从文件加载；加载失败则生成随机用户名并保存。
+        """
         try:
             from lan import LanNode
+            # 如果未提供用户名，尝试加载或生成
+            if not username:
+                username = self.load_username()
+                if not username:
+                    username = generate_random_username()
+                    self.save_username(username)
+            self.lan_username = username
             self.lan_node = LanNode(username, self.state)
             if self.lan_node.start():
                 self.lan_enabled = True
@@ -1000,7 +1044,50 @@ class PetGame:
         self.lan_enabled = False
         self.lan_peers = []
         self.visitor_pets = []
-        self.pending_visit_request = None
+        self.active_visit = None
+        self.being_visited = None
+        self.visit_event_cooldown = 0.0
+
+    # ─── Username persistence ─────────────────────────────────────────────
+
+    def _get_username_file(self):
+        """获取用户名文件路径。"""
+        return os.path.join(self.data_dir, 'username.txt')
+
+    def load_username(self):
+        """从文件加载用户名。不存在返回None。"""
+        try:
+            path = self._get_username_file()
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    return f.read().strip()
+        except Exception:
+            pass
+        return None
+
+    def save_username(self, username):
+        """保存用户名到文件。"""
+        try:
+            path = self._get_username_file()
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(username)
+        except Exception:
+            pass
+
+    def change_lan_username(self, new_name):
+        """修改用户名。重名时返回False，成功返回True。"""
+        if not self.lan_enabled or not self.lan_node:
+            return False
+        from lan import check_name_conflict
+        peers = self.lan_node.get_peers()
+        if check_name_conflict(new_name, peers):
+            return False
+        self.lan_username = new_name
+        self.save_username(new_name)
+        # 更新 LanNode 的 username 属性，使后续 HELLO 广播带上新用户名
+        if hasattr(self.lan_node, 'username'):
+            self.lan_node.username = new_name
+        return True
 
     def get_lan_status(self):
         """返回网络状态摘要。"""
@@ -1015,27 +1102,84 @@ class PetGame:
         return self.lan_node.get_peers()
 
     def invite_visit(self, peer_node_id):
-        """发起拜访邀请。"""
+        """单向发起拜访，直接发送宠物快照，无需对方确认。"""
         if not self.lan_enabled or not self.lan_node:
             return False
-        from lan_protocol import MSG_VISIT_REQ
-        return self.lan_node.send_to_peer(peer_node_id, MSG_VISIT_REQ, {
+        # 拜访锁定检查
+        if self.active_visit is not None:
+            self.message = "你正在拜访中，请先结束当前拜访"
+            self.message_time = time.time()
+            return False
+        if self.being_visited is not None:
+            self.message = "你正在被拜访，无法发起拜访"
+            self.message_time = time.time()
+            return False
+        from lan_protocol import MSG_VISIT_REQ, make_pet_snapshot
+        snapshot = make_pet_snapshot(self.state, self.lan_username or self.uid)
+        ok = self.lan_node.send_to_peer(peer_node_id, MSG_VISIT_REQ, {
             "from": self.lan_node.get_status().get("node_id", ""),
-            "pet_name": self.state.get("name", ""),
+            "from_username": self.lan_username or self.uid,
+            "pet_snapshot": snapshot,
         })
+        if ok:
+            self.active_visit = {
+                "target": peer_node_id,
+                "start_time": time.time(),
+                "pet_snapshot": snapshot,
+            }
+        return ok
 
-    def respond_visit(self, request_id, accept):
-        """响应拜访邀请。"""
-        if not self.lan_enabled or not self.lan_node:
+    def end_visit(self):
+        """结束拜访。发起方和受访者均可调用。"""
+        from lan_protocol import MSG_VISIT_END
+        if self.active_visit:
+            target = self.active_visit.get("target", "")
+            if target and self.lan_node:
+                try:
+                    self.lan_node.send_to_peer(target, MSG_VISIT_END, {"reason": "manual"})
+                except Exception:
+                    pass
+            self.active_visit = None
+            return True
+        if self.being_visited:
+            sender = self.being_visited.get("from", "")
+            if sender and self.lan_node:
+                try:
+                    self.lan_node.send_to_peer(sender, MSG_VISIT_END, {"reason": "manual"})
+                except Exception:
+                    pass
+            # 从 visitor_pets 中移除对应访客
+            snap = self.being_visited.get("pet_snapshot", {})
+            snap_name = snap.get("name", "")
+            for i, v in enumerate(self.visitor_pets):
+                if v.get("name", "") == snap_name:
+                    self.visitor_pets.pop(i)
+                    break
+            self.being_visited = None
+            return True
+        return False
+
+    def remote_feed(self):
+        """远程喂食对方宠物。"""
+        if not self.active_visit or not self.lan_node:
             return False
-        from lan_protocol import MSG_VISIT_ACK, MSG_VISIT_DATA, make_pet_snapshot
-        # 发送ACK
-        self.lan_node.send_to_peer(request_id, MSG_VISIT_ACK, {"accept": accept})
-        if accept:
-            # 发送宠物快照
-            snapshot = make_pet_snapshot(self.state, self.uid)
-            self.lan_node.send_to_peer(request_id, MSG_VISIT_DATA, snapshot)
-        return True
+        from lan_protocol import MSG_VISIT_FEED
+        target = self.active_visit.get("target", "")
+        try:
+            return self.lan_node.send_to_peer(target, MSG_VISIT_FEED, {"from": self.lan_username})
+        except Exception:
+            return False
+
+    def remote_play(self):
+        """远程玩耍。"""
+        if not self.active_visit or not self.lan_node:
+            return False
+        from lan_protocol import MSG_VISIT_PLAY
+        target = self.active_visit.get("target", "")
+        try:
+            return self.lan_node.send_to_peer(target, MSG_VISIT_PLAY, {"from": self.lan_username})
+        except Exception:
+            return False
 
     def receive_visitor(self, snapshot):
         """接收访客宠物快照。"""
@@ -1071,24 +1215,130 @@ class PetGame:
 
     def _handle_lan_message(self, msg):
         """处理单条网络消息。"""
-        from lan_protocol import (MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA, MSG_VISIT_LEAVE)
+        from lan_protocol import (MSG_VISIT_REQ, MSG_VISIT_DATA, MSG_VISIT_LEAVE,
+                                  MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT, MSG_VISIT_END)
         msg_type = msg.get("type")
         payload = msg.get("payload", {})
+        now = time.time()
+
         if msg_type == MSG_VISIT_REQ:
-            self.pending_visit_request = {"from": payload.get("from",""), "pet_name": payload.get("pet_name","")}
-        elif msg_type == MSG_VISIT_ACK:
-            accept = payload.get("accept", False)
-            if not accept:
-                self.message = "拜访请求被拒绝"
-                self.message_time = time.time()
+            # 单向拜访，自动接收
+            snapshot = payload.get("pet_snapshot", {})
+            from_id = payload.get("from", "")
+            from_username = payload.get("from_username", "?")
+            self.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot}
+            self.visitor_pets.append(snapshot)
+            self.message = f"{from_username} 的宠物 {snapshot.get('name','?')} 来拜访了！"
+            self.message_time = now
+
+        elif msg_type == MSG_VISIT_FEED:
+            # 收到远程喂食请求，执行本地 feed
+            result = self.handle_action('feed')
+            self.message = f"远程喂食：{result[0]}"
+            self.message_time = now
+
+        elif msg_type == MSG_VISIT_PLAY:
+            # 收到远程玩耍请求，执行本地 play
+            result = self.handle_action('play')
+            self.message = f"远程玩耍：{result[0]}"
+            self.message_time = now
+
+        elif msg_type == MSG_VISIT_EVENT:
+            # 收到随机事件，应用效果
+            description = payload.get("description", "")
+            stat_effects = payload.get("stat_effects", {})
+            self._apply_visit_event_effects(stat_effects)
+            self.message = f"拜访事件：{description}"
+            self.message_time = now
+
+        elif msg_type == MSG_VISIT_END:
+            # 结束拜访
+            if self.active_visit:
+                self.active_visit = None
+                self.message = "拜访已结束"
+                self.message_time = now
+            if self.being_visited:
+                snap = self.being_visited.get("pet_snapshot", {})
+                snap_name = snap.get("name", "")
+                for i, v in enumerate(self.visitor_pets):
+                    if v.get("name", "") == snap_name:
+                        self.visitor_pets.pop(i)
+                        break
+                self.being_visited = None
+                self.message = "拜访已结束"
+                self.message_time = now
+
         elif msg_type == MSG_VISIT_DATA:
+            # 兼容旧客户端：直接加入访客列表
             self.receive_visitor(payload)
             self.message = f"{payload.get('name','')} 来拜访了！"
-            self.message_time = time.time()
+            self.message_time = now
+
         elif msg_type == MSG_VISIT_LEAVE:
-            # 移除对应访客
-            pet_name = payload.get("pet_name","")
+            # 兼容旧客户端：移除对应访客
+            pet_name = payload.get("pet_name", "")
             for i, v in enumerate(self.visitor_pets):
                 if v.get("name") == pet_name:
                     self.visitor_pets.pop(i)
                     break
+
+    def _apply_visit_event_effects(self, stat_effects):
+        """应用拜访随机事件的属性效果。"""
+        stats = self.state.get('stats', {})
+        for stat, delta in stat_effects.items():
+            stat_upper = stat.upper() if isinstance(stat, str) else stat
+            if stat_upper in stats:
+                current = stats[stat_upper]
+                stats[stat_upper] = max(0, min(100, current + delta))
+            elif stat in stats:
+                current = stats[stat]
+                stats[stat] = max(0, min(100, current + delta))
+
+    def _tick_visit_timeout(self):
+        """检查拜访超时（10分钟）。"""
+        VISIT_TIMEOUT = 600  # 10分钟
+        now = time.time()
+        if self.active_visit and now - self.active_visit.get("start_time", 0) > VISIT_TIMEOUT:
+            self.end_visit()
+            self.message = "拜访超时，已自动结束"
+            self.message_time = now
+        elif self.being_visited and now - self.being_visited.get("start_time", 0) > VISIT_TIMEOUT:
+            self.end_visit()
+            self.message = "拜访超时，已自动结束"
+            self.message_time = now
+
+    def _tick_visit_events(self):
+        """拜访期间随机触发互动事件。"""
+        import random
+        from lan_protocol import VISIT_EVENTS, MSG_VISIT_EVENT, make_visit_event
+        now = time.time()
+        # 只在活跃拜访时触发
+        if not self.active_visit and not self.being_visited:
+            return
+        # 冷却检查
+        if now < self.visit_event_cooldown:
+            return
+        # 10% 概率触发
+        if random.random() > 0.10:
+            return
+        # 随机选择事件
+        event = random.choice(VISIT_EVENTS)
+        # 应用本地效果
+        self._apply_visit_event_effects(event.get("stat_effects", {}))
+        self.message = f"拜访事件：{event.get('description','')}"
+        self.message_time = now
+        # 设置冷却
+        self.visit_event_cooldown = now + 30  # 30秒冷却
+        # 发送给对方
+        event_msg = make_visit_event(event["event_type"], event["description"], event["stat_effects"])
+        try:
+            if self.active_visit and self.lan_node:
+                target = self.active_visit.get("target", "")
+                if target:
+                    self.lan_node.send_to_peer(target, MSG_VISIT_EVENT, event_msg)
+            elif self.being_visited and self.lan_node:
+                sender = self.being_visited.get("from", "")
+                if sender:
+                    self.lan_node.send_to_peer(sender, MSG_VISIT_EVENT, event_msg)
+        except Exception:
+            pass

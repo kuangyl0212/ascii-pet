@@ -2,10 +2,12 @@
 """Pytest tests for lan_protocol.py — LAN multiplayer message protocol.
 
 Covers:
-- Message type constants (8 types)
+- Message type constants (8 base + 5 visit-optimization types)
 - encode_message / decode_message round-trip with framing
 - make_pet_snapshot (read-only field extraction)
 - make_hello (greeting message)
+- make_visit_event (visit event builder)
+- VISIT_EVENTS (preset visit event catalog)
 
 Zero pip dependencies; stdlib only.
 """
@@ -25,8 +27,11 @@ from lan_protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
     MSG_VISIT_LEAVE, MSG_BYE,
+    MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT,
+    MSG_VISIT_END, MSG_NAME_CHECK,
     encode_message, decode_message,
     make_pet_snapshot, make_hello,
+    make_visit_event, VISIT_EVENTS,
 )
 
 
@@ -333,3 +338,238 @@ class TestMakeHello:
         assert decoded_payload["username"] == "alice"
         assert decoded_payload["pet_summary"]["name"] == "Mochi喵"
         assert isinstance(decoded_payload["timestamp"], float)
+
+
+# ─── Visit-optimization message type constants ──────────────────────────────
+
+
+class TestVisitOptimizationConstants:
+    """Verify the 5 new visit-optimization message type constants."""
+
+    def test_msg_visit_feed(self):
+        assert MSG_VISIT_FEED == "visit_feed"
+
+    def test_msg_visit_play(self):
+        assert MSG_VISIT_PLAY == "visit_play"
+
+    def test_msg_visit_event(self):
+        assert MSG_VISIT_EVENT == "visit_event"
+
+    def test_msg_visit_end(self):
+        assert MSG_VISIT_END == "visit_end"
+
+    def test_msg_name_check(self):
+        assert MSG_NAME_CHECK == "name_check"
+
+    def test_five_new_constants_distinct(self):
+        """All 5 new constants are distinct strings."""
+        consts = {
+            MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT,
+            MSG_VISIT_END, MSG_NAME_CHECK,
+        }
+        assert len(consts) == 5
+
+    def test_new_constants_distinct_from_base(self):
+        """New constants must not collide with the 8 base constants."""
+        base = {
+            MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
+            MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
+            MSG_VISIT_LEAVE, MSG_BYE,
+        }
+        new = {
+            MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT,
+            MSG_VISIT_END, MSG_NAME_CHECK,
+        }
+        assert base.isdisjoint(new)
+
+
+# ─── make_visit_event ───────────────────────────────────────────────────────
+
+
+class TestMakeVisitEvent:
+    """make_visit_event builds a visit event dict with required structure."""
+
+    def test_returns_dict(self):
+        evt = make_visit_event("play_together", "desc", {"happy": 10})
+        assert isinstance(evt, dict)
+
+    def test_has_required_keys(self):
+        evt = make_visit_event("play_together", "desc", {"happy": 10})
+        assert set(evt.keys()) == {"event_type", "description", "stat_effects"}
+
+    def test_event_type_propagated(self):
+        evt = make_visit_event("race", "fast race", {"energy": -5})
+        assert evt["event_type"] == "race"
+
+    def test_description_propagated(self):
+        evt = make_visit_event("chat", "聊得很开心", {"happy": 5})
+        assert evt["description"] == "聊得很开心"
+
+    def test_stat_effects_propagated(self):
+        effects = {"hunger": 10, "happy": 5, "energy": -3}
+        evt = make_visit_event("share_food", "shared food", effects)
+        assert evt["stat_effects"] == effects
+
+    def test_empty_stat_effects_allowed(self):
+        evt = make_visit_event("chat", "no effect", {})
+        assert evt["stat_effects"] == {}
+
+    def test_is_json_serializable(self):
+        """Visit event must be JSON-serializable for wire transmission."""
+        evt = make_visit_event("play_together", "两只宠物一起玩耍", {"happy": 15, "energy": -10})
+        s = json.dumps(evt, ensure_ascii=False)
+        decoded = json.loads(s)
+        assert decoded == evt
+        assert decoded["description"] == "两只宠物一起玩耍"
+
+    def test_chinese_description_preserved_through_json(self):
+        """Chinese characters in description survive JSON round-trip."""
+        evt = make_visit_event("nap_together", "午觉", {"energy": 20})
+        s = json.dumps(evt, ensure_ascii=False)
+        decoded = json.loads(s)
+        assert decoded["description"] == "午觉"
+
+    def test_stat_effects_values_can_be_negative(self):
+        """stat_effects may contain negative values (e.g. energy drain)."""
+        evt = make_visit_event("race", "tiring race", {"energy": -15, "happy": 10})
+        assert evt["stat_effects"]["energy"] == -15
+        assert evt["stat_effects"]["happy"] == 10
+
+
+# ─── VISIT_EVENTS catalog ───────────────────────────────────────────────────
+
+
+class TestVisitEventsCatalog:
+    """VISIT_EVENTS is a preset catalog of visit event templates."""
+
+    def test_is_list(self):
+        assert isinstance(VISIT_EVENTS, list)
+
+    def test_has_at_least_five_events(self):
+        assert len(VISIT_EVENTS) >= 5
+
+    def test_each_event_is_dict(self):
+        for evt in VISIT_EVENTS:
+            assert isinstance(evt, dict), f"event is not a dict: {evt!r}"
+
+    def test_each_event_has_required_keys(self):
+        for evt in VISIT_EVENTS:
+            assert set(evt.keys()) == {"event_type", "description", "stat_effects"}, \
+                f"event has wrong keys: {evt!r}"
+
+    def test_each_event_stat_effects_is_dict(self):
+        for evt in VISIT_EVENTS:
+            assert isinstance(evt["stat_effects"], dict), \
+                f"stat_effects is not a dict: {evt!r}"
+
+    def test_includes_required_event_types(self):
+        """Catalog must include the 5 required event types."""
+        required = {"play_together", "share_food", "race", "chat", "nap_together"}
+        actual = {evt["event_type"] for evt in VISIT_EVENTS}
+        assert required.issubset(actual), \
+            f"missing event types: {required - actual}"
+
+    def test_event_types_unique(self):
+        """Each event_type should be unique within the catalog."""
+        types = [evt["event_type"] for evt in VISIT_EVENTS]
+        assert len(types) == len(set(types)), \
+            f"duplicate event types: {types}"
+
+    def test_stat_effects_values_in_reasonable_range(self):
+        """All stat effect values should be in [-20, +20]."""
+        for evt in VISIT_EVENTS:
+            for stat, value in evt["stat_effects"].items():
+                assert -20 <= value <= 20, \
+                    f"{evt['event_type']}.{stat}={value} out of [-20, 20]"
+
+    def test_each_event_json_serializable(self):
+        """Every event in the catalog must be JSON-serializable."""
+        for evt in VISIT_EVENTS:
+            s = json.dumps(evt, ensure_ascii=False)
+            assert json.loads(s) == evt
+
+    def test_descriptions_are_non_empty_strings(self):
+        for evt in VISIT_EVENTS:
+            assert isinstance(evt["description"], str)
+            assert len(evt["description"]) > 0
+
+
+# ─── encode/decode round-trip for new message types ─────────────────────────
+
+
+class TestEncodeDecodeNewVisitMessages:
+    """The 5 new message types must survive encode → decode round-trip."""
+
+    def test_roundtrip_visit_feed(self):
+        payload = {"target": "node-2", "food": "apple", "amount": 1}
+        raw = encode_message(MSG_VISIT_FEED, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == MSG_VISIT_FEED
+        assert decoded == payload
+
+    def test_roundtrip_visit_play(self):
+        payload = {"target": "node-2", "game": "catch"}
+        raw = encode_message(MSG_VISIT_PLAY, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == MSG_VISIT_PLAY
+        assert decoded == payload
+
+    def test_roundtrip_visit_event(self):
+        """visit_event payload carries a make_visit_event dict."""
+        evt = make_visit_event("play_together", "一起玩耍", {"happy": 15, "energy": -10})
+        raw = encode_message(MSG_VISIT_EVENT, evt)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == MSG_VISIT_EVENT
+        assert decoded == evt
+        assert decoded["event_type"] == "play_together"
+        assert decoded["description"] == "一起玩耍"
+
+    def test_roundtrip_visit_end(self):
+        payload = {"reason": "user_left", "duration": 120}
+        raw = encode_message(MSG_VISIT_END, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == MSG_VISIT_END
+        assert decoded == payload
+
+    def test_roundtrip_name_check(self):
+        payload = {"name": "Mochi喵", "node_id": "node-1"}
+        raw = encode_message(MSG_NAME_CHECK, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == MSG_NAME_CHECK
+        assert decoded == payload
+
+    def test_roundtrip_all_new_types_iterate(self):
+        """All 5 new types round-trip in a loop with non-trivial payloads."""
+        samples = {
+            MSG_VISIT_FEED: {"food": "apple"},
+            MSG_VISIT_PLAY: {"game": "tag"},
+            MSG_VISIT_EVENT: {"event_type": "chat", "description": "d", "stat_effects": {}},
+            MSG_VISIT_END: {"reason": "done"},
+            MSG_NAME_CHECK: {"name": "Mochi"},
+        }
+        for msg_type, payload in samples.items():
+            raw = encode_message(msg_type, payload)
+            result = decode_message(raw)
+            assert result is not None, f"decode failed for {msg_type}"
+            assert result[0] == msg_type
+            assert result[1] == payload
+
+    def test_visit_event_from_catalog_roundtrips(self):
+        """Each VISIT_EVENTS entry can be sent as a visit_event payload."""
+        for evt in VISIT_EVENTS:
+            raw = encode_message(MSG_VISIT_EVENT, evt)
+            result = decode_message(raw)
+            assert result is not None
+            msg_type, decoded = result
+            assert msg_type == MSG_VISIT_EVENT
+            assert decoded == evt

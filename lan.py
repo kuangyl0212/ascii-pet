@@ -82,6 +82,23 @@ def is_peer_expired(last_seen, now, timeout=PEER_TIMEOUT):
     return (now - last_seen) >= timeout
 
 
+def check_name_conflict(username, peers):
+    """Check if a username conflicts with any peer's username.
+
+    Args:
+        username: The username to check.
+        peers:    List of peer dicts (as returned by ``LanNode.get_peers``).
+                  Each dict may contain a ``"username"`` key.
+
+    Returns:
+        True if any peer has the same username (conflict), False otherwise.
+    """
+    for peer in peers:
+        if peer.get('username') == username:
+            return True
+    return False
+
+
 def _get_local_ip():
     """Detect the local IP address by opening a UDP socket to a public address.
 

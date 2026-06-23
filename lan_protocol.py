@@ -36,6 +36,13 @@ MSG_VISIT_DATA = "visit_data"
 MSG_VISIT_LEAVE = "visit_leave"
 MSG_BYE = "bye"
 
+# Visit-optimization message types (new).
+MSG_VISIT_FEED = "visit_feed"
+MSG_VISIT_PLAY = "visit_play"
+MSG_VISIT_EVENT = "visit_event"
+MSG_VISIT_END = "visit_end"
+MSG_NAME_CHECK = "name_check"
+
 # ─── Framing ────────────────────────────────────────────────────────────────
 
 _LENGTH_PREFIX = struct.Struct(">I")  # 4-byte big-endian unsigned int
@@ -153,3 +160,34 @@ def make_hello(node_id, username, pet_summary):
         "pet_summary": pet_summary,
         "timestamp": time.time(),
     }
+
+
+# ─── Visit events ───────────────────────────────────────────────────────────
+
+
+def make_visit_event(event_type, description, stat_effects):
+    """Build a visit event dict for transmission during a pet visit.
+
+    Args:
+        event_type:   Event category string (e.g. ``"play_together"``).
+        description:  Human-readable description of the event (string).
+        stat_effects: Dict mapping stat names to integer deltas
+                      (e.g. ``{"happy": 15, "energy": -10}``).
+
+    Returns:
+        dict with keys ``event_type, description, stat_effects``.
+    """
+    return {
+        "event_type": event_type,
+        "description": description,
+        "stat_effects": stat_effects,
+    }
+
+
+VISIT_EVENTS = [
+    {"event_type": "play_together", "description": "两只宠物一起玩耍，开心地追逐打闹！", "stat_effects": {"happy": 15, "energy": -10}},
+    {"event_type": "share_food", "description": "两只宠物分享了食物，都吃得很开心！", "stat_effects": {"hunger": 15, "happy": 5}},
+    {"event_type": "race", "description": "两只宠物进行了一场赛跑比赛，都消耗了体力！", "stat_effects": {"energy": -15, "happy": 10}},
+    {"event_type": "chat", "description": "两只宠物聊得很投机，心情都变好了！", "stat_effects": {"happy": 10, "wisdom": 5}},
+    {"event_type": "nap_together", "description": "两只宠物一起睡了个午觉，精力充沛！", "stat_effects": {"energy": 20, "hunger": -5}},
+]
