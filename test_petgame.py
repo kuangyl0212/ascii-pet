@@ -247,15 +247,12 @@ class TestHandleAction:
     """SubTask 9.19-9.25: handle_action behavior."""
 
     def test_handle_action_revive_when_dead(self, game):
-        """9.19: Dead pet revived by feed/play/sleep."""
+        """9.19: Dead pet cannot be revived by feed/play/sleep; must use Potion."""
         game.state['is_dead'] = True
         msg, anim = game.handle_action('feed')
-        assert msg == 'Revived!'
+        assert msg == 'Your pet is dead... Use a Potion to revive!'
         assert anim is None
-        assert not game.state['is_dead']
-        assert game.state['stats']['HUNGER'] == 25
-        assert game.state['stats']['ENERGY'] == 25
-        assert game.state['stats']['HAPPY'] == 25
+        assert game.state['is_dead']
 
     def test_handle_action_dead_rejects_unknown_action(self, game):
         """9.20: Dead pet rejects non-feed/play/sleep actions."""
@@ -624,12 +621,12 @@ class TestHandleKey:
         assert game.handle_key('q') == ('quit', None)
 
     def test_handle_key_dead_revive_via_action(self, game):
-        """9.55: Dead pet, action key triggers revive."""
+        """9.55: Dead pet, action key returns Potion hint instead of reviving."""
         game.state['is_dead'] = True
         action_type, msg = game.handle_key('f')
         assert action_type == 'action'
-        assert msg == 'Revived!'
-        assert not game.state['is_dead']
+        assert 'Potion' in msg
+        assert game.state['is_dead']
 
     def test_handle_key_enter_mode_toggle(self, game):
         """9.56: Enter toggles compact <-> expanded."""

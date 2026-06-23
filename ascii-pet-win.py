@@ -138,6 +138,67 @@ def render_items_lines(game):
             lines.append((f'  {i+1}  {icon} {name} x{count}  {desc}', COLOR_WHITE))
     return lines
 
+def render_lan_lines(game):
+    """渲染联机面板。"""
+    lines = []
+    status = game.get_lan_status()
+    enabled = status.get('enabled', False)
+    role = '主节点' if status.get('is_master') else '从节点'
+    peer_count = status.get('peer_count', 0)
+    error = status.get('error')
+    node_id = status.get('node_id', '')
+
+    lines.append(('═ 局域网联机 ═', COLOR_MSG))
+    if enabled:
+        lines.append((f'状态: 已连接 [{role}] 对等节点: {peer_count}', COLOR_BAR_FILL))
+        if node_id:
+            lines.append((f'本机ID: {node_id[:40]}', COLOR_DIM))
+    else:
+        lines.append(('状态: 未连接', COLOR_BAR_EMPTY))
+        if error:
+            lines.append((f'错误: {error}', COLOR_BAR_EMPTY))
+    lines.append(('', COLOR_WHITE))
+
+    # 对等节点列表
+    peers = game.get_lan_peers() if enabled else []
+    if peers:
+        lines.append(('─ 在线玩家 ─', COLOR_DIM))
+        for i, peer in enumerate(peers[:9]):
+            username = peer.get('username', '?')
+            pet = peer.get('pet_summary', {})
+            pet_name = pet.get('name', '?')
+            species = pet.get('species', '?')
+            lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
+    else:
+        lines.append(('（暂无其他玩家）', COLOR_DIM))
+    lines.append(('', COLOR_WHITE))
+
+    # 访客列表
+    visitors = game.visitor_pets
+    if visitors:
+        lines.append(('─ 当前访客 ─', COLOR_DIM))
+        for i, v in enumerate(visitors):
+            lines.append((f'  {v.get("name","?")}({v.get("species","?")}) - 来自 {v.get("owner","?")}', COLOR_WHITE))
+    else:
+        lines.append(('（暂无访客）', COLOR_DIM))
+    lines.append(('', COLOR_WHITE))
+
+    # 待确认请求
+    if game.pending_visit_request:
+        req = game.pending_visit_request
+        lines.append((f'★ {req.get("pet_name","?")} 想来拜访！', COLOR_MSG))
+        lines.append(('  [r]同意 [x]拒绝', COLOR_WHITE))
+        lines.append(('', COLOR_WHITE))
+
+    # 操作提示
+    lines.append(('─ 操作 ─', COLOR_DIM))
+    if enabled:
+        lines.append(('[1-9]邀请拜访 [o]关闭联机', COLOR_DIM))
+    else:
+        lines.append(('[o]开启联机', COLOR_DIM))
+    lines.append(('[l]返回 [c]紧凑模式', COLOR_DIM))
+    return lines
+
 def render_release_lines(game):
     pets = game.get_release_list()
     lines = []
@@ -286,6 +347,8 @@ WM_PAINT       = 0x000F
 WM_TIMER       = 0x0113
 WM_CHAR        = 0x0102
 WM_KEYDOWN     = 0x0100
+VK_LEFT        = 0x0025
+VK_RIGHT       = 0x0027
 WM_DESTROY     = 0x0002
 WM_NCHITTEST   = 0x0084
 WM_ERASEBKGND  = 0x0014
@@ -337,6 +400,8 @@ ID_COMPACT     = 1008
 ID_EXPANDED    = 1009
 ID_STATS       = 1011
 ID_ACHIEVE     = 1012
+ID_ITEMS       = 1014
+ID_LAN         = 1015
 ID_QUIT        = 1013
 
 MF_STRING     = 0x00000000
@@ -363,6 +428,7 @@ LAYOUT_SIZES = {
     'achievements': (44, 20),
     'items':        (44, 16),
     'release':      (44, 14),
+    'lan':           (50, 20),
 }
 
 user32 = windll.user32
@@ -761,6 +827,8 @@ class PetWindow:
             self.on_timer(); return 0
         elif msg == WM_CHAR:
             self.on_char(wparam); return 0
+        elif msg == WM_KEYDOWN:
+            self.on_keydown(wparam); return 0
         elif msg == WM_TRAYICON:
             if lparam == WM_RBUTTONDOWN:
                 self.show_tray_menu()
@@ -815,12 +883,14 @@ class PetWindow:
             self.remove_tray_icon()
             user32.KillTimer(hwnd, 1)
             if self.hfont: gdi32.DeleteObject(self.hfont)
+            self.game.disable_lan()
             user32.PostQuitMessage(0); return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def on_timer(self):
         msg, msg_time = self.game.tick()
         if msg: self.game.message = msg; self.game.message_time = msg_time
+        self.game.process_lan_queues()
         user32.InvalidateRect(self.hwnd, None, False)
 
     def show_context_menu(self, lparam):
@@ -844,6 +914,8 @@ class PetWindow:
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'expanded' else 0), ID_EXPANDED, '展开模式')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'stats' else 0), ID_STATS, '属性面板 (T)')
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'achievements' else 0), ID_ACHIEVE, '成就面板 (A)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'items' else 0), ID_ITEMS, '物品栏 (U)')
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'lan' else 0), ID_LAN, '局域网联机 (L)')
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         auto_flag = MF_CHECKED if is_autostart_enabled() else 0
         user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, '开机自启动')
@@ -892,6 +964,10 @@ class PetWindow:
             self.game.mode = 'stats'; self.resize_window(self.game.mode)
         elif cmd == ID_ACHIEVE:
             self.game.mode = 'achievements'; self.resize_window(self.game.mode)
+        elif cmd == ID_ITEMS:
+            self.game.mode = 'items'; self.resize_window(self.game.mode)
+        elif cmd == ID_LAN:
+            self.game.mode = 'lan'; self.resize_window(self.game.mode)
         elif cmd == ID_TRAY_AUTOSTART:
             try:
                 set_autostart(not is_autostart_enabled())
@@ -903,6 +979,19 @@ class PetWindow:
         elif cmd == ID_QUIT:
             user32.DestroyWindow(self.hwnd); return
         user32.InvalidateRect(self.hwnd, None, False)
+
+    def on_keydown(self, wparam):
+        now = time.time()
+        if wparam == VK_LEFT:
+            if len(self.game.pets_data['pets']) > 1:
+                self.game.message = self.game.switch_pet(-1)
+                self.game.message_time = now
+                user32.InvalidateRect(self.hwnd, None, False)
+        elif wparam == VK_RIGHT:
+            if len(self.game.pets_data['pets']) > 1:
+                self.game.message = self.game.switch_pet(1)
+                self.game.message_time = now
+                user32.InvalidateRect(self.hwnd, None, False)
 
     def on_char(self, wparam):
         ch = chr(wparam)
@@ -927,6 +1016,8 @@ class PetWindow:
             lines = render_achievements_lines(g.state, g.bones)
         elif g.mode == 'items':
             lines = render_items_lines(g)
+        elif g.mode == 'lan':
+            lines = render_lan_lines(g)
         elif g.mode == 'release':
             lines = render_release_lines(g)
         else:
@@ -938,6 +1029,20 @@ class PetWindow:
             lines.append((f'  {g.anim_frames[g.anim_idx]}', COLOR_MSG))
         elif g.anim_end and time.time() >= g.anim_end:
             g.anim_end = 0
+        if g.visitor_pets and g.mode in ('compact', 'expanded'):
+            from pet_core import render_sprite
+            for visitor in g.visitor_pets:
+                v_bones = {
+                    'species': visitor.get('species', 'blob'),
+                    'eye': visitor.get('eye', '·'),
+                    'hat': visitor.get('hat', 'none'),
+                    'shiny': visitor.get('shiny', False),
+                    'rarity': visitor.get('rarity', 'common'),
+                }
+                v_frame = render_sprite(v_bones, g.frame_idx)
+                lines.append((f'  [访客] {visitor.get("name","?")} (来自 {visitor.get("owner","?")})', COLOR_MSG))
+                for row in v_frame:
+                    lines.append((f'  {row}', COLOR_DIM))
         return lines
 
     def on_paint(self, hwnd):

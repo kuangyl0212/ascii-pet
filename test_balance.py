@@ -56,11 +56,11 @@ class TestRandomEventFrequency(unittest.TestCase):
     """Verify tick() uses reduced event frequency (2% prob, 60s cooldown)."""
 
     def test_event_probability_is_2_percent(self):
-        """tick() should use 2% (0.02) event probability, not 5% (0.05)."""
+        """tick() should use 2% (0.02) base event probability with CHAOS scaling."""
         source = _source_compact(PetGame.tick)
         self.assertIn(
-            'random()<0.02', source,
-            "tick() should use 0.02 (2%) event probability via random() < 0.02",
+            '0.02*(1+chaos/100)', source,
+            "tick() should use CHAOS-based probability formula 0.02*(1+chaos/100)",
         )
         self.assertNotIn(
             'random()<0.05', source,
@@ -290,6 +290,249 @@ class TestDecayRatesInUpdateStateOverTime(unittest.TestCase):
             "update_state_over_time() should have ENERGY: threshold=4h, rate=6 "
             "(expected ('last_slept', 4, 6))",
         )
+
+
+# ─── Test 7: CHAOS stat affects event probability ────────────────────────────
+
+
+class TestChaosAffectsEventProbability(unittest.TestCase):
+    """Verify CHAOS stat affects random event trigger probability."""
+
+    def test_chaos_0_probability_is_2_percent(self):
+        """tick() should use CHAOS-based formula: 0.02*(1+chaos/100)."""
+        source = _source_compact(PetGame.tick)
+        self.assertIn(
+            '0.02*(1+chaos/100)', source,
+            "tick() should use CHAOS-based probability formula 0.02*(1+chaos/100)",
+        )
+        self.assertIn(
+            'CHAOS', source,
+            "tick() event probability should reference CHAOS stat",
+        )
+        self.assertNotIn(
+            'random()<0.02', source,
+            "tick() should not use old fixed 0.02 probability (should be CHAOS-based)",
+        )
+
+    def test_chaos_50_probability_is_3_percent(self):
+        """CHAOS=50 should give 3% event probability (0.02*(1+50/100)=0.03)."""
+        tmpdir = Path(tempfile.mkdtemp())
+        uid = f'test-chaos-50-{int(time.time() * 1000000)}'
+        game = PetGame(uid, data_dir=tmpdir)
+        game.state['stats']['CHAOS'] = 50
+        game.last_event_time = 0
+        game.last_tick_time = time.time()
+        neutral_evt = ('test', 'test', {})
+        try:
+            # random.random()=0.025 is > 2% but < 3%, so should trigger with CHAOS=50
+            with patch('random.random', return_value=0.025), \
+                    patch('random.choice', return_value=neutral_evt):
+                game.tick()
+            self.assertGreater(
+                game.last_event_time, 0,
+                "Event should trigger with CHAOS=50 and random=0.025 (3% probability)",
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_chaos_0_probability_blocks_025(self):
+        """CHAOS=0 should give exactly 2% probability, blocking random=0.025."""
+        tmpdir = Path(tempfile.mkdtemp())
+        uid = f'test-chaos-0-block-{int(time.time() * 1000000)}'
+        game = PetGame(uid, data_dir=tmpdir)
+        game.state['stats']['CHAOS'] = 0
+        game.last_event_time = 0
+        game.last_tick_time = time.time()
+        try:
+            # random.random()=0.025 is > 2%, so should NOT trigger with CHAOS=0
+            with patch('random.random', return_value=0.025):
+                game.tick()
+            self.assertEqual(
+                game.last_event_time, 0,
+                "Event should NOT trigger with CHAOS=0 and random=0.025 (2% probability)",
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_chaos_100_probability_is_4_percent(self):
+        """CHAOS=100 should give 4% probability; CHAOS=0 should not at same random."""
+        tmpdir = Path(tempfile.mkdtemp())
+        uid = f'test-chaos-100-{int(time.time() * 1000000)}'
+        neutral_evt = ('test', 'test', {})
+        try:
+            # CHAOS=100: 0.02*(1+100/100)=0.04, random=0.035 is < 4% → triggers
+            game = PetGame(uid, data_dir=tmpdir)
+            game.state['stats']['CHAOS'] = 100
+            game.last_event_time = 0
+            game.last_tick_time = time.time()
+            with patch('random.random', return_value=0.035), \
+                    patch('random.choice', return_value=neutral_evt):
+                game.tick()
+            self.assertGreater(
+                game.last_event_time, 0,
+                "Event should trigger with CHAOS=100 and random=0.035 (4% probability)",
+            )
+
+            # CHAOS=0: 0.02*(1+0/100)=0.02, random=0.035 is > 2% → does NOT trigger
+            game.state['stats']['CHAOS'] = 0
+            game.last_event_time = 0
+            with patch('random.random', return_value=0.035):
+                game.tick()
+            self.assertEqual(
+                game.last_event_time, 0,
+                "Event should NOT trigger with CHAOS=0 and random=0.035 (2% probability)",
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# ─── Test 8: Negative events increase CHAOS ──────────────────────────────────
+
+
+class TestNegativeEventsIncreaseChaos(unittest.TestCase):
+    """Verify negative events increase CHAOS stat."""
+
+    def setUp(self):
+        """Create a PetGame instance with isolated storage."""
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.uid = f'test-chaos-neg-{int(time.time() * 1000000)}'
+        self.game = PetGame(self.uid, data_dir=self.tmpdir)
+        self.game.state['stats']['CHAOS'] = 50
+        self.game.last_event_time = 0
+        self.game.last_tick_time = time.time()
+
+    def tearDown(self):
+        """Clean up temp directory."""
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_stomach_ache_increases_chaos(self):
+        """stomach_ache event should increase CHAOS by 3."""
+        evt = _find_event('stomach_ache')
+        self.assertIsNotNone(evt, "stomach_ache event must exist")
+        with patch('random.random', return_value=0.001), \
+                patch('random.choice', return_value=evt):
+            self.game.tick()
+        self.assertEqual(
+            self.game.state['stats']['CHAOS'], 53,
+            f"stomach_ache should increase CHAOS from 50 to 53, "
+            f"got {self.game.state['stats']['CHAOS']}",
+        )
+
+    def test_nightmare_increases_chaos(self):
+        """nightmare event should increase CHAOS by 3."""
+        evt = _find_event('nightmare')
+        self.assertIsNotNone(evt, "nightmare event must exist")
+        with patch('random.random', return_value=0.001), \
+                patch('random.choice', return_value=evt):
+            self.game.tick()
+        self.assertEqual(
+            self.game.state['stats']['CHAOS'], 53,
+            f"nightmare should increase CHAOS from 50 to 53, "
+            f"got {self.game.state['stats']['CHAOS']}",
+        )
+
+    def test_boredom_increases_chaos(self):
+        """boredom event should increase CHAOS by 3."""
+        evt = _find_event('boredom')
+        self.assertIsNotNone(evt, "boredom event must exist")
+        with patch('random.random', return_value=0.001), \
+                patch('random.choice', return_value=evt):
+            self.game.tick()
+        self.assertEqual(
+            self.game.state['stats']['CHAOS'], 53,
+            f"boredom should increase CHAOS from 50 to 53, "
+            f"got {self.game.state['stats']['CHAOS']}",
+        )
+
+    def test_tripped_increases_chaos(self):
+        """tripped event should increase CHAOS by 3."""
+        evt = _find_event('tripped')
+        self.assertIsNotNone(evt, "tripped event must exist")
+        with patch('random.random', return_value=0.001), \
+                patch('random.choice', return_value=evt):
+            self.game.tick()
+        self.assertEqual(
+            self.game.state['stats']['CHAOS'], 53,
+            f"tripped should increase CHAOS from 50 to 53, "
+            f"got {self.game.state['stats']['CHAOS']}",
+        )
+
+    def test_positive_event_does_not_increase_chaos(self):
+        """Positive events (e.g. mood_boost) should NOT increase CHAOS."""
+        evt = _find_event('mood_boost')
+        self.assertIsNotNone(evt, "mood_boost event must exist")
+        with patch('random.random', return_value=0.001), \
+                patch('random.choice', return_value=evt):
+            self.game.tick()
+        self.assertEqual(
+            self.game.state['stats']['CHAOS'], 50,
+            f"mood_boost should NOT increase CHAOS, "
+            f"got {self.game.state['stats']['CHAOS']}",
+        )
+
+    def test_chaos_capped_at_100(self):
+        """CHAOS should be capped at 100 even after negative event."""
+        self.game.state['stats']['CHAOS'] = 99
+        evt = _find_event('stomach_ache')
+        self.assertIsNotNone(evt, "stomach_ache event must exist")
+        with patch('random.random', return_value=0.001), \
+                patch('random.choice', return_value=evt):
+            self.game.tick()
+        self.assertEqual(
+            self.game.state['stats']['CHAOS'], 100,
+            f"CHAOS should be capped at 100 (99+3=102→100), "
+            f"got {self.game.state['stats']['CHAOS']}",
+        )
+
+
+# ─── Test 9: Chaos Crystal item ──────────────────────────────────────────────
+
+
+class TestChaosCrystalItem(unittest.TestCase):
+    """Verify Chaos Crystal item exists and works correctly."""
+
+    def test_chaos_crystal_exists_in_items(self):
+        """ITEMS should contain 'crystal' with effect {'CHAOS': 15}."""
+        self.assertIn('crystal', pet_core.ITEMS, "ITEMS should have a 'crystal' key")
+        self.assertEqual(
+            pet_core.ITEMS['crystal']['effect'], {'CHAOS': 15},
+            f"crystal effect should be {{'CHAOS': 15}}, "
+            f"got {pet_core.ITEMS['crystal']['effect']}",
+        )
+
+    def test_chaos_crystal_usage(self):
+        """Using crystal with CHAOS=30 should increase CHAOS to 45."""
+        tmpdir = Path(tempfile.mkdtemp())
+        uid = f'test-crystal-{int(time.time() * 1000000)}'
+        game = PetGame(uid, data_dir=tmpdir)
+        game.state['stats']['CHAOS'] = 30
+        game.add_item('crystal')
+        try:
+            game.use_item('crystal')
+            self.assertEqual(
+                game.state['stats']['CHAOS'], 45,
+                f"CHAOS should be 45 after using crystal (30+15), "
+                f"got {game.state['stats']['CHAOS']}",
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_chaos_crystal_capped_at_100(self):
+        """Using crystal with CHAOS=90 should cap at 100, not 105."""
+        tmpdir = Path(tempfile.mkdtemp())
+        uid = f'test-crystal-cap-{int(time.time() * 1000000)}'
+        game = PetGame(uid, data_dir=tmpdir)
+        game.state['stats']['CHAOS'] = 90
+        game.add_item('crystal')
+        try:
+            game.use_item('crystal')
+            self.assertEqual(
+                game.state['stats']['CHAOS'], 100,
+                f"CHAOS should be capped at 100 after using crystal (90+15=105→100), "
+                f"got {game.state['stats']['CHAOS']}",
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 if __name__ == '__main__':
