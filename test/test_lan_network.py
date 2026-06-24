@@ -700,7 +700,9 @@ class TestFailover:
             }
         node._on_master_disconnect()
         with node._peers_lock:
-            assert "old-master" not in node._peers
+            # Old master is marked expired (last_seen=0) instead of deleted,
+            # so it can be re-discovered via UDP or peer list
+            assert node._peers.get("old-master", {}).get("last_seen") == 0
         assert node._master_id == "aaa-new-master"
         assert node.is_master is False
         msg = node.ui_queue.get_nowait()

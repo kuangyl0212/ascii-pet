@@ -545,6 +545,11 @@ class LanNode:
             if node_id and sender_sock is not None:
                 with self._client_sockets_lock:
                     self._client_sockets[node_id] = sender_sock
+                # Update peer info from TCP HELLO (username, pet_summary)
+                self._update_peer_from_tcp_hello(node_id, payload)
+                # Master sends peer list to newly connected slave
+                if self.is_master:
+                    self._send_peer_list_to_slave(node_id, sender_sock)
                 return node_id
             return None
         elif msg_type == MSG_VISIT_REQ:
@@ -611,6 +616,66 @@ class LanNode:
                         pass
         except Exception:
             pass
+
+    def _update_peer_from_tcp_hello(self, node_id, payload):
+        """Update peer info in _peers from a TCP HELLO message.
+
+        Ensures the master has up-to-date username/pet_summary for the slave,
+        even if the initial UDP HELLO was missed or carried stale data.
+        """
+        now = time.time()
+        with self._peers_lock:
+            existing = self._peers.get(node_id)
+            if existing is not None:
+                # Update existing peer info
+                existing["last_seen"] = now
+                username = payload.get("username")
+                if username:
+                    existing["username"] = username
+                snapshot = payload.get("pet_summary")
+                if snapshot is not None:
+                    existing["pet_summary"] = snapshot
+            else:
+                # New peer discovered via TCP (missed UDP HELLO)
+                self._peers[node_id] = {
+                    "node_id": node_id,
+                    "username": payload.get("username", ""),
+                    "pet_summary": payload.get("pet_summary") or {},
+                    "last_seen": now,
+                    "addr": None,
+                    "ip": None,
+                }
+
+    def _send_peer_list_to_slave(self, slave_node_id, slave_sock):
+        """Send the current peer list to a newly connected slave.
+
+        This ensures the slave knows about all peers on the network,
+        even if it missed some UDP HELLO broadcasts.
+        """
+        with self._peers_lock:
+            peers = [
+                {
+                    "node_id": p["node_id"],
+                    "username": p.get("username", ""),
+                    "pet_summary": p.get("pet_summary", {}),
+                    "ip": p.get("ip"),
+                }
+                for p in self._peers.values()
+                if p["node_id"] != slave_node_id
+            ]
+        # Include self (master) in the peer list
+        my_snapshot = make_pet_snapshot(self.pet_state, self.username)
+        peers.append({
+            "node_id": self.node_id,
+            "username": self.username,
+            "pet_summary": my_snapshot,
+            "ip": self.local_ip,
+        })
+        try:
+            data = encode_message(MSG_PEER_LIST, {"peers": peers})
+            slave_sock.sendall(data)
+        except Exception:
+            pass  # gradual degradation
 
     def _update_peers_from_list(self, peers):
         """Update peers from a list received from the master."""
@@ -791,10 +856,12 @@ class LanNode:
                     except Exception:
                         pass
                     self._master_sock = None
-            # Remove old master from peers
+            # Mark old master as expired (set last_seen to 0) instead of deleting,
+            # so _reelect_master still considers it for election consistency.
+            # _prune_expired_peers will clean it up on the next heartbeat cycle.
             with self._peers_lock:
                 if self._master_id and self._master_id in self._peers:
-                    del self._peers[self._master_id]
+                    self._peers[self._master_id]["last_seen"] = 0
             # Re-elect
             changed = self._reelect_master()
             new_master = self._master_id
