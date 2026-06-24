@@ -2,13 +2,14 @@
 
 Ensures the i18n language is set to English before each test,
 so that tests asserting English strings work regardless of system locale.
-Also tracks and cleans up LAN threads leaked by PetGame instances.
+Also prevents real LAN network from starting during tests, and cleans up
+any leaked LAN threads.
 """
 import gc
 import os, sys
 import threading
 import warnings
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 # Add src/ to path so ascii_pet package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
@@ -31,6 +32,31 @@ def _set_english_language():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _prevent_real_lan(request):
+    """Prevent PetGame.__init__ from starting real LanNode during tests.
+
+    PetGame.__init__ auto-calls enable_lan(), which creates real UDP/TCP
+    sockets and spawns 3 daemon threads. This is expensive and unnecessary
+    in unit tests. By patching LanNode.start to return False, enable_lan()
+    gracefully fails without creating any network resources.
+
+    Skipped for test_lan_network.py which directly tests LanNode with its
+    own socket mocks.
+
+    LAN-specific tests in test_lan_game.py override this by patching
+    'ascii_pet.lan.LanNode' with their own fake node, which is unaffected
+    since the entire class reference is replaced.
+    """
+    # test_lan_network.py directly tests LanNode with its own socket mocks
+    if 'test_lan_network' in request.node.nodeid:
+        yield
+        return
+    from ascii_pet.lan import LanNode
+    with patch.object(LanNode, 'start', return_value=False):
+        yield
+
+
 def _get_lan_thread_names():
     """返回当前存活的 lan-* 线程名集合。"""
     return {t.name for t in threading.enumerate() if t.name.startswith("lan-")}
@@ -39,12 +65,13 @@ def _get_lan_thread_names():
 def _cleanup_all_lan_nodes():
     """遍历所有 PetGame 和 LanNode 实例，清理 LAN 线程。
 
-    PetGame.__init__ 自动调用 enable_lan()，但测试 fixture 通常
-    不在 teardown 调用 disable_lan()，导致 lan-* 线程泄漏。
-    某些测试还会用 _FakeLanNode 替换 lan_node，导致真实 LanNode
-    失去引用但线程仍在运行。此函数清理所有情况。
+    由于 _prevent_real_lan fixture 已阻止真实 LanNode 启动，
+    大多数情况下无需执行昂贵的 gc 操作。仅当检测到 lan-* 线程
+    时才进行完整清理。
     """
-    import time
+    # 快速检查：如果没有 lan-* 线程，跳过昂贵的 gc 操作
+    if not _get_lan_thread_names():
+        return
     from ascii_pet.core import PetGame
     from ascii_pet.lan import LanNode
     gc.collect()
@@ -63,8 +90,6 @@ def _cleanup_all_lan_nodes():
                 obj.stop()
             except Exception:
                 pass
-    # 等待线程退出（stop() 的 join 有超时，线程可能还在退出中）
-    time.sleep(0.3)
 
 
 @pytest.fixture(autouse=True)
