@@ -824,6 +824,7 @@ class PetGame:
         self.lan_submode_data = None
         self.pending_trade_req = None
         self.MAX_DAILY_CHALLENGES = 5
+        self.CHALLENGE_TIMEOUT = 30  # seconds
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
         # Migrate old username.txt if no username in save
@@ -945,6 +946,7 @@ class PetGame:
                 self.process_lan_queues()
                 self._tick_visit_timeout()
                 self._tick_visit_events()
+                self._tick_challenge_timeout()
             except Exception:
                 pass
 
@@ -1348,6 +1350,10 @@ class PetGame:
                 return 'action', self.message
             # Visit/challenge/gift/trade/heal actions
             if key == 'v' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
                 peers = self.get_lan_peers()
                 if not peers:
                     self.message = _('No peers to visit')
@@ -1379,6 +1385,10 @@ class PetGame:
                 self.message_time = now
                 return 'action', self.message
             if key == 'g' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
                 if self.active_gift:
                     self.message = _('Already gifting')
                     self.message_time = now
@@ -1398,6 +1408,10 @@ class PetGame:
                 self.message_time = now
                 return 'action', self.message
             if key == 't' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
                 if self.active_trade:
                     self.message = _('Already trading')
                     self.message_time = now
@@ -2110,12 +2124,14 @@ class PetGame:
                 self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
                     "escaped": True,
                     "reason": result.get("reason", ""),
+                    "from": self.lan_node.node_id,
                 })
                 self.message = _("Your pet escaped!")
             else:
                 self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
                     "escaped": False,
                     "defender_snapshot": result.get("defender_snapshot", {}),
+                    "from": self.lan_node.node_id,
                 })
                 self.message = _("{username} challenges you!").format(username=from_username)
             self.message_time = now
@@ -2182,6 +2198,7 @@ class PetGame:
             result = self.receive_gift(item_id, count)
             self.lan_node.send_to_peer(payload.get("from", ""), MSG_GIFT_ACK, {
                 "success": result.get("success", False),
+                "from": self.lan_node.node_id,
             })
             if result.get("success"):
                 self.message = _("Received {count} {item} from {username}!").format(
@@ -2212,6 +2229,7 @@ class PetGame:
                     self.lan_node.send_to_peer(payload.get("from", ""), MSG_TRADE_CONFIRM, {
                         "pet_snapshot": my_pet,
                         "pet_index": my_index,
+                        "from": self.lan_node.node_id,
                     })
                     self.execute_trade(payload)
                     self.message = _("Trade complete!")
@@ -2325,6 +2343,14 @@ class PetGame:
 
         # Ignore other keys in submode
         return 'none', None
+
+    def _tick_challenge_timeout(self):
+        """检查挑战超时。"""
+        now = time.time()
+        if self.active_challenge and now - self.active_challenge.get("start_time", 0) > self.CHALLENGE_TIMEOUT:
+            self.active_challenge = None
+            self.message = _("Challenge timed out")
+            self.message_time = now
 
     def _tick_visit_timeout(self):
         """检查拜访超时（10分钟）。"""

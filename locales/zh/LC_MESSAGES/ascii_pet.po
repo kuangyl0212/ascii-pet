@@ -690,6 +690,9 @@ msgstr "没有可挑战的玩家"
 msgid "Already in a challenge"
 msgstr "已在挑战中"
 
+msgid "Challenge timed out"
+msgstr "挑战超时"
+
 #: core.py - Gift messages
 msgid "Gift sent!"
 msgstr "礼物已送出！"
