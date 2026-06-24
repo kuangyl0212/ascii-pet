@@ -1516,6 +1516,8 @@ class PetGame:
     def invite_visit(self, peer_node_id):
         """单向发起拜访，直接发送宠物快照，无需对方确认。"""
         if not self.lan_enabled or not self.lan_node:
+            self.message = _("LAN not enabled")
+            self.message_time = time.time()
             return False
         # 拜访锁定检查
         if self.active_visit is not None:
@@ -1539,6 +1541,9 @@ class PetGame:
                 "start_time": time.time(),
                 "pet_snapshot": snapshot,
             }
+        else:
+            self.message = _("Failed to send visit request")
+            self.message_time = time.time()
         return ok
 
     def end_visit(self):
@@ -1862,14 +1867,23 @@ class PetGame:
             return True
         return False
 
-    def receive_visitor(self, snapshot):
-        """接收访客宠物快照。按 owner (node_id) 存储，重复则覆盖。"""
-        owner_id = snapshot.get("owner", "")
-        if owner_id:
-            self.visitor_pets[owner_id] = snapshot
+    def receive_visitor(self, snapshot, node_id=None):
+        """接收访客宠物快照。优先用 node_id 作为 key，未提供时回退到 owner。
+
+        Args:
+            snapshot: 宠物快照 dict。
+            node_id: 访客的 node_id。提供时以其作为 key，确保存取删一致。
+                     未提供或为空时回退到 snapshot['owner']（向后兼容）。
+        """
+        if node_id:
+            self.visitor_pets[node_id] = snapshot
         else:
-            # 无 owner 信息的快照用临时 key 存储
-            self.visitor_pets[f"_anon_{id(snapshot)}"] = snapshot
+            owner_id = snapshot.get("owner", "")
+            if owner_id:
+                self.visitor_pets[owner_id] = snapshot
+            else:
+                # 无 owner 信息的快照用临时 key 存储
+                self.visitor_pets[f"_anon_{id(snapshot)}"] = snapshot
 
     def dismiss_visitor(self, node_id):
         """让访客离开。node_id 为访客的 node_id。"""

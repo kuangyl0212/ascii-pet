@@ -1380,9 +1380,13 @@ class _MockGame:
             return ('Played!', None)
         return ('Done!', None)
 
-    def receive_visitor(self, snapshot):
-        owner_id = snapshot.get("owner", f"_anon_{id(snapshot)}")
-        self.visitor_pets[owner_id] = snapshot
+    def receive_visitor(self, snapshot, node_id=None):
+        # 匹配 core.py 的新签名：优先用 node_id，回退到 owner
+        if node_id:
+            self.visitor_pets[node_id] = snapshot
+        else:
+            owner_id = snapshot.get("owner", f"_anon_{id(snapshot)}")
+            self.visitor_pets[owner_id] = snapshot
 
     def accept_challenge(self, challenge_req):
         """Mock accept_challenge: always accept."""

@@ -596,10 +596,14 @@ class LanState(GameState):
                 from ascii_pet.protocol import make_pet_snapshot
                 own_snapshot = make_pet_snapshot(
                     game.state, game.lan_username or game.uid)
+                # 包含受访方 node_id，让发起方用 node_id 作为 key 存储
+                own_snapshot["from"] = game.lan_node.node_id
                 try:
                     game.lan_node.send_to_peer(from_id, MSG_VISIT_DATA, own_snapshot)
                 except Exception:
                     pass
+            # 受访方切换到 ExpandedState，立即在屏幕上显示访客宠物
+            game.sm.transition_to(game, ExpandedState())
 
         elif msg_type == MSG_VISIT_FEED:
             stat_key = 'HUNGER'
@@ -676,7 +680,8 @@ class LanState(GameState):
                 game.message_time = now
 
         elif msg_type == MSG_VISIT_DATA:
-            game.receive_visitor(payload)
+            # 用 payload['from'] (node_id) 作为 key，确保存取删一致
+            game.receive_visitor(payload, node_id=payload.get("from", ""))
             game.message = _("{name} came to visit!").format(name=payload.get('name', ''))
             game.message_time = now
 
