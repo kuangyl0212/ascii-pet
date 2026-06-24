@@ -266,6 +266,7 @@ class TestLanNodeStart:
 
     @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(recv_should_error=True))
+    @pytest.mark.slow
     def test_network_thread_exception_exits_gracefully(self, mock_sock, mock_ip):
         """Network thread exception doesn't crash main thread (test 9)."""
         node = lan.LanNode("alice", _minimal_pet_state())
@@ -699,7 +700,9 @@ class TestFailover:
             }
         node._on_master_disconnect()
         with node._peers_lock:
-            assert "old-master" not in node._peers
+            # Old master is marked expired (last_seen=0) instead of deleted,
+            # so it can be re-discovered via UDP or peer list
+            assert node._peers.get("old-master", {}).get("last_seen") == 0
         assert node._master_id == "aaa-new-master"
         assert node.is_master is False
         msg = node.ui_queue.get_nowait()
@@ -744,6 +747,7 @@ class TestThreadExceptionNotification:
 
     @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(recv_should_error=True))
+    @pytest.mark.slow
     def test_thread_exception_puts_error_in_ui_queue(self, mock_sock, mock_ip):
         """Network thread exception puts an error message in ui_queue."""
         node = lan.LanNode("alice", _minimal_pet_state())

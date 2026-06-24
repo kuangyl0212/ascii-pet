@@ -170,7 +170,9 @@ def render_lan_lines(game):
     lines.append((_('═ Community Plaza ═'), COLOR_MSG))
     if enabled:
         peer_count = status.get('peer_count', 0)
-        lines.append((_('Username: {}  |  Players online: {}').format(game.lan_username or '?', peer_count), COLOR_BAR_FILL))
+        # Show current pet HP
+        hp = game.state.get('hp', 100)
+        lines.append((_('Username: {}  |  Players online: {}  |  HP: {}/100').format(game.lan_username or '?', peer_count, hp), COLOR_BAR_FILL))
     else:
         lines.append((_('Status: Disconnected'), COLOR_BAR_EMPTY))
         error = status.get('error')
@@ -204,24 +206,89 @@ def render_lan_lines(game):
             pet = peer.get('pet_summary', {})
             pet_name = pet.get('name', '?')
             species = pet.get('species', '?')
-            lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
+            lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
     else:
         lines.append((_('(No other players)'), COLOR_DIM))
     lines.append(('', COLOR_WHITE))
 
+    # 访客列表
+    visitors = game.visitor_pets
+    if visitors:
+        lines.append((_('─ Visitors ─'), COLOR_DIM))
+        for v in visitors:
+            lines.append((_('  {}({})').format(v.get("name","?"), v.get("species","?")), COLOR_WHITE))
+
     # 操作提示
     lines.append((_('─ Actions ─'), COLOR_DIM))
     if enabled:
-        if game.active_visit or game.being_visited:
+        # Submode hints (when in visit/challenge/gift/trade selection)
+        if game.lan_submode == 'visit':
+            lines.append((_('Select visit target:'), COLOR_MSG))
+            for i, peer in enumerate(all_peers[:9]):
+                username = peer.get('username', '?')
+                pet = peer.get('pet_summary', {})
+                pet_name = pet.get('name', '?')
+                species = pet.get('species', '?')
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.lan_submode == 'challenge':
+            lines.append((_('Select challenge target:'), COLOR_MSG))
+            for i, peer in enumerate(all_peers[:9]):
+                username = peer.get('username', '?')
+                pet = peer.get('pet_summary', {})
+                pet_name = pet.get('name', '?')
+                species = pet.get('species', '?')
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.lan_submode == 'gift':
+            lines.append((_('Select gift target:'), COLOR_MSG))
+            for i, peer in enumerate(all_peers[:9]):
+                username = peer.get('username', '?')
+                pet = peer.get('pet_summary', {})
+                pet_name = pet.get('name', '?')
+                species = pet.get('species', '?')
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.lan_submode == 'gift_item':
+            lines.append((_('Select item to gift:'), COLOR_MSG))
+            inv_list = game.get_inventory_list()
+            for i, (item_id, name, icon, count, desc) in enumerate(inv_list[:9]):
+                lines.append((_('[{}] {} {} x{}').format(i+1, icon, name, count), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.lan_submode == 'trade':
+            lines.append((_('Select trade target:'), COLOR_MSG))
+            for i, peer in enumerate(all_peers[:9]):
+                username = peer.get('username', '?')
+                pet = peer.get('pet_summary', {})
+                pet_name = pet.get('name', '?')
+                species = pet.get('species', '?')
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.active_visit or game.being_visited:
             lines.append((_('[e]End Visit [f]Remote Feed [p]Remote Play'), COLOR_DIM))
         else:
-            lines.append((_('[1-9]Visit Player [u]Edit Username'), COLOR_DIM))
+            lines.append((_('[u]Edit Username'), COLOR_DIM))
+        # Challenge/gift/trade/heal action hints (only when not in submode)
+        if game.lan_submode is None:
+            if game.active_challenge:
+                lines.append((_('★ Challenge in progress...'), COLOR_MSG))
+            elif game.active_gift:
+                lines.append((_('★ Gifting... (timeout 10s)'), COLOR_MSG))
+            elif game.active_trade:
+                lines.append((_('★ Trading... (timeout 30s)'), COLOR_MSG))
+            elif all_peers:
+                lines.append((_('[v]Visit [c]Challenge [g]Gift [t]Trade [h]Heal'), COLOR_DIM))
+        # Trade confirmation hint
+        if game.pending_trade_req is not None:
+            from_username = game.pending_trade_req.get('from_username', '?')
+            pet_name = game.pending_trade_req.get('pet_snapshot', {}).get('name', '?')
+            lines.append((_('{} wants to trade {}! [y]Accept [n]Reject').format(from_username, pet_name), COLOR_MSG))
         if total_pages >= 2:
             lines.append((_('Prev Page: [  Next Page: ]'), COLOR_DIM))
-        lines.append((_('[o]Disable LAN'), COLOR_DIM))
+        lines.append((_('[l]Back [o]Disable LAN'), COLOR_DIM))
     else:
         lines.append((_('[o]Enable LAN'), COLOR_DIM))
-    lines.append((_('[l]Back [c]Compact Mode'), COLOR_DIM))
+    lines.append((_('[l]Back'), COLOR_DIM))
 
     return lines
 
@@ -236,6 +303,43 @@ def render_lan_name_edit_lines(game):
     lines.append((_('New name: {}_').format(current_input), COLOR_WHITE))
     lines.append(('', COLOR_WHITE))
     lines.append((_('[Enter]Confirm [ESC]Cancel'), COLOR_DIM))
+    return lines
+
+def render_battle_log_lines(battle_result):
+    """渲染战斗日志。返回 [(text, color), ...] 列表。
+
+    Args:
+        battle_result: simulate_battle 返回的 dict，包含 winner, loser,
+                       log, hp_loss_winner, hp_loss_loser。
+    """
+    lines = []
+    lines.append((_('═ Battle Log ═'), COLOR_MSG))
+    for entry in battle_result.get('log', []):
+        lines.append((entry, COLOR_WHITE))
+    winner = battle_result.get('winner', '?')
+    loser = battle_result.get('loser', '?')
+    lines.append((_('Winner: {} | Loser: {}').format(winner, loser), COLOR_BAR_FILL))
+    hp_loss_winner = battle_result.get('hp_loss_winner', 0)
+    hp_loss_loser = battle_result.get('hp_loss_loser', 0)
+    lines.append((_('Winner HP: -{} | Loser HP: -{}').format(hp_loss_winner, hp_loss_loser), COLOR_DIM))
+    return lines
+
+def render_trade_confirm_lines(trade_req):
+    """渲染交易确认对话框。返回 [(text, color), ...] 列表。
+
+    Args:
+        trade_req: MSG_TRADE_REQ 的 payload dict，包含 from_username,
+                   pet_snapshot (含 name, species)。
+    """
+    lines = []
+    lines.append((_('═ Trade Request ═'), COLOR_MSG))
+    from_username = trade_req.get('from_username', '?')
+    pet_snapshot = trade_req.get('pet_snapshot', {})
+    pet_name = pet_snapshot.get('name', '?')
+    species = pet_snapshot.get('species', '?')
+    lines.append((_('Player {username} wants to trade their {pet}({species})').format(
+        username=from_username, pet=pet_name, species=species), COLOR_WHITE))
+    lines.append((_('[y]Accept [n]Reject'), COLOR_DIM))
     return lines
 
 def render_release_lines(game):
@@ -1173,6 +1277,9 @@ class PetWindow:
 
     def on_char(self, wparam):
         ch = chr(wparam)
+        now = time.time()
+        # Handle LAN action keys in LAN mode (c/g/t/h are handled by handle_key's lan branch)
+        # No need to intercept here anymore — they flow through handle_key
         atype, detail = self.game.handle_key(ch)
         if atype == 'quit':
             user32.DestroyWindow(self.hwnd); return
@@ -1225,6 +1332,14 @@ class PetWindow:
                 lines.append((_('  [Visitor] {} (from {})').format(visitor.get("name","?"), visitor.get("owner","?")), COLOR_MSG))
                 for row in v_frame:
                     lines.append((f'  {row}', COLOR_DIM))
+        # Show battle log after a battle
+        if g.battle_result and g.mode in ('expanded', 'lan'):
+            lines.append(('', COLOR_WHITE))
+            lines.extend(render_battle_log_lines(g.battle_result))
+        # Show trade confirmation when a trade request is pending
+        if g.pending_trade_req is not None and g.mode in ('expanded', 'lan'):
+            lines.append(('', COLOR_WHITE))
+            lines.extend(render_trade_confirm_lines(g.pending_trade_req))
         return lines
 
     def on_paint(self, hwnd):

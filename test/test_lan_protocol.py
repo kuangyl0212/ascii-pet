@@ -219,11 +219,13 @@ class TestMakePetSnapshot:
         assert isinstance(snap, dict)
 
     def test_includes_required_fields(self):
-        """Snapshot must include exactly the 9 whitelisted fields."""
+        """Snapshot must include the whitelisted fields plus combat fields."""
         snap = make_pet_snapshot(_full_pet_state(), "alice")
         expected_keys = {
             "name", "species", "rarity", "level",
             "shiny", "eye", "hat", "mood", "owner",
+            # Combat fields added in Task 6 (with defaults for backward compat).
+            "hp", "attack", "defense", "speed", "skills",
         }
         assert set(snap.keys()) == expected_keys
 
@@ -587,6 +589,7 @@ class TestEncodeDecodeNewVisitMessages:
             assert decoded == payload
 
 
+
 # ─── make_hello_lite ────────────────────────────────────────────────────────
 
 
@@ -630,3 +633,273 @@ class TestMakeHelloLite:
         assert msg_type == MSG_HELLO
         assert decoded_payload["node_id"] == "node-1"
         assert decoded_payload["pet_summary"] is None
+
+
+# ─── Battle / Gift / Trade message type constants (Task 6) ──────────────────
+
+
+class TestBattleGiftTradeConstants:
+    """Verify the 9 new battle/gift/trade message type constants."""
+
+    def test_msg_challenge_req(self):
+        assert lan_protocol.MSG_CHALLENGE_REQ == "challenge_req"
+
+    def test_msg_challenge_ack(self):
+        assert lan_protocol.MSG_CHALLENGE_ACK == "challenge_ack"
+
+    def test_msg_challenge_result(self):
+        assert lan_protocol.MSG_CHALLENGE_RESULT == "challenge_result"
+
+    def test_msg_gift_item(self):
+        assert lan_protocol.MSG_GIFT_ITEM == "gift_item"
+
+    def test_msg_gift_ack(self):
+        assert lan_protocol.MSG_GIFT_ACK == "gift_ack"
+
+    def test_msg_trade_req(self):
+        assert lan_protocol.MSG_TRADE_REQ == "trade_req"
+
+    def test_msg_trade_ack(self):
+        assert lan_protocol.MSG_TRADE_ACK == "trade_ack"
+
+    def test_msg_trade_confirm(self):
+        assert lan_protocol.MSG_TRADE_CONFIRM == "trade_confirm"
+
+    def test_msg_trade_complete(self):
+        assert lan_protocol.MSG_TRADE_COMPLETE == "trade_complete"
+
+    def test_nine_new_constants_distinct(self):
+        """All 9 new constants are distinct strings."""
+        consts = {
+            lan_protocol.MSG_CHALLENGE_REQ,
+            lan_protocol.MSG_CHALLENGE_ACK,
+            lan_protocol.MSG_CHALLENGE_RESULT,
+            lan_protocol.MSG_GIFT_ITEM,
+            lan_protocol.MSG_GIFT_ACK,
+            lan_protocol.MSG_TRADE_REQ,
+            lan_protocol.MSG_TRADE_ACK,
+            lan_protocol.MSG_TRADE_CONFIRM,
+            lan_protocol.MSG_TRADE_COMPLETE,
+        }
+        assert len(consts) == 9
+
+    def test_new_constants_distinct_from_existing(self):
+        """New constants must not collide with existing constants."""
+        existing = {
+            MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
+            MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
+            MSG_VISIT_LEAVE, MSG_BYE,
+            MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT,
+            MSG_VISIT_END, MSG_NAME_CHECK,
+        }
+        new = {
+            lan_protocol.MSG_CHALLENGE_REQ,
+            lan_protocol.MSG_CHALLENGE_ACK,
+            lan_protocol.MSG_CHALLENGE_RESULT,
+            lan_protocol.MSG_GIFT_ITEM,
+            lan_protocol.MSG_GIFT_ACK,
+            lan_protocol.MSG_TRADE_REQ,
+            lan_protocol.MSG_TRADE_ACK,
+            lan_protocol.MSG_TRADE_CONFIRM,
+            lan_protocol.MSG_TRADE_COMPLETE,
+        }
+        assert existing.isdisjoint(new)
+
+
+# ─── Snapshot extensions (Task 6) ───────────────────────────────────────────
+
+
+class TestPetSnapshotCombatFields:
+    """make_pet_snapshot now includes combat fields with defaults for backward compat."""
+
+    def test_snapshot_contains_combat_fields(self):
+        """Snapshot must contain hp, attack, defense, speed, skills fields."""
+        snap = make_pet_snapshot(_full_pet_state(), "alice")
+        for field in ("hp", "attack", "defense", "speed", "skills"):
+            assert field in snap, f"snapshot missing combat field: {field}"
+
+    def test_snapshot_combat_fields_have_defaults(self):
+        """Combat fields use sensible defaults when absent from state."""
+        snap = make_pet_snapshot(_full_pet_state(), "alice")
+        # _full_pet_state() has no combat fields, so defaults must be used.
+        assert isinstance(snap["hp"], int)
+        assert isinstance(snap["attack"], int)
+        assert isinstance(snap["defense"], int)
+        assert isinstance(snap["speed"], int)
+        assert isinstance(snap["skills"], list)
+
+    def test_snapshot_combat_fields_reflect_state_when_present(self):
+        """When state has combat fields, snapshot uses them."""
+        state = _full_pet_state()
+        state["hp"] = 50
+        state["attack"] = 12
+        state["defense"] = 8
+        state["speed"] = 15
+        state["skills"] = ["scratch", "bite"]
+        snap = make_pet_snapshot(state, "alice")
+        assert snap["hp"] == 50
+        assert snap["attack"] == 12
+        assert snap["defense"] == 8
+        assert snap["speed"] == 15
+        assert snap["skills"] == ["scratch", "bite"]
+
+    def test_snapshot_still_includes_original_fields(self):
+        """Original 9 fields are still present alongside combat fields."""
+        snap = make_pet_snapshot(_full_pet_state(), "alice")
+        for field in ("name", "species", "rarity", "level",
+                      "shiny", "eye", "hat", "mood", "owner"):
+            assert field in snap, f"snapshot missing original field: {field}"
+
+    def test_snapshot_with_combat_fields_is_json_serializable(self):
+        """Snapshot with combat fields must remain JSON-serializable."""
+        snap = make_pet_snapshot(_full_pet_state(), "alice")
+        s = json.dumps(snap, ensure_ascii=False)
+        assert json.loads(s) == snap
+
+
+class TestMakeBattleSnapshot:
+    """make_battle_snapshot builds a battle-ready snapshot with calculated combat stats."""
+
+    def test_function_exists(self):
+        """make_battle_snapshot is callable."""
+        assert callable(lan_protocol.make_battle_snapshot)
+
+    def test_returns_dict(self):
+        snap = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        assert isinstance(snap, dict)
+
+    def test_contains_required_fields(self):
+        """Battle snapshot must contain combat-relevant fields."""
+        snap = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        required = {
+            "name", "species", "rarity", "level",
+            "hp", "attack", "defense", "speed", "skills", "owner",
+        }
+        assert required.issubset(set(snap.keys())), \
+            f"missing fields: {required - set(snap.keys())}"
+
+    def test_owner_field_set_from_argument(self):
+        snap = lan_protocol.make_battle_snapshot(_full_pet_state(), "bob")
+        assert snap["owner"] == "bob"
+
+    def test_basic_fields_match_state(self):
+        state = _full_pet_state()
+        snap = lan_protocol.make_battle_snapshot(state, "alice")
+        assert snap["name"] == state["name"]
+        assert snap["species"] == state["species"]
+        assert snap["rarity"] == state["rarity"]
+        assert snap["level"] == state["level"]
+
+    def test_combat_fields_are_calculated(self):
+        """Combat fields come from calculate_combat_stats, not raw state."""
+        from ascii_pet.core import calculate_combat_stats
+        state = _full_pet_state()
+        combat = calculate_combat_stats(state)
+        snap = lan_protocol.make_battle_snapshot(state, "alice")
+        assert snap["hp"] == combat["hp"]
+        assert snap["attack"] == combat["attack"]
+        assert snap["defense"] == combat["defense"]
+        assert snap["speed"] == combat["speed"]
+        assert snap["skills"] == combat["skills"]
+
+    def test_combat_fields_are_ints_and_list(self):
+        """hp/attack/defense/speed are ints, skills is a list."""
+        snap = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        assert isinstance(snap["hp"], int)
+        assert isinstance(snap["attack"], int)
+        assert isinstance(snap["defense"], int)
+        assert isinstance(snap["speed"], int)
+        assert isinstance(snap["skills"], list)
+
+    def test_is_json_serializable(self):
+        """Battle snapshot must be JSON-serializable for wire transmission."""
+        snap = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        s = json.dumps(snap, ensure_ascii=False)
+        decoded = json.loads(s)
+        assert decoded == snap
+
+    def test_chinese_name_preserved(self):
+        """Chinese characters in pet name survive in battle snapshot."""
+        snap = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        assert snap["name"] == "Mochi喵"
+
+
+# ─── Encode/decode round-trip for battle/gift/trade messages (Task 6) ───────
+
+
+class TestEncodeDecodeBattleGiftTrade:
+    """Battle/gift/trade message types must survive encode → decode round-trip."""
+
+    def test_roundtrip_challenge_req(self):
+        """MSG_CHALLENGE_REQ with from, from_username, pet_snapshot."""
+        pet_snapshot = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        payload = {
+            "from": "node1",
+            "from_username": "alice",
+            "pet_snapshot": pet_snapshot,
+        }
+        raw = encode_message(lan_protocol.MSG_CHALLENGE_REQ, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == lan_protocol.MSG_CHALLENGE_REQ
+        assert decoded == payload
+        assert decoded["from"] == "node1"
+        assert decoded["from_username"] == "alice"
+        assert decoded["pet_snapshot"]["name"] == "Mochi喵"
+        assert "hp" in decoded["pet_snapshot"]
+
+    def test_roundtrip_gift_item(self):
+        """MSG_GIFT_ITEM with from, item_id, count."""
+        payload = {
+            "from": "node1",
+            "item_id": "apple",
+            "count": 3,
+        }
+        raw = encode_message(lan_protocol.MSG_GIFT_ITEM, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == lan_protocol.MSG_GIFT_ITEM
+        assert decoded == payload
+        assert decoded["from"] == "node1"
+        assert decoded["item_id"] == "apple"
+        assert decoded["count"] == 3
+
+    def test_roundtrip_trade_req(self):
+        """MSG_TRADE_REQ with from, pet_snapshot, pet_index."""
+        pet_snapshot = lan_protocol.make_battle_snapshot(_full_pet_state(), "alice")
+        payload = {
+            "from": "node1",
+            "pet_snapshot": pet_snapshot,
+            "pet_index": 0,
+        }
+        raw = encode_message(lan_protocol.MSG_TRADE_REQ, payload)
+        result = decode_message(raw)
+        assert result is not None
+        msg_type, decoded = result
+        assert msg_type == lan_protocol.MSG_TRADE_REQ
+        assert decoded == payload
+        assert decoded["from"] == "node1"
+        assert decoded["pet_index"] == 0
+        assert decoded["pet_snapshot"]["species"] == "cat"
+
+    def test_roundtrip_all_new_battle_gift_trade_types(self):
+        """All 9 new types round-trip with non-trivial payloads."""
+        samples = {
+            lan_protocol.MSG_CHALLENGE_REQ: {"from": "n1"},
+            lan_protocol.MSG_CHALLENGE_ACK: {"accepted": True},
+            lan_protocol.MSG_CHALLENGE_RESULT: {"winner": "n1"},
+            lan_protocol.MSG_GIFT_ITEM: {"item_id": "apple"},
+            lan_protocol.MSG_GIFT_ACK: {"accepted": True},
+            lan_protocol.MSG_TRADE_REQ: {"pet_index": 0},
+            lan_protocol.MSG_TRADE_ACK: {"accepted": True},
+            lan_protocol.MSG_TRADE_CONFIRM: {"confirmed": True},
+            lan_protocol.MSG_TRADE_COMPLETE: {"success": True},
+        }
+        for msg_type, payload in samples.items():
+            raw = encode_message(msg_type, payload)
+            result = decode_message(raw)
+            assert result is not None, f"decode failed for {msg_type}"
+            assert result[0] == msg_type
+            assert result[1] == payload

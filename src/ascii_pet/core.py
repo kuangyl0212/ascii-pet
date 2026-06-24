@@ -80,8 +80,118 @@ ITEMS = {
     'crown':   {'name':'Crown',    'icon':'👑', 'effect':{'hat':'crown'}, 'desc':'A fancy crown'},
     'tophat':  {'name':'Top Hat',  'icon':'🎩', 'effect':{'hat':'tophat'},'desc':'A classy top hat'},
     'crystal': {'name':'Chaos Crystal', 'icon':'💎', 'effect':{'CHAOS':15}, 'desc':'Grants 15 chaos'},
+    'medicine': {'name':'Medicine', 'icon':'💊', 'effect':{'hp':50}, 'desc':'Restores 50 battle HP'},
 }
 MAX_INVENTORY = 20
+
+# ─── Combat stats ─────────────────────────────────────────────────────────────
+
+RARITY_COMBAT_MULTIPLIER = {
+    'common': 1.0,
+    'uncommon': 1.2,
+    'rare': 1.5,
+    'epic': 1.8,
+    'legendary': 2.5,
+}
+
+SPECIES_COMBAT_PROFILE = {
+    # Base species
+    'duck':      {'attack': 1.0, 'defense': 0.8, 'speed': 1.2},
+    'goose':     {'attack': 1.2, 'defense': 1.0, 'speed': 1.1},
+    'blob':      {'attack': 0.8, 'defense': 1.2, 'speed': 0.6},
+    'cat':       {'attack': 1.1, 'defense': 0.9, 'speed': 1.3},
+    'dragon':    {'attack': 1.5, 'defense': 1.3, 'speed': 1.1},
+    'octopus':   {'attack': 1.2, 'defense': 1.1, 'speed': 0.9},
+    'owl':       {'attack': 1.1, 'defense': 0.9, 'speed': 1.2},
+    'penguin':   {'attack': 0.9, 'defense': 1.2, 'speed': 0.8},
+    'turtle':    {'attack': 0.7, 'defense': 1.6, 'speed': 0.5},
+    'snail':     {'attack': 0.6, 'defense': 1.3, 'speed': 0.4},
+    'ghost':     {'attack': 1.3, 'defense': 0.7, 'speed': 1.2},
+    'axolotl':   {'attack': 0.9, 'defense': 1.1, 'speed': 0.8},
+    'capybara':  {'attack': 0.8, 'defense': 1.2, 'speed': 0.9},
+    'cactus':    {'attack': 1.0, 'defense': 1.4, 'speed': 0.6},
+    'robot':     {'attack': 1.3, 'defense': 1.3, 'speed': 0.8},
+    'rabbit':    {'attack': 0.9, 'defense': 0.8, 'speed': 1.5},
+    'mushroom':  {'attack': 1.0, 'defense': 1.1, 'speed': 0.7},
+    'chonk':     {'attack': 1.1, 'defense': 1.4, 'speed': 0.6},
+    # Evolved species
+    'slime':      {'attack': 0.9, 'defense': 1.3, 'speed': 0.7},
+    'elemental':  {'attack': 1.6, 'defense': 1.2, 'speed': 1.0},
+    'swan':       {'attack': 1.2, 'defense': 1.1, 'speed': 1.3},
+    'tiger':      {'attack': 1.5, 'defense': 1.1, 'speed': 1.3},
+    'lion':       {'attack': 1.6, 'defense': 1.2, 'speed': 1.1},
+    'wyvern':     {'attack': 1.6, 'defense': 1.2, 'speed': 1.3},
+    'dragonlord': {'attack': 1.8, 'defense': 1.5, 'speed': 1.2},
+    'phoenix':    {'attack': 1.5, 'defense': 1.0, 'speed': 1.4},
+    'sage':       {'attack': 1.3, 'defense': 1.3, 'speed': 1.1},
+    'hare':       {'attack': 1.1, 'defense': 0.9, 'speed': 1.6},
+    'jackalope':  {'attack': 1.3, 'defense': 0.9, 'speed': 1.5},
+    'shell':      {'attack': 0.8, 'defense': 1.7, 'speed': 0.6},
+    'turbo':      {'attack': 1.0, 'defense': 1.2, 'speed': 1.5},
+    'wraith':     {'attack': 1.5, 'defense': 0.8, 'speed': 1.3},
+    'specter':    {'attack': 1.7, 'defense': 0.9, 'speed': 1.4},
+}
+
+SKILLS = {
+    'peck':         {'name': 'Peck',         'power': 35, 'accuracy': 100},
+    'scratch':      {'name': 'Scratch',      'power': 30, 'accuracy': 100},
+    'bite':         {'name': 'Bite',         'power': 40, 'accuracy': 95},
+    'tackle':       {'name': 'Tackle',       'power': 35, 'accuracy': 95},
+    'fire_breath':  {'name': 'Fire Breath',  'power': 60, 'accuracy': 85},
+    'water_gun':    {'name': 'Water Gun',    'power': 45, 'accuracy': 100},
+    'vine_whip':    {'name': 'Vine Whip',    'power': 45, 'accuracy': 100},
+    'thunder':      {'name': 'Thunder',      'power': 65, 'accuracy': 80},
+    'shadow_ball':  {'name': 'Shadow Ball',  'power': 55, 'accuracy': 90},
+    'rock_throw':   {'name': 'Rock Throw',   'power': 50, 'accuracy': 85},
+    'tail_whip':    {'name': 'Tail Whip',    'power': 0,  'accuracy': 100},
+    'roar':         {'name': 'Roar',         'power': 0,  'accuracy': 100},
+    'heal_light':   {'name': 'Heal Light',   'power': 0,  'accuracy': 100},
+    'ice_shard':    {'name': 'Ice Shard',    'power': 45, 'accuracy': 95},
+    'gust':         {'name': 'Gust',         'power': 40, 'accuracy': 100},
+    'slam':         {'name': 'Slam',         'power': 50, 'accuracy': 90},
+    'poison_sting': {'name': 'Poison Sting', 'power': 25, 'accuracy': 95},
+    'psychic':      {'name': 'Psychic',      'power': 60, 'accuracy': 85},
+    'iron_defense': {'name': 'Iron Defense', 'power': 0,  'accuracy': 100},
+    'swift':        {'name': 'Swift',        'power': 40, 'accuracy': 100},
+}
+
+SPECIES_SKILLS = {
+    # Base species
+    'duck':      ['peck', 'tackle', 'gust'],
+    'goose':     ['peck', 'tackle', 'roar'],
+    'blob':      ['tackle', 'slam'],
+    'cat':       ['scratch', 'bite'],
+    'dragon':    ['fire_breath', 'tail_whip'],
+    'octopus':   ['tackle', 'water_gun'],
+    'owl':       ['peck', 'gust'],
+    'penguin':   ['peck', 'tackle', 'ice_shard'],
+    'turtle':    ['tackle', 'iron_defense'],
+    'snail':     ['tackle', 'poison_sting'],
+    'ghost':     ['shadow_ball', 'psychic'],
+    'axolotl':   ['water_gun', 'heal_light'],
+    'capybara':  ['tackle', 'bite'],
+    'cactus':    ['vine_whip', 'poison_sting'],
+    'robot':     ['tackle', 'swift', 'iron_defense'],
+    'rabbit':    ['scratch', 'swift'],
+    'mushroom':  ['poison_sting', 'heal_light'],
+    'chonk':     ['tackle', 'slam', 'roar'],
+    # Evolved species
+    'slime':      ['tackle', 'slam', 'poison_sting'],
+    'elemental':  ['fire_breath', 'thunder', 'gust'],
+    'swan':       ['peck', 'gust', 'water_gun'],
+    'tiger':      ['scratch', 'bite', 'roar'],
+    'lion':       ['scratch', 'bite', 'roar'],
+    'wyvern':     ['fire_breath', 'tail_whip', 'swift'],
+    'dragonlord': ['fire_breath', 'tail_whip', 'roar'],
+    'phoenix':    ['fire_breath', 'gust', 'heal_light'],
+    'sage':       ['psychic', 'heal_light', 'iron_defense'],
+    'hare':       ['scratch', 'swift', 'tackle'],
+    'jackalope':  ['scratch', 'bite', 'swift'],
+    'shell':      ['tackle', 'iron_defense', 'rock_throw'],
+    'turbo':      ['swift', 'tackle', 'slam'],
+    'wraith':     ['shadow_ball', 'psychic', 'tail_whip'],
+    'specter':    ['shadow_ball', 'psychic', 'thunder'],
+}
 
 ACHIEVEMENTS = {
     'first_feed':    {'name':'First Meal',    'icon':'🍖', 'check': lambda s,p: s.get('feed_count',0) >= 1},
@@ -372,6 +482,42 @@ def check_achievements(state, pets_data):
             unlocked.append(_(ach['name']))
     return unlocked
 
+# ─── Combat stats ─────────────────────────────────────────────────────────────
+
+def get_pet_skills(species):
+    """Return list of skill IDs for a species. Defaults to tackle+scratch."""
+    return list(SPECIES_SKILLS.get(species, ['tackle', 'scratch']))
+
+def calculate_combat_stats(state):
+    """Calculate combat stats from pet state.
+
+    Returns dict with keys: hp, attack, defense, speed, skills.
+        hp = state.get('hp', 100)
+        base = 10 + level * 2
+        attack = int(base * rarity_mult * species_profile['attack'])
+        defense = int(base * rarity_mult * species_profile['defense'])
+        speed = int(base * rarity_mult * species_profile['speed'])
+        skills = get_pet_skills(state['species'])
+    """
+    hp = state.get('hp', 100)
+    level = state.get('level', 1)
+    rarity = state.get('rarity', 'common')
+    species = state.get('species', 'blob')
+    rarity_mult = RARITY_COMBAT_MULTIPLIER.get(rarity, 1.0)
+    species_profile = SPECIES_COMBAT_PROFILE.get(species, {'attack': 1.0, 'defense': 1.0, 'speed': 1.0})
+    base = 10 + level * 2
+    attack = int(base * rarity_mult * species_profile['attack'])
+    defense = int(base * rarity_mult * species_profile['defense'])
+    speed = int(base * rarity_mult * species_profile['speed'])
+    skills = get_pet_skills(species)
+    return {
+        'hp': hp,
+        'attack': attack,
+        'defense': defense,
+        'speed': speed,
+        'skills': skills,
+    }
+
 # ─── State management ─────────────────────────────────────────────────────────
 
 def init_state(uid, bones, name):
@@ -382,7 +528,8 @@ def init_state(uid, bones, name):
             'level':1,'xp':0,'total_interactions':0,
             'feed_count':0,'play_count':0,'sleep_count':0,'achievements':[],
             'critical_since':None,'is_dead':False,
-            'last_feed':None,'last_play':None,'last_sleep':None,'pet_count_hour':0,'pet_hour_start':None}
+            'last_feed':None,'last_play':None,'last_sleep':None,'pet_count_hour':0,'pet_hour_start':None,
+            'hp':100}
 
 def update_state_over_time(state):
     now = datetime.now()
@@ -633,6 +780,9 @@ class PetGame:
             state = init_state(uid, bones, name)
             pets_data = {'pets': [state], 'current': 0, 'adoption_log': []}; pet_idx = 0
             save_pets(uid, pets_data, data_dir)
+        # Backward compat: ensure all pets have hp field
+        for p in pets_data['pets']:
+            p.setdefault('hp', 100)
         if 'adoption_log' not in pets_data:
             pets_data['adoption_log'] = []
         self.state = state
@@ -665,6 +815,16 @@ class PetGame:
         self.being_visited = None
         self.visit_event_cooldown = 0.0
         self.lan_page = 0
+        self.active_challenge = None
+        self.active_gift = None
+        self.active_trade = None
+        self.last_heal_time = 0.0
+        self.battle_result = None
+        self.lan_submode = None
+        self.lan_submode_data = None
+        self.pending_trade_req = None
+        self.MAX_DAILY_CHALLENGES = 5
+        self.CHALLENGE_TIMEOUT = 30  # seconds
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
         # Migrate old username.txt if no username in save
@@ -786,6 +946,7 @@ class PetGame:
                 self.process_lan_queues()
                 self._tick_visit_timeout()
                 self._tick_visit_events()
+                self._tick_challenge_timeout()
             except Exception:
                 pass
 
@@ -962,10 +1123,16 @@ class PetGame:
         item = ITEMS.get(item_id)
         if not item:
             return _('Unknown item!')
+        effect = item['effect']
+        # Medicine (hp effect): check before consuming
+        if 'hp' in effect:
+            if self.state.get('is_dead'):
+                return _('Pet is dead, needs Potion!')
+            if self.state.get('hp', 100) >= 100:
+                return _('HP is full!')
         inv[item_id] -= 1
         if inv[item_id] <= 0:
             del inv[item_id]
-        effect = item['effect']
         if effect.get('revive'):
             if not self.state.get('is_dead'):
                 return _('Pet is not dead!')
@@ -977,6 +1144,8 @@ class PetGame:
         elif 'hat' in effect:
             self.state['hat'] = effect['hat']
             self.bones['hat'] = effect['hat']
+        elif 'hp' in effect:
+            self.state['hp'] = min(100, self.state.get('hp', 100) + effect['hp'])
         else:
             for stat, val in effect.items():
                 if stat in self.state['stats']:
@@ -1002,7 +1171,19 @@ class PetGame:
         """
         now = time.time()
         if key == 'q':
+            # In LAN submode, 'q' cancels the submode instead of quitting
+            if self.mode == 'lan' and self.lan_submode is not None:
+                self.lan_submode = None
+                self.lan_submode_data = None
+                self.message = _("Cancelled")
+                self.message_time = now
+                return 'action', self.message
             return 'quit', None
+
+        # If battle_result is showing, any key dismisses it (works in any mode)
+        if self.battle_result is not None:
+            self.battle_result = None
+            return 'action', 'dismiss'
 
         if self.state.get('is_dead'):
             # f/p/s: still return Potion guidance (no revive)
@@ -1089,21 +1270,26 @@ class PetGame:
                 return 'none', None
             return 'none', None
 
+        # Trade confirmation: 'y' to accept, 'n' to reject
+        if self.pending_trade_req is not None:
+            if key == 'y':
+                self.accept_trade(self.pending_trade_req, self.pet_idx, accepted=True)
+                self.message = _('Trade accepted')
+                self.message_time = now
+                self.pending_trade_req = None
+                return 'action', self.message
+            if key == 'n':
+                self.accept_trade(self.pending_trade_req, None, accepted=False)
+                self.message = _('Trade rejected')
+                self.message_time = now
+                self.pending_trade_req = None
+                return 'action', self.message
+
         if self.mode == 'lan':
-            if key in ('1','2','3','4','5','6','7','8','9') and not self.active_visit and not self.being_visited:
-                peers_page, total_pages, cur_page = self.get_lan_peers_page()
-                idx = cur_page * 9 + (int(key) - 1)
-                all_peers = self.get_lan_peers()
-                if idx < len(all_peers):
-                    peer = all_peers[idx]
-                    peer_id = peer.get('node_id', '')
-                    if self.invite_visit(peer_id):
-                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
-                    else:
-                        pass
-                    self.message_time = now
-                    return 'action', self.message
-                return 'none', None
+            # Handle submode
+            if self.lan_submode is not None:
+                return self._handle_lan_submode_key(key)
+
             if key == '[':
                 if self.lan_page > 0:
                     self.lan_page -= 1
@@ -1162,7 +1348,87 @@ class PetGame:
                         self.message = _('Failed to connect to Community Plaza')
                 self.message_time = now
                 return 'action', self.message
-            if key in ('l', 'c'):
+            # Visit/challenge/gift/trade/heal actions
+            if key == 'v' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                if not peers:
+                    self.message = _('No peers to visit')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'visit'
+                self.message = _('Select visit target')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'c' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                # Daily challenge limit check
+                today = datetime.now().date().isoformat()
+                challenge_log = self.pets_data.setdefault('challenge_log', {})
+                if challenge_log.get(today, 0) >= self.MAX_DAILY_CHALLENGES:
+                    self.message = _('Daily challenge limit reached ({max}/day)').format(max=self.MAX_DAILY_CHALLENGES)
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                if not peers:
+                    self.message = _('No peers to challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'challenge'
+                self.message = _('Select challenge target')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'g' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                if self.active_gift:
+                    self.message = _('Already gifting')
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                inv_list = self.get_inventory_list()
+                if not peers:
+                    self.message = _('No peers or items')
+                    self.message_time = now
+                    return 'action', self.message
+                if not inv_list:
+                    self.message = _('No items to gift')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'gift'
+                self.message = _('Select gift target')
+                self.message_time = now
+                return 'action', self.message
+            if key == 't' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                if self.active_trade:
+                    self.message = _('Already trading')
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                if not peers:
+                    self.message = _('No peers to trade')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'trade'
+                self.message = _('Select trade target')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'h':
+                self.heal_pet()
+                return 'action', self.message
+            if key == 'l':
                 self.mode = 'expanded'
                 return 'mode_change', self.mode
             return 'none', None
@@ -1462,6 +1728,258 @@ class PetGame:
         except Exception:
             return False
 
+    def initiate_challenge(self, peer_node_id):
+        """Initiate a battle challenge. Returns True on success."""
+        if not self.lan_enabled or not self.lan_node:
+            return False
+        if self.active_challenge is not None:
+            self.message = _("Already in a challenge")
+            self.message_time = time.time()
+            return False
+        if self.state.get('is_dead', False):
+            self.message = _("Dead pets cannot challenge")
+            self.message_time = time.time()
+            return False
+        if self.state.get('hp', 100) < 25:
+            self.message = _("Pet HP too low to challenge")
+            self.message_time = time.time()
+            return False
+        from ascii_pet.protocol import MSG_CHALLENGE_REQ, make_battle_snapshot
+        snapshot = make_battle_snapshot(self.state, self.lan_username or self.uid)
+        ok = self.lan_node.send_to_peer(peer_node_id, MSG_CHALLENGE_REQ, {
+            "from": self.lan_node.node_id,
+            "from_username": self.lan_username or self.uid,
+            "pet_snapshot": snapshot,
+        })
+        if ok:
+            self.active_challenge = {
+                "target": peer_node_id,
+                "start_time": time.time(),
+                "pet_snapshot": snapshot,
+                "role": "attacker",
+            }
+        return ok
+
+    def accept_challenge(self, challenge_req):
+        """Accept or escape from a challenge. Returns dict with escaped flag."""
+        if self.state.get('is_dead', False):
+            return {"escaped": True, "reason": "dead"}
+        if self.state.get('hp', 100) < 25:
+            return {"escaped": True, "reason": "low_hp"}
+        from ascii_pet.battle import calc_escape_chance
+        from ascii_pet.protocol import make_battle_snapshot
+        escape_chance = calc_escape_chance(
+            self.state['level'],
+            challenge_req.get('pet_snapshot', {}).get('level', 1),
+        )
+        if random.random() < escape_chance:
+            return {"escaped": True}
+        snapshot = make_battle_snapshot(self.state, self.lan_username or self.uid)
+        self.active_challenge = {
+            "target": challenge_req.get("from", ""),
+            "start_time": time.time(),
+            "pet_snapshot": snapshot,
+            "role": "defender",
+        }
+        return {"escaped": False, "defender_snapshot": snapshot}
+
+    def apply_battle_result(self, result):
+        """Apply battle result to current pet. Updates hp and clears active_challenge."""
+        role = self.active_challenge.get("role") if self.active_challenge else None
+        if role == "attacker":
+            if result.get("winner") == "attacker":
+                loss = result.get("hp_loss_winner", 0)
+            else:
+                loss = result.get("hp_loss_loser", 25)
+        else:
+            if result.get("winner") == "defender":
+                loss = result.get("hp_loss_winner", 0)
+            else:
+                loss = result.get("hp_loss_loser", 25)
+        self.state['hp'] = max(0, self.state.get('hp', 100) - loss)
+        self.active_challenge = None
+        self.save()
+
+    def heal_pet(self):
+        """Heal current pet at the LAN healing center. Returns True on success."""
+        if not self.lan_enabled:
+            self.message = _("LAN not enabled")
+            self.message_time = time.time()
+            return False
+        if self.state.get('hp', 100) >= 100:
+            self.message = _("HP is full")
+            self.message_time = time.time()
+            return False
+        # 30 minute cooldown
+        HEAL_COOLDOWN = 30 * 60  # 30 minutes in seconds
+        if time.time() - self.last_heal_time < HEAL_COOLDOWN:
+            remaining = int((HEAL_COOLDOWN - (time.time() - self.last_heal_time)) / 60) + 1
+            self.message = _("Heal cooldown, wait {min} min").format(min=remaining)
+            self.message_time = time.time()
+            return False
+        self.state['hp'] = 100
+        self.last_heal_time = time.time()
+        self.message = _("Healed!")
+        self.message_time = time.time()
+        self.save()
+        return True
+
+    def gift_item(self, peer_node_id, item_id, count=1):
+        """Gift items to another player. Returns True on success."""
+        if not self.lan_enabled or not self.lan_node:
+            return False
+        if self.active_gift is not None:
+            self.message = _("Already gifting")
+            self.message_time = time.time()
+            return False
+        inv = self.pets_data.get('inventory', {})
+        if inv.get(item_id, 0) < count:
+            self.message = _("Not enough items")
+            self.message_time = time.time()
+            return False
+        from ascii_pet.protocol import MSG_GIFT_ITEM
+        ok = self.lan_node.send_to_peer(peer_node_id, MSG_GIFT_ITEM, {
+            "from": self.lan_node.node_id,
+            "from_username": self.lan_username or self.uid,
+            "item_id": item_id,
+            "count": count,
+        })
+        if ok:
+            self.active_gift = {
+                "target": peer_node_id,
+                "item_id": item_id,
+                "count": count,
+                "start_time": time.time(),
+            }
+        return ok
+
+    def receive_gift(self, item_id, count):
+        """Receive gifted items. Returns {"success": bool}."""
+        if sum(self.pets_data.get('inventory', {}).values()) + count > MAX_INVENTORY:
+            return {"success": False}
+        inv = self.pets_data.setdefault('inventory', {})
+        inv[item_id] = inv.get(item_id, 0) + count
+        self.save()
+        return {"success": True}
+
+    def confirm_gift_sent(self, success):
+        """Confirm gift was received. Removes items from inventory on success."""
+        if not self.active_gift:
+            return False
+        if success:
+            inv = self.pets_data.get('inventory', {})
+            item_id = self.active_gift["item_id"]
+            count = self.active_gift["count"]
+            inv[item_id] = max(0, inv.get(item_id, 0) - count)
+            if inv[item_id] <= 0:
+                del inv[item_id]
+            self.message = _("Gift sent!")
+        else:
+            self.message = _("Gift rejected")
+        self.message_time = time.time()
+        self.active_gift = None
+        self.save()
+        return True
+
+    def check_gift_timeout(self):
+        """Clear active_gift if it has timed out (10 seconds)."""
+        if self.active_gift and time.time() - self.active_gift.get("start_time", 0) > 10:
+            self.message = _("Gift timed out")
+            self.message_time = time.time()
+            self.active_gift = None
+            return True
+        return False
+
+    def initiate_trade(self, peer_node_id, pet_index):
+        """Initiate a pet trade. Returns True on success.
+
+        Sends the FULL pet state dict in the ``pet_snapshot`` field so that
+        all pet attributes (stats, level, xp, hp, species, rarity, etc.)
+        migrate to the new owner.
+        """
+        if not self.lan_enabled or not self.lan_node:
+            return False
+        if self.active_trade is not None:
+            self.message = _("Already trading")
+            self.message_time = time.time()
+            return False
+        if pet_index < 0 or pet_index >= len(self.pets_data['pets']):
+            return False
+        from ascii_pet.protocol import MSG_TRADE_REQ
+        pet = self.pets_data['pets'][pet_index]
+        ok = self.lan_node.send_to_peer(peer_node_id, MSG_TRADE_REQ, {
+            "from": self.lan_node.node_id,
+            "from_username": self.lan_username or self.uid,
+            "pet_snapshot": pet,
+            "pet_index": pet_index,
+        })
+        if ok:
+            self.active_trade = {
+                "target": peer_node_id,
+                "pet_index": pet_index,
+                "start_time": time.time(),
+                "role": "initiator",
+            }
+        return ok
+
+    def accept_trade(self, trade_req, pet_index, accepted=True):
+        """Accept or reject a trade request. Returns True on success."""
+        if not self.lan_enabled or not self.lan_node:
+            return False
+        from ascii_pet.protocol import MSG_TRADE_ACK
+        if accepted:
+            if pet_index is None or pet_index < 0 or pet_index >= len(self.pets_data['pets']):
+                return False
+            pet = self.pets_data['pets'][pet_index]
+            payload = {
+                "from": self.lan_node.node_id,
+                "accepted": True,
+                "pet_snapshot": pet,
+                "pet_index": pet_index,
+            }
+            self.active_trade = {
+                "target": trade_req.get("from", ""),
+                "pet_index": pet_index,
+                "start_time": time.time(),
+                "role": "receiver",
+            }
+        else:
+            payload = {
+                "from": self.lan_node.node_id,
+                "accepted": False,
+            }
+        ok = self.lan_node.send_to_peer(trade_req.get("from", ""), MSG_TRADE_ACK, payload)
+        return ok
+
+    def execute_trade(self, trade_ack):
+        """Execute the trade: replace pet with received pet. Returns True on success.
+
+        The received ``pet_snapshot`` is a FULL pet state dict, so all
+        attributes (stats, level, xp, hp, species, rarity, etc.) migrate.
+        """
+        if not self.active_trade:
+            return False
+        my_index = self.active_trade["pet_index"]
+        received_pet = trade_ack.get("pet_snapshot", {})
+        self.pets_data['pets'][my_index] = received_pet
+        # If traded pet was the current pet, switch state and bones to it
+        if self.pet_idx == my_index:
+            self.state = received_pet
+            self.bones = {k: received_pet[k] for k in ('species', 'eye', 'hat', 'shiny', 'rarity')}
+        self.active_trade = None
+        self.pets_data['current'] = self.pet_idx
+        self.save()
+        return True
+
+    def check_trade_timeout(self):
+        """Clear active_trade if it has timed out (30 seconds)."""
+        if self.active_trade and time.time() - self.active_trade.get("start_time", 0) > 30:
+            self.message = _("Trade timed out")
+            self.message_time = time.time()
+            self.active_trade = None
+            return True
+        return False
+
     def receive_visitor(self, snapshot):
         """接收访客宠物快照。"""
         self.visitor_pets.append(snapshot)
@@ -1497,7 +2015,10 @@ class PetGame:
     def _handle_lan_message(self, msg):
         """处理单条网络消息。"""
         from ascii_pet.protocol import (MSG_VISIT_REQ, MSG_VISIT_DATA, MSG_VISIT_LEAVE,
-                                  MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT, MSG_VISIT_END)
+                                  MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT, MSG_VISIT_END,
+                                  MSG_CHALLENGE_REQ, MSG_CHALLENGE_ACK, MSG_CHALLENGE_RESULT,
+                                  MSG_GIFT_ITEM, MSG_GIFT_ACK,
+                                  MSG_TRADE_REQ, MSG_TRADE_ACK, MSG_TRADE_CONFIRM)
         msg_type = msg.get("type")
         payload = msg.get("payload", {})
         now = time.time()
@@ -1593,6 +2114,243 @@ class PetGame:
                 if v.get("name") == pet_name:
                     self.visitor_pets.pop(i)
                     break
+
+        # ─── Battle (challenge) message handling ───────────────────────────
+        elif msg_type == MSG_CHALLENGE_REQ:
+            # Received by defender: accept or escape, then send ACK
+            from_username = payload.get("from_username", "?")
+            result = self.accept_challenge(payload)
+            if result.get("escaped"):
+                self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
+                    "escaped": True,
+                    "reason": result.get("reason", ""),
+                    "from": self.lan_node.node_id,
+                })
+                self.message = _("Your pet escaped!")
+            else:
+                self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
+                    "escaped": False,
+                    "defender_snapshot": result.get("defender_snapshot", {}),
+                    "from": self.lan_node.node_id,
+                })
+                self.message = _("{username} challenges you!").format(username=from_username)
+            self.message_time = now
+
+        elif msg_type == MSG_CHALLENGE_ACK:
+            # Received by attacker: opponent escaped or battle proceeds
+            if payload.get("escaped"):
+                self.message = _("Opponent escaped!")
+                self.active_challenge = None
+            else:
+                from ascii_pet.battle import simulate_battle
+                attacker_snapshot = self.active_challenge.get("pet_snapshot", {}) if self.active_challenge else {}
+                defender_snapshot = payload.get("defender_snapshot", {})
+                seed = int(time.time())
+                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
+                if battle_result["winner"] == attacker_snapshot.get("name", ""):
+                    winner = "attacker"
+                else:
+                    winner = "defender"
+                result = {
+                    "winner": winner,
+                    "log": battle_result["log"],
+                    "hp_loss_winner": battle_result["hp_loss_winner"],
+                    "hp_loss_loser": battle_result["hp_loss_loser"],
+                    "attacker_snapshot": attacker_snapshot,
+                    "defender_snapshot": defender_snapshot,
+                    "seed": seed,
+                }
+                self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_RESULT, result)
+                self.apply_battle_result(result)
+                self.battle_result = battle_result
+                if winner == "attacker":
+                    self.message = _("You won the battle!")
+                else:
+                    self.message = _("You lost the battle!")
+            self.message_time = now
+
+        elif msg_type == MSG_CHALLENGE_RESULT:
+            # Received by defender: re-simulate battle locally for i18n logs
+            attacker_snapshot = payload.get("attacker_snapshot")
+            defender_snapshot = payload.get("defender_snapshot")
+            seed = payload.get("seed")
+            if attacker_snapshot and defender_snapshot and seed is not None:
+                from ascii_pet.battle import simulate_battle
+                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
+                self.apply_battle_result(payload)
+                self.battle_result = battle_result
+            else:
+                # Fallback for older clients that don't send snapshots/seed
+                self.apply_battle_result(payload)
+                self.battle_result = payload
+            if payload.get("winner") == "defender":
+                self.message = _("You won the battle!")
+            else:
+                self.message = _("You lost the battle!")
+            self.message_time = now
+
+        # ─── Gift message handling ─────────────────────────────────────────
+        elif msg_type == MSG_GIFT_ITEM:
+            # Received by receiver: add item, send ACK
+            from_username = payload.get("from_username", "?")
+            item_id = payload.get("item_id", "")
+            count = payload.get("count", 1)
+            result = self.receive_gift(item_id, count)
+            self.lan_node.send_to_peer(payload.get("from", ""), MSG_GIFT_ACK, {
+                "success": result.get("success", False),
+                "from": self.lan_node.node_id,
+            })
+            if result.get("success"):
+                self.message = _("Received {count} {item} from {username}!").format(
+                    count=count, item=item_id, username=from_username)
+            else:
+                self.message = _("Inventory full!")
+            self.message_time = now
+
+        elif msg_type == MSG_GIFT_ACK:
+            # Received by sender: confirm gift sent
+            success = payload.get("success", False)
+            self.confirm_gift_sent(success)
+
+        # ─── Trade message handling ────────────────────────────────────────
+        elif msg_type == MSG_TRADE_REQ:
+            # Received by receiver: store for UI confirmation
+            self.pending_trade_req = payload
+            from_username = payload.get("from_username", "?")
+            self.message = _("{username} wants to trade! [y/n]").format(username=from_username)
+            self.message_time = now
+
+        elif msg_type == MSG_TRADE_ACK:
+            # Received by initiator: trade accepted or rejected
+            if payload.get("accepted"):
+                if self.active_trade:
+                    my_index = self.active_trade["pet_index"]
+                    my_pet = self.pets_data['pets'][my_index]
+                    self.lan_node.send_to_peer(payload.get("from", ""), MSG_TRADE_CONFIRM, {
+                        "pet_snapshot": my_pet,
+                        "pet_index": my_index,
+                        "from": self.lan_node.node_id,
+                    })
+                    self.execute_trade(payload)
+                    self.message = _("Trade complete!")
+                else:
+                    self.message = _("Trade failed")
+            else:
+                self.active_trade = None
+                self.message = _("Trade rejected")
+            self.message_time = now
+
+        elif msg_type == MSG_TRADE_CONFIRM:
+            # Received by receiver: execute trade
+            self.execute_trade(payload)
+            self.message = _("Trade complete!")
+            self.message_time = now
+
+    def _handle_lan_submode_key(self, key):
+        """Handle key presses in LAN submode (challenge/gift/trade selection)."""
+        now = time.time()
+
+        # Cancel submode
+        if key in ('\x1b', 'q'):
+            self.lan_submode = None
+            self.lan_submode_data = None
+            self.message = _("Cancelled")
+            self.message_time = now
+            return 'action', self.message
+
+        # Digit selection
+        if key in '123456789':
+            idx = int(key) - 1
+            # Use current page peers for selection (consistent with display)
+            peers_page, total_pages, cur_page = self.get_lan_peers_page()
+            all_peers = self.get_lan_peers()
+
+            if self.lan_submode == 'visit':
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    peer_id = peer.get('node_id', '')
+                    self.lan_submode = None
+                    if self.invite_visit(peer_id):
+                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
+                    # invite_visit sets its own error message on failure
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'challenge':
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    peer_id = peer.get('node_id', '')
+                    self.lan_submode = None
+                    if self.initiate_challenge(peer_id):
+                        self.message = _("Challenge initiated!")
+                        # Increment daily challenge count
+                        today = datetime.now().date().isoformat()
+                        challenge_log = self.pets_data.setdefault('challenge_log', {})
+                        challenge_log[today] = challenge_log.get(today, 0) + 1
+                        self.save()
+                    # initiate_challenge sets its own error message on failure
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'gift':
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    self.lan_submode_data = {'target_node_id': peer.get('node_id', '')}
+                    self.lan_submode = 'gift_item'
+                    self.message = _("Select item to gift")
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'gift_item':
+                inv_list = self.get_inventory_list()
+                if idx < len(inv_list):
+                    item_id = inv_list[idx][0]
+                    target_id = self.lan_submode_data.get('target_node_id', '')
+                    self.lan_submode = None
+                    self.lan_submode_data = None
+                    if self.gift_item(target_id, item_id, 1):
+                        self.message = _("Gift sent!")
+                    # gift_item sets its own error message on failure
+                else:
+                    self.lan_submode = None
+                    self.lan_submode_data = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'trade':
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    peer_id = peer.get('node_id', '')
+                    self.lan_submode = None
+                    if self.initiate_trade(peer_id, self.pet_idx):
+                        self.message = _("Trade request sent!")
+                    # initiate_trade sets its own error message on failure
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+        # Ignore other keys in submode
+        return 'none', None
+
+    def _tick_challenge_timeout(self):
+        """检查挑战超时。"""
+        now = time.time()
+        if self.active_challenge and now - self.active_challenge.get("start_time", 0) > self.CHALLENGE_TIMEOUT:
+            self.active_challenge = None
+            self.message = _("Challenge timed out")
+            self.message_time = now
 
     def _tick_visit_timeout(self):
         """检查拜访超时（10分钟）。"""

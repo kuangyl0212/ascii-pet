@@ -546,6 +546,18 @@ msgstr "[Enter]确认 [ESC]取消"
 msgid "Username: {}  |  Players online: {}"
 msgstr "用户名: {}  |  在线玩家: {}"
 
+msgid "Username: {}  |  Players online: {}  |  HP: {}/100"
+msgstr "用户名: {}  |  在线玩家: {}  |  HP: {}/100"
+
+msgid "[{}] {} - {}({})"
+msgstr "[{}] {} - {}({})"
+
+msgid "  {}({})"
+msgstr "  {}({})"
+
+msgid "[{}] {} {} x{}"
+msgstr "[{}] {} {} x{}"
+
 msgid "Master"
 msgstr "主节点"
 
@@ -618,10 +630,10 @@ msgid "═ Rename Pet ═"
 msgstr "═ 重命名宠物 ═"
 
 msgid "Current name: {}"
-msgstr "当前名字：{}"
+msgstr "当前名称: {}"
 
 msgid "New name: {}_"
-msgstr "新名字：{}_"
+msgstr "新名称: {}_"
 
 msgid "Name cannot be empty"
 msgstr "名字不能为空"
@@ -637,3 +649,185 @@ msgstr "[r]改名 [Enter]返回"
 
 msgid "[Enter]confirm [ESC]cancel [Backspace]delete"
 msgstr "[Enter]确认 [ESC]取消 [Backspace]删除"
+
+#: battle.py - Battle log messages
+msgid "{name} used {skill}! Damage: {damage}. {target} BP: {bp}"
+msgstr "{name} 使用了 {skill}！伤害: {damage}。{target} BP: {bp}"
+
+msgid "{name} used {skill}! Missed! {target} BP: {bp}"
+msgstr "{name} 使用了 {skill}！未命中！{target} BP: {bp}"
+
+#: ascii-pet-win.py - Battle log panel
+msgid "═ Battle Log ═"
+msgstr "═ 战斗日志 ═"
+
+msgid "Winner: {} | Loser: {}"
+msgstr "胜方: {} | 败方: {}"
+
+msgid "Winner HP: -{} | Loser HP: -{}"
+msgstr "胜方 HP: -{} | 败方 HP: -{}"
+
+#: ascii-pet-win.py - Trade confirmation panel
+msgid "═ Trade Request ═"
+msgstr "═ 交换请求 ═"
+
+msgid "Player {username} wants to trade their {pet}({species})"
+msgstr "玩家 {username} 想用 {pet}({species}) 交换"
+
+msgid "[y]Accept [n]Reject"
+msgstr "[y]接受 [n]拒绝"
+
+#: core.py - Challenge messages
+msgid "Challenge initiated!"
+msgstr "挑战已发起！"
+
+msgid "Cannot challenge now"
+msgstr "现在无法挑战"
+
+msgid "No peers to challenge"
+msgstr "没有可挑战的玩家"
+
+msgid "Already in a challenge"
+msgstr "已在挑战中"
+
+msgid "Challenge timed out"
+msgstr "挑战超时"
+
+#: core.py - Gift messages
+msgid "Gift sent!"
+msgstr "礼物已送出！"
+
+msgid "Cannot gift now"
+msgstr "现在无法赠送"
+
+msgid "No peers or items"
+msgstr "没有玩家或物品"
+
+msgid "Already gifting"
+msgstr "已在赠送中"
+
+#: core.py - Trade messages
+msgid "Trade request sent!"
+msgstr "交换请求已发送！"
+
+msgid "Cannot trade now"
+msgstr "现在无法交换"
+
+msgid "No peers to trade"
+msgstr "没有可交换的玩家"
+
+msgid "Already trading"
+msgstr "已在交换中"
+
+#: core.py - Battle result messages
+msgid "Opponent escaped!"
+msgstr "对手逃跑了！"
+
+msgid "You won the battle!"
+msgstr "你赢了！"
+
+msgid "You lost the battle!"
+msgstr "你输了！"
+
+msgid "{username} challenges you!"
+msgstr "{username} 向你发起挑战！"
+
+#: core.py - Heal messages
+msgid "Healed!"
+msgstr "治疗完成！"
+
+msgid "HP is full"
+msgstr "HP 已满"
+
+msgid "LAN not enabled"
+msgstr "LAN 未启用"
+
+msgid "Heal cooldown, wait {min} min"
+msgstr "治疗冷却中，请 {min} 分钟后再试"
+
+#: core.py - Gift result messages
+msgid "Gift rejected"
+msgstr "赠送被拒绝"
+
+msgid "Gift timed out"
+msgstr "赠送超时"
+
+#: core.py - Trade result messages
+msgid "Trade timed out"
+msgstr "交换超时"
+
+#: core.py - Challenge condition messages
+msgid "Pet HP too low to challenge"
+msgstr "宠物 HP 过低，无法挑战"
+
+msgid "Dead pets cannot challenge"
+msgstr "死亡宠物无法挑战"
+
+#: core.py - LAN submode messages
+msgid "Select challenge target:"
+msgstr "选择挑战目标："
+
+msgid "Select gift target:"
+msgstr "选择赠送目标："
+
+msgid "Select item to gift:"
+msgstr "选择赠送物品："
+
+msgid "Select trade target:"
+msgstr "选择交换目标："
+
+msgid "Cancelled"
+msgstr "已取消"
+
+msgid "Invalid selection"
+msgstr "无效选择"
+
+msgid "No items to gift"
+msgstr "没有可赠送的物品"
+
+#: ascii-pet-win.py - Submode hints
+msgid "[ESC]Cancel"
+msgstr "[ESC]取消"
+
+#: ascii-pet-win.py - LAN action hints
+msgid "[c]Challenge [g]Gift [t]Trade [h]Heal"
+msgstr "[c]挑战 [g]赠送 [t]交换 [h]治疗"
+
+msgid "[v]Visit [c]Challenge [g]Gift [t]Trade [h]Heal"
+msgstr "[v]拜访 [c]挑战 [g]赠送 [t]交换 [h]治疗"
+
+msgid "Select visit target:"
+msgstr "选择拜访目标："
+
+msgid "No peers to visit"
+msgstr "没有可拜访的玩家"
+
+msgid "Select visit target"
+msgstr "选择拜访目标"
+
+msgid "Daily challenge limit reached ({max}/day)"
+msgstr "已达每日挑战上限（{max}/天）"
+
+msgid "[1-9]Visit Player [u]Edit Username"
+msgstr "[1-9]拜访玩家 [u]修改名称"
+
+msgid "[l]Back [o]Disable LAN"
+msgstr "[l]返回 [o]断开连接"
+
+msgid "[l]Back"
+msgstr "[l]返回"
+
+msgid "★ Challenge in progress..."
+msgstr "★ 挑战进行中..."
+
+msgid "★ Gifting... (timeout 10s)"
+msgstr "★ 赠送中...（超时10秒）"
+
+msgid "★ Trading... (timeout 30s)"
+msgstr "★ 交换中...（超时30秒）"
+
+msgid "{} wants to trade {}! [y]Accept [n]Reject"
+msgstr "{} 想用 {} 交换！[y]接受 [n]拒绝"
+
+msgid "Prev Page: [  Next Page: ]"
+msgstr "上一页: [  下一页: ]"
