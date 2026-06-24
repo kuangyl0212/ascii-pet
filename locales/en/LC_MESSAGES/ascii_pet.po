@@ -600,3 +600,28 @@ msgstr "from {}"
 #: ascii-pet-win.py - Help line
 msgid "[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit"
 msgstr "[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit"
+
+#: ascii-pet - Rename pet
+msgid "═ Rename Pet ═"
+msgstr "═ Rename Pet ═"
+
+msgid "Current name: {}"
+msgstr "Current name: {}"
+
+msgid "New name: {}_"
+msgstr "New name: {}_"
+
+msgid "Name cannot be empty"
+msgstr "Name cannot be empty"
+
+msgid "Name too long (max 20 chars)"
+msgstr "Name too long (max 20 chars)"
+
+msgid "Renamed to {name}!"
+msgstr "Renamed to {name}!"
+
+msgid "[r]rename [Enter]back"
+msgstr "[r]rename [Enter]back"
+
+msgid "[Enter]confirm [ESC]cancel [Backspace]delete"
+msgstr "[Enter]confirm [ESC]cancel [Backspace]delete"

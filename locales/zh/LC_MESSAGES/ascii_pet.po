@@ -600,3 +600,28 @@ msgstr "来自 {}"
 #: ascii-pet-win.py - Help line
 msgid "[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit"
 msgstr "[f]喂食 [p]玩耍 [s]睡觉 [w]领养 [b]上一只 [n]下一只 [t]属性 [a]成就 [u]物品 [e]导出 [Enter]紧凑 [q]退出"
+
+#: ascii-pet - Rename pet
+msgid "═ Rename Pet ═"
+msgstr "═ 重命名宠物 ═"
+
+msgid "Current name: {}"
+msgstr "当前名字：{}"
+
+msgid "New name: {}_"
+msgstr "新名字：{}_"
+
+msgid "Name cannot be empty"
+msgstr "名字不能为空"
+
+msgid "Name too long (max 20 chars)"
+msgstr "名字过长（最多20个字符）"
+
+msgid "Renamed to {name}!"
+msgstr "已重命名为{name}！"
+
+msgid "[r]rename [Enter]back"
+msgstr "[r]改名 [Enter]返回"
+
+msgid "[Enter]confirm [ESC]cancel [Backspace]delete"
+msgstr "[Enter]确认 [ESC]取消 [Backspace]删除"

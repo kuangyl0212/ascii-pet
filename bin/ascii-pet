@@ -184,6 +184,7 @@ def build_stats(game):
     lines.append(f'{DIM}--- Growth ---{RST}')
     lines.append(f'  {DIM}Level:{RST} {game.state["level"]}  {DIM}XP:{RST} {game.state["xp"]}/{game.state["level"]*100}')
     lines.append(f'  {DIM}Rarity:{RST} {game.state["rarity"]}  {DIM}Shiny:{RST} {"Yes" if game.state["shiny"] else "No"}')
+    lines.append(f'{DIM}[r]rename [Enter]back{RST}')
     return '\n'.join(lines)
 
 def build_achievements(game):
@@ -240,7 +241,19 @@ def build_death(game):
     lines.append('')
     lines.append(f'{revive_color}  [r]revive (Potion x{potion_count}){RST}')
     lines.append(f'{RED}  [d]release{RST}')
-    lines.append(f'{DIM}  [u]backpack{RST}')
+    lines.append(f'{DIM}[u]backpack{RST}')
+    return '\n'.join(lines)
+
+def build_rename(game):
+    RST='\033[0m'; DIM='\033[2m'; WHITE='\033[37m'
+    color = RARITY_COLORS.get(game.state['rarity'], '')
+    lines = []
+    lines.append(f'{color}═ Rename Pet ═{RST}')
+    lines.append('')
+    lines.append(f'{DIM}Current name: {game.state["name"]}{RST}')
+    lines.append(f'{WHITE}New name: {game._rename_input}_{RST}')
+    lines.append('')
+    lines.append(f'{DIM}[Enter]confirm [ESC]cancel [Backspace]delete{RST}')
     return '\n'.join(lines)
 
 # ─── Layout ───────────────────────────────────────────────────────────────────
@@ -396,6 +409,7 @@ def main():
                 elif game.mode == 'achievements': display = build_achievements(game)
                 elif game.mode == 'items': display = build_items(game)
                 elif game.mode == 'release': display = build_release(game)
+                elif game.mode == 'rename': display = build_rename(game)
                 if game.message and (game.warning_active or time.time() - game.message_time < 2):
                     display += f'\n  \033[33m{game.message}\033[0m'
                 if move_mode:

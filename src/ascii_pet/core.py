@@ -926,6 +926,16 @@ class PetGame:
         save_pets(self.uid, self.pets_data, self.data_dir)
         return _('Released {name}!').format(name=name)
 
+    def rename_pet(self, new_name):
+        """Rename current pet. Returns message."""
+        if not new_name.strip():
+            return _('Name cannot be empty')
+        if len(new_name) > 20:
+            return _('Name too long (max 20 chars)')
+        self.state['name'] = new_name
+        self.save()
+        return _('Renamed to {name}!').format(name=new_name)
+
     def get_release_list(self):
         """Return list of (index, name, species, rarity) for release mode."""
         result = []
@@ -1030,6 +1040,29 @@ class PetGame:
             # Allow mode switching keys to fall through
             # u, a, t, c, h, Enter, l, e will be handled by normal key processing below
 
+        if self.mode == 'rename':
+            if key == '\r' or key == '\n':
+                new_name = self._rename_input.strip()
+                if new_name:
+                    msg = self.rename_pet(new_name)
+                    self.message = msg; self.message_time = now
+                    self.mode = 'stats'
+                    return 'mode_change', self.mode
+                else:
+                    self.message = _('Name cannot be empty')
+                    self.message_time = now
+                    return 'none', None
+            if key == '\x1b':  # ESC cancel
+                self.mode = 'stats'
+                return 'mode_change', self.mode
+            if key == '\x08':  # backspace
+                self._rename_input = self._rename_input[:-1]
+                return 'none', None
+            if len(key) == 1 and key.isprintable() and len(self._rename_input) < 20:
+                self._rename_input += key
+                return 'none', None
+            return 'none', None
+
         if self.mode == 'lan_name_edit':
             if key == '\r' or key == '\n':  # 回车确认
                 new_name = self._name_input.strip()
@@ -1103,6 +1136,11 @@ class PetGame:
             if self.mode == 'achievements': self.mode = 'expanded'
             elif self.mode in ('expanded', 'stats'): self.mode = 'achievements'
             else: self.mode = 'achievements'
+            return 'mode_change', self.mode
+
+        if key == 'r' and self.mode == 'stats':
+            self._rename_input = ''
+            self.mode = 'rename'
             return 'mode_change', self.mode
 
         if key == 'u' and self.mode != 'lan':

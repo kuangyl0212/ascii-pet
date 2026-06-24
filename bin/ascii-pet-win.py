@@ -129,6 +129,7 @@ def render_stats_lines(state, bones, frame_idx, pet_idx, pet_count):
     lines.append((_('--- Growth ---'), COLOR_DIM))
     lines.append((_('  Level: {}  XP: {}/{}').format(state["level"], state["xp"], state["level"]*100), COLOR_DIM))
     lines.append((_('  Rarity: {}  Shiny: {}').format(state["rarity"], _('Yes') if state["shiny"] else _('No')), COLOR_DIM))
+    lines.append((_('[r]rename [Enter]back'), COLOR_DIM))
     return lines
 
 def render_achievements_lines(state, bones):
@@ -276,6 +277,17 @@ def render_release_lines(game):
         lines.append((f'  {idx}  {name} {species}·{rarity} {stars}', color))
     lines.append(('', COLOR_DIM))
     lines.append((_('[1-3]select [c]cancel'), COLOR_DIM))
+    return lines
+
+def render_rename_lines(game):
+    color = RARITY_RGB[game.state['rarity']]
+    lines = []
+    lines.append((_('═ Rename Pet ═'), COLOR_WHITE))
+    lines.append(('', COLOR_DIM))
+    lines.append((_('Current name: {}').format(game.state['name']), COLOR_DIM))
+    lines.append((_('New name: {}_').format(game._rename_input), COLOR_WHITE))
+    lines.append(('', COLOR_DIM))
+    lines.append((_('[Enter]confirm [ESC]cancel [Backspace]delete'), COLOR_DIM))
     return lines
 
 def render_death_lines(game):
@@ -507,6 +519,7 @@ LAYOUT_SIZES = {
     'release':      (44, 14),
     'lan':           (50, 20),
     'lan_name_edit': (50, 20),
+    'rename':        (50, 12),
 }
 
 user32 = windll.user32
@@ -1210,6 +1223,8 @@ class PetWindow:
             lines = render_achievements_lines(g.state, g.bones)
         elif g.mode == 'items':
             lines = render_items_lines(g)
+        elif g.mode == 'rename':
+            lines = render_rename_lines(g)
         elif g.mode == 'release':
             lines = render_release_lines(g)
         else:
