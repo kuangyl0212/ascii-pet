@@ -37,13 +37,14 @@ def _get_lan_thread_names():
 
 
 def _cleanup_all_lan_nodes():
-    """遍历所有 PetGame 实例，调用 disable_lan() 清理 LAN 线程。
+    """遍历所有 PetGame 和 LanNode 实例，清理 LAN 线程。
 
     PetGame.__init__ 自动调用 enable_lan()，但测试 fixture 通常
     不在 teardown 调用 disable_lan()，导致 lan-* 线程泄漏。
-    此函数通过 GC 可达对象找到所有 PetGame 实例并清理。
-    同时也清理独立的 LanNode 实例（非 PetGame 持有的）。
+    某些测试还会用 _FakeLanNode 替换 lan_node，导致真实 LanNode
+    失去引用但线程仍在运行。此函数清理所有情况。
     """
+    import time
     from ascii_pet.core import PetGame
     from ascii_pet.lan import LanNode
     gc.collect()
@@ -55,13 +56,15 @@ def _cleanup_all_lan_nodes():
                     obj.disable_lan()
                 except Exception:
                     pass
-    # 清理独立的 LanNode 实例
+    # 清理所有独立的 LanNode 实例（包括被 PetGame 引用丢失的）
     for obj in gc.get_objects():
         if isinstance(obj, LanNode) and getattr(obj, 'enabled', False):
             try:
                 obj.stop()
             except Exception:
                 pass
+    # 等待线程退出（stop() 的 join 有超时，线程可能还在退出中）
+    time.sleep(0.3)
 
 
 @pytest.fixture(autouse=True)

@@ -435,6 +435,7 @@ class LanNode:
                     name=f"lan-tcp-client-{addr}",
                     daemon=True,
                 )
+                self._threads.append(t)
                 t.start()
             except socket.timeout:
                 continue
@@ -696,6 +697,7 @@ class LanNode:
             self._tcp_socket.listen(5)
             self._tcp_socket.settimeout(SOCKET_TIMEOUT)
             t = threading.Thread(target=self._tcp_accept_loop, name="lan-tcp", daemon=True)
+            self._threads.append(t)
             t.start()
         except Exception:
             pass  # gradual degradation
@@ -734,6 +736,7 @@ class LanNode:
                 self._master_sock = sock
             # Start receive thread
             t = threading.Thread(target=self._recv_master_loop, daemon=True, name="lan-master-recv")
+            self._threads.append(t)
             t.start()
         except Exception:
             pass  # gradual degradation
