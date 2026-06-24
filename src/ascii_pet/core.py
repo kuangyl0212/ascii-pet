@@ -1177,6 +1177,11 @@ class PetGame:
                 return 'action', self.message
             return 'quit', None
 
+        # If battle_result is showing, any key dismisses it (works in any mode)
+        if self.battle_result is not None:
+            self.battle_result = None
+            return 'action', 'dismiss'
+
         if self.state.get('is_dead'):
             # f/p/s: still return Potion guidance (no revive)
             if key in ('f', 'p', 's'):
@@ -1278,11 +1283,6 @@ class PetGame:
                 return 'action', self.message
 
         if self.mode == 'lan':
-            # If battle_result is showing, any key dismisses it
-            if self.battle_result is not None:
-                self.battle_result = None
-                return 'action', 'dismiss'
-
             # Handle submode
             if self.lan_submode is not None:
                 return self._handle_lan_submode_key(key)
@@ -2125,7 +2125,8 @@ class PetGame:
                 from ascii_pet.battle import simulate_battle
                 attacker_snapshot = self.active_challenge.get("pet_snapshot", {}) if self.active_challenge else {}
                 defender_snapshot = payload.get("defender_snapshot", {})
-                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=int(time.time()))
+                seed = int(time.time())
+                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
                 if battle_result["winner"] == attacker_snapshot.get("name", ""):
                     winner = "attacker"
                 else:
@@ -2135,6 +2136,9 @@ class PetGame:
                     "log": battle_result["log"],
                     "hp_loss_winner": battle_result["hp_loss_winner"],
                     "hp_loss_loser": battle_result["hp_loss_loser"],
+                    "attacker_snapshot": attacker_snapshot,
+                    "defender_snapshot": defender_snapshot,
+                    "seed": seed,
                 }
                 self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_RESULT, result)
                 self.apply_battle_result(result)
@@ -2146,9 +2150,19 @@ class PetGame:
             self.message_time = now
 
         elif msg_type == MSG_CHALLENGE_RESULT:
-            # Received by defender: apply battle result
-            self.apply_battle_result(payload)
-            self.battle_result = payload
+            # Received by defender: re-simulate battle locally for i18n logs
+            attacker_snapshot = payload.get("attacker_snapshot")
+            defender_snapshot = payload.get("defender_snapshot")
+            seed = payload.get("seed")
+            if attacker_snapshot and defender_snapshot and seed is not None:
+                from ascii_pet.battle import simulate_battle
+                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
+                self.apply_battle_result(payload)
+                self.battle_result = battle_result
+            else:
+                # Fallback for older clients that don't send snapshots/seed
+                self.apply_battle_result(payload)
+                self.battle_result = payload
             if payload.get("winner") == "defender":
                 self.message = _("You won the battle!")
             else:

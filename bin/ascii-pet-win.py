@@ -206,7 +206,7 @@ def render_lan_lines(game):
             pet = peer.get('pet_summary', {})
             pet_name = pet.get('name', '?')
             species = pet.get('species', '?')
-            lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
+            lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
     else:
         lines.append((_('(No other players)'), COLOR_DIM))
     lines.append(('', COLOR_WHITE))
@@ -216,7 +216,7 @@ def render_lan_lines(game):
     if visitors:
         lines.append((_('─ Visitors ─'), COLOR_DIM))
         for v in visitors:
-            lines.append((f'  {v.get("name","?")}({v.get("species","?")})', COLOR_WHITE))
+            lines.append((_('  {}({})').format(v.get("name","?"), v.get("species","?")), COLOR_WHITE))
 
     # 操作提示
     lines.append((_('─ Actions ─'), COLOR_DIM))
@@ -229,7 +229,7 @@ def render_lan_lines(game):
                 pet = peer.get('pet_summary', {})
                 pet_name = pet.get('name', '?')
                 species = pet.get('species', '?')
-                lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
             lines.append((_('[ESC]Cancel'), COLOR_DIM))
         elif game.lan_submode == 'gift':
             lines.append((_('Select gift target:'), COLOR_MSG))
@@ -238,13 +238,13 @@ def render_lan_lines(game):
                 pet = peer.get('pet_summary', {})
                 pet_name = pet.get('name', '?')
                 species = pet.get('species', '?')
-                lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
             lines.append((_('[ESC]Cancel'), COLOR_DIM))
         elif game.lan_submode == 'gift_item':
             lines.append((_('Select item to gift:'), COLOR_MSG))
             inv_list = game.get_inventory_list()
             for i, (item_id, name, icon, count, desc) in enumerate(inv_list[:9]):
-                lines.append((f'[{i+1}] {icon} {name} x{count}', COLOR_WHITE))
+                lines.append((_('[{}] {} {} x{}').format(i+1, icon, name, count), COLOR_WHITE))
             lines.append((_('[ESC]Cancel'), COLOR_DIM))
         elif game.lan_submode == 'trade':
             lines.append((_('Select trade target:'), COLOR_MSG))
@@ -253,7 +253,7 @@ def render_lan_lines(game):
                 pet = peer.get('pet_summary', {})
                 pet_name = pet.get('name', '?')
                 species = pet.get('species', '?')
-                lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
             lines.append((_('[ESC]Cancel'), COLOR_DIM))
         elif game.active_visit or game.being_visited:
             lines.append((_('[e]End Visit [f]Remote Feed [p]Remote Play'), COLOR_DIM))

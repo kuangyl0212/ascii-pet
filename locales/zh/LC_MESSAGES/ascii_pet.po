@@ -546,6 +546,18 @@ msgstr "[Enter]确认 [ESC]取消"
 msgid "Username: {}  |  Players online: {}"
 msgstr "用户名: {}  |  在线玩家: {}"
 
+msgid "Username: {}  |  Players online: {}  |  HP: {}/100"
+msgstr "用户名: {}  |  在线玩家: {}  |  HP: {}/100"
+
+msgid "[{}] {} - {}({})"
+msgstr "[{}] {} - {}({})"
+
+msgid "  {}({})"
+msgstr "  {}({})"
+
+msgid "[{}] {} {} x{}"
+msgstr "[{}] {} {} x{}"
+
 msgid "Master"
 msgstr "主节点"
 
@@ -773,3 +785,28 @@ msgstr "没有可赠送的物品"
 #: ascii-pet-win.py - Submode hints
 msgid "[ESC]Cancel"
 msgstr "[ESC]取消"
+
+#: ascii-pet-win.py - LAN action hints
+msgid "[c]Challenge [g]Gift [t]Trade [h]Heal"
+msgstr "[c]挑战 [g]赠送 [t]交换 [h]治疗"
+
+msgid "[l]Back [o]Disable LAN"
+msgstr "[l]返回 [o]断开连接"
+
+msgid "[l]Back"
+msgstr "[l]返回"
+
+msgid "★ Challenge in progress..."
+msgstr "★ 挑战进行中..."
+
+msgid "★ Gifting... (timeout 10s)"
+msgstr "★ 赠送中...（超时10秒）"
+
+msgid "★ Trading... (timeout 30s)"
+msgstr "★ 交换中...（超时30秒）"
+
+msgid "{} wants to trade {}! [y]Accept [n]Reject"
+msgstr "{} 想用 {} 交换！[y]接受 [n]拒绝"
+
+msgid "Prev Page: [  Next Page: ]"
+msgstr "上一页: [  下一页: ]"
