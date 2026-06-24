@@ -89,7 +89,7 @@ class TestContextMenuI18n:
 
     def test_lan_zh(self):
         i18n.set_language('zh')
-        assert i18n._('LAN Multiplayer (L)') == '局域网联机 (L)'
+        assert i18n._('Community Plaza (L)') == '社区广场 (L)'
 
     def test_quit_q_zh(self):
         i18n.set_language('zh')
@@ -274,7 +274,7 @@ class TestLANPanelI18n:
 
     def test_lan_title_zh(self):
         i18n.set_language('zh')
-        assert i18n._('═ LAN Multiplayer ═') == '═ 局域网联机 ═'
+        assert i18n._('═ Community Plaza ═') == '═ 社区广场 ═'
 
     def test_master_slave_zh(self):
         i18n.set_language('zh')
@@ -291,7 +291,7 @@ class TestLANPanelI18n:
 
     def test_online_players_zh(self):
         i18n.set_language('zh')
-        assert i18n._('─ Online Players ─') == '─ 在线玩家 ─'
+        assert i18n._('─ Online Players (Page {}/{}) ─').format(1, 2) == '─ 在线玩家 (第1/2页) ─'
 
     def test_no_other_players_zh(self):
         i18n.set_language('zh')
@@ -307,11 +307,11 @@ class TestLANPanelI18n:
 
     def test_disable_lan_zh(self):
         i18n.set_language('zh')
-        assert i18n._('[o]Disable LAN') == '[o]关闭联机'
+        assert i18n._('[o]Disable LAN') == '[o]断开连接'
 
     def test_enable_lan_zh(self):
         i18n.set_language('zh')
-        assert i18n._('[o]Enable LAN') == '[o]开启联机'
+        assert i18n._('[o]Enable LAN') == '[o]连接社区'
 
     def test_back_compact_zh(self):
         i18n.set_language('zh')
@@ -319,7 +319,7 @@ class TestLANPanelI18n:
 
     def test_edit_username_zh(self):
         i18n.set_language('zh')
-        assert i18n._('═ Edit Username ═') == '═ 修改用户名 ═'
+        assert i18n._('═ Edit Name ═') == '═ 修改名称 ═'
 
     def test_not_set_zh(self):
         i18n.set_language('zh')
@@ -327,11 +327,11 @@ class TestLANPanelI18n:
 
     def test_current_username_zh(self):
         i18n.set_language('zh')
-        assert i18n._('Current username: {}').format('test') == '当前用户名: test'
+        assert i18n._('Current name: {}').format('test') == '当前名称: test'
 
     def test_new_username_zh(self):
         i18n.set_language('zh')
-        assert i18n._('New username: {}_').format('abc') == '新用户名: abc_'
+        assert i18n._('New name: {}_').format('abc') == '新名称: abc_'
 
     def test_confirm_cancel_zh(self):
         i18n.set_language('zh')
@@ -339,7 +339,7 @@ class TestLANPanelI18n:
 
     def test_connected_status_zh(self):
         i18n.set_language('zh')
-        assert i18n._('Username: {} [{}] Nodes: {}').format('user', '主节点', 3) == '用户名: user [主节点] 节点: 3'
+        assert i18n._('Username: {}  |  Players online: {}').format('user', 3) == '用户名: user  |  在线玩家: 3'
 
     def test_visiting_zh(self):
         i18n.set_language('zh')
@@ -355,7 +355,15 @@ class TestLANPanelI18n:
 
     def test_peer_actions_zh(self):
         i18n.set_language('zh')
-        assert i18n._('[1-9]Visit Player [u]Edit Username') == '[1-9]拜访玩家 [u]修改用户名'
+        assert i18n._('[1-9]Visit Player [u]Edit Username') == '[1-9]拜访玩家 [u]修改名称'
+
+    def test_pagination_hint_zh(self):
+        i18n.set_language('zh')
+        assert i18n._('Page: [ = Previous  ] = Next') == '翻页: [ = 上一页  ] = 下一页'
+
+    def test_pagination_hint_en(self):
+        i18n.set_language('en')
+        assert i18n._('Page: [ = Previous  ] = Next') == 'Page: [ = Previous  ] = Next'
 
     def test_visitor_label_zh(self):
         i18n.set_language('zh')
@@ -363,7 +371,7 @@ class TestLANPanelI18n:
 
     def test_lan_panel_en(self):
         i18n.set_language('en')
-        assert i18n._('═ LAN Multiplayer ═') == '═ LAN Multiplayer ═'
+        assert i18n._('═ Community Plaza ═') == '═ Community Plaza ═'
         assert i18n._('Master') == 'Master'
         assert i18n._('Slave') == 'Slave'
 

@@ -810,6 +810,26 @@ class TestVisitTimeout:
 
         assert called == [True]
 
+    def test_tick_calls_process_lan_queues_when_lan_enabled(self, game):
+        """tick() invokes process_lan_queues when LAN is enabled (defensive refresh)."""
+        fake_node = _FakeLanNode('alice', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('alice')
+        called = []
+        original = game.process_lan_queues
+        def tracking():
+            called.append(True)
+            original()
+        game.process_lan_queues = tracking
+
+        game.state['stats']['HUNGER'] = 50
+        game.state['stats']['ENERGY'] = 50
+        game.state['stats']['HAPPY'] = 50
+        game.last_tick_time = time.time()
+        game.tick()
+
+        assert called == [True]
+
 
 # ─── 5f. Visit random events ───────────────────────────────────────────────
 
@@ -939,6 +959,61 @@ class TestVisitRandomEvents:
         assert game.message is not None
         assert 'Visit event' in game.message
         assert '玩耍' in game.message
+
+    def test_being_visited_does_not_generate_events(self, game):
+        """When being_visited (without active_visit), _tick_visit_events
+        should NOT generate events locally — only the visitor side generates."""
+        fake_node = _FakeLanNode('bob', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('bob')
+        game.being_visited = {
+            'from': 'peer-1',
+            'start_time': time.time(),
+            'pet_snapshot': {},
+        }
+        game.visit_event_cooldown = 0  # not on cooldown
+
+        with patch('random.random', return_value=0.05), \
+             patch('random.choice', return_value=VISIT_EVENTS[0]):
+            game._tick_visit_events()
+
+        # No event should be generated or sent by the being_visited side
+        event_calls = [c for c in fake_node.send_calls if c[1] == MSG_VISIT_EVENT]
+        assert len(event_calls) == 0
+        # No local message should be set by event generation
+        assert game.message is None or 'Visit event' not in (game.message or '')
+
+    def test_being_visited_receives_event_via_message(self, game):
+        """The being_visited side processes incoming MSG_VISIT_EVENT
+        from the visitor, even though it doesn't generate events itself."""
+        fake_node = _FakeLanNode('bob', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('bob')
+        game.being_visited = {
+            'from': 'peer-1',
+            'start_time': time.time(),
+            'pet_snapshot': {},
+        }
+        game.state['stats']['HAPPY'] = 50
+        happy_before = game.state['stats']['HAPPY']
+
+        # Simulate visitor sending a VISIT_EVENT message
+        event = make_visit_event(
+            'play_together',
+            '两只宠物一起玩耍',
+            {'happy': 15, 'energy': -10},
+        )
+        fake_node.ui_queue.put({
+            'type': MSG_VISIT_EVENT,
+            'payload': event,
+        })
+
+        game.process_lan_queues()
+
+        # The being_visited side should apply the received event
+        assert game.state['stats']['HAPPY'] == min(100, happy_before + 15)
+        assert game.message is not None
+        assert 'Visit event' in game.message
 
 
 # ─── 6. process_lan_queues ──────────────────────────────────────────────────
@@ -1198,3 +1273,372 @@ class TestChangeLanUsername:
             game.disable_lan()
         result = game.change_lan_username('newname')
         assert result is False
+
+
+# ─── 9. LAN panel mode key handling ─────────────────────────────────────────
+
+
+class TestLanPanelMode:
+    """mode='lan' has its own independent key handling for LAN actions.
+
+    In lan mode:
+    - 1-9 triggers invite_visit (when not in active visit)
+    - e ends visit (when in active visit or being visited)
+    - f does remote feed (when in active visit)
+    - p does remote play (when in active visit)
+    - u enters lan_name_edit mode
+    - l or c returns to expanded mode
+    - f/p do NOT do local actions
+    - e does NOT export
+    """
+
+    @pytest.fixture
+    def lan_game(self, tmp_path):
+        """Provide a PetGame with LAN enabled and mode set to 'lan'."""
+        uid = _uid()
+        game = PetGame(uid, data_dir=tmp_path)
+        fake_node = _FakeLanNode('alice', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('alice')
+        game.mode = 'lan'
+        return game
+
+    # --- Keys 1-9: invite_visit when not in active visit ---
+
+    def test_key_1_invites_first_peer(self, lan_game):
+        """In lan mode, pressing '1' invites the first peer."""
+        lan_game.lan_node._peers = [
+            {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
+        ]
+        result_type, result_val = lan_game.handle_key('1')
+        assert result_type == 'action'
+        assert lan_game.active_visit is not None
+        assert lan_game.active_visit['target'] == 'peer-1'
+        assert 'Bob' in lan_game.message
+
+    def test_key_2_invites_second_peer(self, lan_game):
+        """In lan mode, pressing '2' invites the second peer."""
+        lan_game.lan_node._peers = [
+            {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
+            {'node_id': 'peer-2', 'username': 'Carol', 'pet_summary': {}},
+        ]
+        result_type, _ = lan_game.handle_key('2')
+        assert result_type == 'action'
+        assert lan_game.active_visit is not None
+        assert lan_game.active_visit['target'] == 'peer-2'
+
+    def test_key_9_out_of_range_no_visit(self, lan_game):
+        """In lan mode, pressing '9' with fewer than 9 peers does nothing."""
+        lan_game.lan_node._peers = [
+            {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
+        ]
+        result_type, _ = lan_game.handle_key('9')
+        assert result_type == 'none'
+        assert lan_game.active_visit is None
+
+    def test_key_digit_does_not_invite_during_active_visit(self, lan_game):
+        """In lan mode, pressing '1' during active visit does not invite."""
+        lan_game.lan_node._peers = [
+            {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
+        ]
+        lan_game.active_visit = {'target': 'other-peer', 'start_time': time.time(), 'pet_snapshot': {}}
+        result_type, _ = lan_game.handle_key('1')
+        assert result_type == 'none'
+        # active_visit should remain unchanged
+        assert lan_game.active_visit['target'] == 'other-peer'
+
+    def test_key_digit_does_not_invite_when_being_visited(self, lan_game):
+        """In lan mode, pressing '1' when being visited does not invite."""
+        lan_game.lan_node._peers = [
+            {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
+        ]
+        lan_game.being_visited = {'from': 'other-peer', 'start_time': time.time(), 'pet_snapshot': {}}
+        result_type, _ = lan_game.handle_key('1')
+        assert result_type == 'none'
+
+    # --- Key e: end visit when in active visit or being visited ---
+
+    def test_key_e_ends_active_visit(self, lan_game):
+        """In lan mode, pressing 'e' ends an active visit."""
+        lan_game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result_type, _ = lan_game.handle_key('e')
+        assert result_type == 'action'
+        assert lan_game.active_visit is None
+        assert 'ended' in lan_game.message.lower() or 'Visit ended' in lan_game.message
+
+    def test_key_e_ends_being_visited(self, lan_game):
+        """In lan mode, pressing 'e' ends being_visited."""
+        lan_game.being_visited = {'from': 'peer-1', 'start_time': time.time(), 'pet_snapshot': _make_snapshot()}
+        result_type, _ = lan_game.handle_key('e')
+        assert result_type == 'action'
+        assert lan_game.being_visited is None
+
+    def test_key_e_no_visit_returns_action_with_no_active_visit_message(self, lan_game):
+        """In lan mode, pressing 'e' with no visit returns action with 'No active visit' message."""
+        result_type, _ = lan_game.handle_key('e')
+        assert result_type == 'action'
+        assert 'No active visit' in lan_game.message
+
+    # --- Key f: remote feed when in active visit ---
+
+    def test_key_f_remote_feed_during_active_visit(self, lan_game):
+        """In lan mode, pressing 'f' during active visit sends remote feed."""
+        lan_game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result_type, _ = lan_game.handle_key('f')
+        assert result_type == 'action'
+        assert 'Remote feed' in lan_game.message
+
+    def test_key_f_no_active_visit_remote_feed_fails(self, lan_game):
+        """In lan mode, pressing 'f' with no active visit returns failure message."""
+        result_type, _ = lan_game.handle_key('f')
+        assert result_type == 'action'
+        assert 'failed' in lan_game.message.lower() or 'Remote feed failed' in lan_game.message
+
+    # --- Key p: remote play when in active visit ---
+
+    def test_key_p_remote_play_during_active_visit(self, lan_game):
+        """In lan mode, pressing 'p' during active visit sends remote play."""
+        lan_game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result_type, _ = lan_game.handle_key('p')
+        assert result_type == 'action'
+        assert 'Remote play' in lan_game.message
+
+    def test_key_p_no_active_visit_remote_play_fails(self, lan_game):
+        """In lan mode, pressing 'p' with no active visit returns failure message."""
+        result_type, _ = lan_game.handle_key('p')
+        assert result_type == 'action'
+        assert 'failed' in lan_game.message.lower() or 'Remote play failed' in lan_game.message
+
+    # --- Key u: enter lan_name_edit mode ---
+
+    def test_key_u_enters_lan_name_edit(self, lan_game):
+        """In lan mode, pressing 'u' enters lan_name_edit mode."""
+        result_type, result_val = lan_game.handle_key('u')
+        assert result_type == 'mode_change'
+        assert lan_game.mode == 'lan_name_edit'
+
+    def test_key_u_sets_name_input_to_current_username(self, lan_game):
+        """In lan mode, pressing 'u' sets _name_input to current username."""
+        lan_game.handle_key('u')
+        assert lan_game._name_input == 'alice'
+
+    # --- Keys l and c: return to expanded mode ---
+
+    def test_key_l_returns_to_expanded(self, lan_game):
+        """In lan mode, pressing 'l' returns to expanded mode."""
+        result_type, result_val = lan_game.handle_key('l')
+        assert result_type == 'mode_change'
+        assert lan_game.mode == 'expanded'
+
+    def test_key_c_returns_to_expanded(self, lan_game):
+        """In lan mode, pressing 'c' returns to expanded mode."""
+        result_type, result_val = lan_game.handle_key('c')
+        assert result_type == 'mode_change'
+        assert lan_game.mode == 'expanded'
+
+    # --- f/p do NOT do local actions in lan mode ---
+
+    def test_key_f_does_not_local_feed_in_lan_mode(self, lan_game):
+        """In lan mode, pressing 'f' without active visit does remote feed (fails), not local feed."""
+        hunger_before = lan_game.state['stats']['HUNGER']
+        lan_game.handle_key('f')
+        # HUNGER should not change (no local feed)
+        assert lan_game.state['stats']['HUNGER'] == hunger_before
+
+    def test_key_p_does_not_local_play_in_lan_mode(self, lan_game):
+        """In lan mode, pressing 'p' without active visit does remote play (fails), not local play."""
+        happy_before = lan_game.state['stats']['HAPPY']
+        lan_game.handle_key('p')
+        # HAPPY should not change (no local play)
+        assert lan_game.state['stats']['HAPPY'] == happy_before
+
+    # --- e does NOT export in lan mode ---
+
+    def test_key_e_does_not_export_in_lan_mode(self, lan_game):
+        """In lan mode, pressing 'e' does not export (it handles visit end instead)."""
+        result_type, _ = lan_game.handle_key('e')
+        assert result_type != 'export'
+
+    # --- Unknown keys return none ---
+
+    def test_unknown_key_returns_none(self, lan_game):
+        """In lan mode, pressing an unrecognized key returns 'none'."""
+        result_type, _ = lan_game.handle_key('x')
+        assert result_type == 'none'
+
+
+# ─── 10. Expanded mode does NOT handle LAN keys ─────────────────────────────
+
+
+class TestExpandedModeNoLanKeys:
+    """In expanded mode, LAN keys (1-9 for visit, e/f/p for remote actions)
+    should NOT be intercepted. The old LAN-in-expanded behavior is removed."""
+
+    @pytest.fixture
+    def expanded_game(self, tmp_path):
+        """Provide a PetGame with LAN enabled and mode set to 'expanded'."""
+        uid = _uid()
+        game = PetGame(uid, data_dir=tmp_path)
+        fake_node = _FakeLanNode('alice', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('alice')
+        game.mode = 'expanded'
+        return game
+
+    def test_key_1_does_not_trigger_visit_in_expanded(self, expanded_game):
+        """In expanded mode, pressing '1' does NOT trigger invite_visit."""
+        expanded_game.lan_node._peers = [
+            {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
+        ]
+        result_type, _ = expanded_game.handle_key('1')
+        assert result_type == 'none'
+        assert expanded_game.active_visit is None
+
+    def test_key_f_does_local_feed_in_expanded(self, expanded_game):
+        """In expanded mode, pressing 'f' does LOCAL feed, not remote feed."""
+        expanded_game.state['stats']['HUNGER'] = 50
+        hunger_before = expanded_game.state['stats']['HUNGER']
+        result_type, _ = expanded_game.handle_key('f')
+        assert result_type == 'action'
+        # HUNGER should increase (local feed)
+        assert expanded_game.state['stats']['HUNGER'] > hunger_before
+
+    def test_key_p_does_local_play_in_expanded(self, expanded_game):
+        """In expanded mode, pressing 'p' does LOCAL play, not remote play."""
+        expanded_game.state['stats']['ENERGY'] = 80
+        expanded_game.state['stats']['HAPPY'] = 50
+        happy_before = expanded_game.state['stats']['HAPPY']
+        result_type, _ = expanded_game.handle_key('p')
+        assert result_type == 'action'
+        # HAPPY should increase (local play)
+        assert expanded_game.state['stats']['HAPPY'] > happy_before
+
+    def test_key_e_does_export_in_expanded(self, expanded_game):
+        """In expanded mode, pressing 'e' does export, not end visit."""
+        result_type, _ = expanded_game.handle_key('e')
+        assert result_type == 'export'
+
+    def test_key_e_does_not_end_visit_in_expanded(self, expanded_game):
+        """In expanded mode, pressing 'e' does not end an active visit."""
+        expanded_game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result_type, _ = expanded_game.handle_key('e')
+        assert result_type == 'export'
+        # active_visit should NOT be cleared
+        assert expanded_game.active_visit is not None
+
+
+# ─── 11. LAN panel pagination ──────────────────────────────────────────────
+
+
+def _make_peers(n):
+    """Build a list of n fake peer dicts for pagination tests."""
+    return [
+        {'node_id': f'peer-{i}', 'username': f'Player{i}', 'pet_summary': {}}
+        for i in range(n)
+    ]
+
+
+class TestLanPagination:
+    """Player list pagination: 9 players per page, [ prev, ] next."""
+
+    @pytest.fixture
+    def lan_game(self, tmp_path):
+        """Provide a PetGame with LAN enabled and mode set to 'lan'."""
+        uid = _uid()
+        game = PetGame(uid, data_dir=tmp_path)
+        fake_node = _FakeLanNode('alice', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('alice')
+        game.mode = 'lan'
+        return game
+
+    def test_lan_page_default_zero(self, game):
+        """New game has lan_page == 0."""
+        assert game.lan_page == 0
+
+    def test_next_page_increments(self, lan_game):
+        """Pressing ']' increments lan_page when enough peers exist."""
+        lan_game.lan_node._peers = _make_peers(15)
+        assert lan_game.lan_page == 0
+        lan_game.handle_key(']')
+        assert lan_game.lan_page == 1
+
+    def test_next_page_clamps(self, lan_game):
+        """Pressing ']' does not exceed max page (15 peers = 2 pages, max index 1)."""
+        lan_game.lan_node._peers = _make_peers(15)
+        lan_game.handle_key(']')  # 0 -> 1
+        lan_game.handle_key(']')  # 1 -> clamped at 1
+        assert lan_game.lan_page == 1
+
+    def test_prev_page_decrements(self, lan_game):
+        """Pressing '[' decrements lan_page."""
+        lan_game.lan_node._peers = _make_peers(15)
+        lan_game.lan_page = 1
+        lan_game.handle_key('[')
+        assert lan_game.lan_page == 0
+
+    def test_prev_page_clamps_at_zero(self, lan_game):
+        """Pressing '[' does not go below 0."""
+        lan_game.lan_node._peers = _make_peers(15)
+        assert lan_game.lan_page == 0
+        lan_game.handle_key('[')
+        assert lan_game.lan_page == 0
+
+    def test_number_key_uses_page_offset(self, lan_game):
+        """With 10 peers and lan_page=1, pressing '1' visits peer index 9."""
+        lan_game.lan_node._peers = _make_peers(10)
+        lan_game.lan_page = 1
+        result_type, _ = lan_game.handle_key('1')
+        assert result_type == 'action'
+        assert lan_game.active_visit is not None
+        # Page 2 (index 1), item 1 → overall index 1*9 + 0 = 9 → peer-9
+        assert lan_game.active_visit['target'] == 'peer-9'
+
+    def test_get_lan_peers_page_returns_correct_slice(self, lan_game):
+        """With 12 peers, page 1 returns peers[9:12] (3 peers)."""
+        lan_game.lan_node._peers = _make_peers(12)
+        lan_game.lan_page = 1
+        peers_page, total_pages, cur_page = lan_game.get_lan_peers_page()
+        assert len(peers_page) == 3
+        assert peers_page[0]['node_id'] == 'peer-9'
+        assert peers_page[2]['node_id'] == 'peer-11'
+        assert total_pages == 2
+        assert cur_page == 1
+
+
+# ─── 12. Community Plaza rename ─────────────────────────────────────────────
+
+
+class TestCommunityPlazaRename:
+    """User-facing strings say 'Community Plaza' instead of 'LAN'."""
+
+    @pytest.fixture
+    def lan_game(self, tmp_path):
+        """Provide a PetGame with LAN enabled and mode set to 'lan'."""
+        uid = _uid()
+        game = PetGame(uid, data_dir=tmp_path)
+        fake_node = _FakeLanNode('alice', game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            game.enable_lan('alice')
+        game.mode = 'lan'
+        return game
+
+    def test_enable_lan_message_says_community(self, lan_game):
+        """Pressing 'o' to enable LAN shows a message containing 'Community Plaza'."""
+        # First disable LAN so we can re-enable via 'o'
+        lan_game.disable_lan()
+        assert lan_game.lan_enabled is False
+        # Re-enable the fake node by patching again
+        fake_node = _FakeLanNode('alice', lan_game.state)
+        with patch('ascii_pet.lan.LanNode', return_value=fake_node):
+            lan_game.handle_key('o')
+        assert lan_game.message is not None
+        assert 'Community Plaza' in lan_game.message
+
+    def test_disable_lan_message_says_community(self, lan_game):
+        """Pressing 'o' to disable LAN shows a message containing 'Community Plaza'."""
+        assert lan_game.lan_enabled is True
+        lan_game.handle_key('o')
+        assert lan_game.lan_enabled is False
+        assert lan_game.message is not None
+        assert 'Community Plaza' in lan_game.message

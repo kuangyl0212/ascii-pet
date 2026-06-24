@@ -664,6 +664,7 @@ class PetGame:
         self.active_visit = None
         self.being_visited = None
         self.visit_event_cooldown = 0.0
+        self.lan_page = 0
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
         # Migrate old username.txt if no username in save
@@ -782,6 +783,7 @@ class PetGame:
         # 拜访相关检查
         if self.lan_enabled:
             try:
+                self.process_lan_queues()
                 self._tick_visit_timeout()
                 self._tick_visit_events()
             except Exception:
@@ -1054,6 +1056,84 @@ class PetGame:
                 return 'none', None
             return 'none', None
 
+        if self.mode == 'lan':
+            if key in ('1','2','3','4','5','6','7','8','9') and not self.active_visit and not self.being_visited:
+                peers_page, total_pages, cur_page = self.get_lan_peers_page()
+                idx = cur_page * 9 + (int(key) - 1)
+                all_peers = self.get_lan_peers()
+                if idx < len(all_peers):
+                    peer = all_peers[idx]
+                    peer_id = peer.get('node_id', '')
+                    if self.invite_visit(peer_id):
+                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
+                    else:
+                        pass
+                    self.message_time = now
+                    return 'action', self.message
+                return 'none', None
+            if key == '[':
+                if self.lan_page > 0:
+                    self.lan_page -= 1
+                return 'none', None
+            if key == ']':
+                all_peers = self.get_lan_peers()
+                total_pages = max(1, (len(all_peers) + 8) // 9)
+                if self.lan_page < total_pages - 1:
+                    self.lan_page += 1
+                return 'none', None
+            if key == 'e' and (self.active_visit or self.being_visited):
+                if self.end_visit():
+                    self.message = _('Visit ended')
+                else:
+                    self.message = _('No active visit')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'e':
+                self.message = _('No active visit')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'f' and self.active_visit:
+                if self.remote_feed():
+                    self.message = _('Remote feed sent')
+                else:
+                    self.message = _('Remote feed failed')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'f':
+                self.message = _('Remote feed failed')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'p' and self.active_visit:
+                if self.remote_play():
+                    self.message = _('Remote play sent')
+                else:
+                    self.message = _('Remote play failed')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'p':
+                self.message = _('Remote play failed')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'u':
+                self.mode = 'lan_name_edit'
+                self._name_input = self.lan_username or ''
+                return 'mode_change', self.mode
+            if key == 'o':
+                if self.lan_enabled:
+                    self.disable_lan()
+                    self.message = _('Community Plaza disconnected')
+                else:
+                    if self.enable_lan():
+                        self.message = _('Community Plaza connected')
+                    else:
+                        self.message = _('Failed to connect to Community Plaza')
+                self.message_time = now
+                return 'action', self.message
+            if key in ('l', 'c'):
+                self.mode = 'expanded'
+                return 'mode_change', self.mode
+            return 'none', None
+
         if key in ('\r', '\n'):
             if self.mode == 'compact':
                 self.mode = 'expanded'; self.show_help = False
@@ -1105,6 +1185,12 @@ class PetGame:
             else: self.mode = 'achievements'
             return 'mode_change', self.mode
 
+        if key == 'l':
+            if self.mode == 'lan': self.mode = 'expanded'
+            elif self.mode in ('expanded', 'stats', 'achievements', 'items'): self.mode = 'lan'
+            else: self.mode = 'lan'
+            return 'mode_change', self.mode
+
         if key == 'u' and self.mode != 'lan':
             if self.mode == 'items':
                 self.mode = 'expanded'
@@ -1114,7 +1200,7 @@ class PetGame:
                 self.mode = 'items'
             return 'mode_change', self.mode
 
-        if key == 'e' and self.mode != 'compact':
+        if key == 'e' and self.mode not in ('compact', 'lan'):
             return 'export', None
 
         if key == 'f' and self.mode != 'lan':
@@ -1160,42 +1246,6 @@ class PetGame:
                 self.mode = 'expanded'
                 return 'mode_change', self.mode
             return 'none', None
-
-        # LAN visit actions - work in expanded mode
-        if self.mode == 'expanded' and self.lan_enabled:
-            if key in ('1','2','3','4','5','6','7','8','9'):
-                idx = int(key) - 1
-                peers = self.get_lan_peers()
-                if idx < len(peers):
-                    peer = peers[idx]
-                    peer_id = peer.get('node_id', '')
-                    if self.invite_visit(peer_id):
-                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
-                    else:
-                        pass  # invite_visit 内部已设置 message
-                    self.message_time = now
-                    return 'action', self.message
-            if key == 'e':
-                if self.end_visit():
-                    self.message = _('Visit ended')
-                else:
-                    self.message = _('No active visit')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'f':
-                if self.remote_feed():
-                    self.message = _('Remote feed sent')
-                else:
-                    self.message = _('Remote feed failed (not visiting)')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'p':
-                if self.remote_play():
-                    self.message = _('Remote play sent')
-                else:
-                    self.message = _('Remote play failed (not visiting)')
-                self.message_time = now
-                return 'action', self.message
 
         return 'none', None
 
@@ -1278,6 +1328,21 @@ class PetGame:
         if not self.lan_enabled or not self.lan_node:
             return []
         return self.lan_node.get_peers()
+
+    def get_lan_peers_page(self):
+        """Return (peers_on_current_page, total_pages, current_page)."""
+        all_peers = self.get_lan_peers()
+        per_page = 9
+        total = len(all_peers)
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        # Clamp current page
+        if self.lan_page >= total_pages:
+            self.lan_page = total_pages - 1
+        if self.lan_page < 0:
+            self.lan_page = 0
+        start = self.lan_page * per_page
+        end = start + per_page
+        return all_peers[start:end], total_pages, self.lan_page
 
     def invite_visit(self, peer_node_id):
         """单向发起拜访，直接发送宠物快照，无需对方确认。"""
@@ -1505,12 +1570,16 @@ class PetGame:
             self.message_time = now
 
     def _tick_visit_events(self):
-        """拜访期间随机触发互动事件。"""
+        """拜访期间随机触发互动事件。
+
+        只有 active_visit（发起拜访方）才生成事件并发送给对方。
+        being_visited 方不生成事件，仅通过 MSG_VISIT_EVENT 消息接收。
+        """
         import random
         from ascii_pet.protocol import VISIT_EVENTS, MSG_VISIT_EVENT, make_visit_event
         now = time.time()
-        # 只在活跃拜访时触发
-        if not self.active_visit and not self.being_visited:
+        # 只有发起拜访方才生成事件
+        if not self.active_visit:
             return
         # 冷却检查
         if now < self.visit_event_cooldown:
@@ -1532,13 +1601,9 @@ class PetGame:
         event_type = event.metadata.get('original_event_type', event.event_id)
         event_msg = make_visit_event(event_type, event.description, event.effects)
         try:
-            if self.active_visit and self.lan_node:
+            if self.lan_node:
                 target = self.active_visit.get("target", "")
                 if target:
                     self.lan_node.send_to_peer(target, MSG_VISIT_EVENT, event_msg)
-            elif self.being_visited and self.lan_node:
-                sender = self.being_visited.get("from", "")
-                if sender:
-                    self.lan_node.send_to_peer(sender, MSG_VISIT_EVENT, event_msg)
         except Exception:
             pass
