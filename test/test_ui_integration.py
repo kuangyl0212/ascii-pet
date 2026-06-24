@@ -371,13 +371,21 @@ class TestHandleKeyTradeConfirmation:
     """handle_key processes 'y'/'n' when pending_trade_req exists."""
 
     def test_handle_key_y_accepts_trade(self, game):
-        """When pending_trade_req exists and key == 'y': calls accept_trade,
-        sends MSG_TRADE_ACK, clears pending_trade_req."""
+        """When pending_trade_req exists and key == 'y': enters pet selection,
+        then pressing '1' accepts trade with pet index 0, sends MSG_TRADE_ACK,
+        clears pending_trade_req."""
         fake_node = _enable_lan_with_fake(game, 'alice')
         trade_req = _make_trade_req()
         game.pending_trade_req = trade_req
 
+        # 'y' enters pet selection mode
         game.handle_key('y')
+        # pending_trade_req still exists with _accepting flag
+        assert game.pending_trade_req is not None
+        assert game.pending_trade_req.get('_accepting') is True
+
+        # Press '1' to select pet index 0 and accept
+        game.handle_key('1')
 
         # Verify MSG_TRADE_ACK sent
         ack_calls = [c for c in fake_node.send_calls if c[1] == MSG_TRADE_ACK]

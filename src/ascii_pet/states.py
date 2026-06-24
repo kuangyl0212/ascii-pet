@@ -557,6 +557,8 @@ class LanState(GameState):
             return self._handle_selection(game, event)
         elif self._submode == 'gift_item':
             return self._handle_gift_item(game, event)
+        elif self._submode == 'trade_pet':
+            return self._handle_trade_pet(game, event)
         return ('none', None)
 
     def tick(self, game: Any, event: TickEvent) -> tuple[str | None, float]:
@@ -582,7 +584,7 @@ class LanState(GameState):
             from_id = payload.get("from", "")
             from_username = payload.get("from_username", "?")
             game.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot}
-            game.visitor_pets.append(snapshot)
+            game.visitor_pets[from_id] = snapshot
             game.message = _("{username}'s pet {name} came to visit!").format(
                 username=from_username, name=snapshot.get('name', '?'))
             game.message_time = now
@@ -637,17 +639,19 @@ class LanState(GameState):
             game.visit_message_time = now
 
         elif msg_type == MSG_VISIT_END:
+            from_id = payload.get("from", "")
             if game.active_visit:
                 game.active_visit = None
                 game.message = _("Visit ended")
                 game.message_time = now
             if game.being_visited:
-                snap = game.being_visited.get("pet_snapshot", {})
-                snap_name = snap.get("name", "")
-                for i, v in enumerate(game.visitor_pets):
-                    if v.get("name", "") == snap_name:
-                        game.visitor_pets.pop(i)
-                        break
+                # 按 node_id 从 visitor_pets 中移除
+                if from_id:
+                    game.visitor_pets.pop(from_id, None)
+                else:
+                    # 兼容旧版：无 from 字段时用 being_visited 中的 from
+                    sender = game.being_visited.get("from", "")
+                    game.visitor_pets.pop(sender, None)
                 game.being_visited = None
                 game.message = _("Visit ended")
                 game.message_time = now
@@ -659,10 +663,15 @@ class LanState(GameState):
 
         elif msg_type == MSG_VISIT_LEAVE:
             pet_name = payload.get("pet_name", "")
-            for i, v in enumerate(game.visitor_pets):
-                if v.get("name") == pet_name:
-                    game.visitor_pets.pop(i)
-                    break
+            from_id = payload.get("from", "")
+            if from_id:
+                game.visitor_pets.pop(from_id, None)
+            else:
+                # 兼容旧版：无 from 字段时按 name 查找
+                for nid, v in list(game.visitor_pets.items()):
+                    if v.get("name") == pet_name:
+                        del game.visitor_pets[nid]
+                        break
 
         elif msg_type == MSG_CHALLENGE_REQ:
             from_username = payload.get("from_username", "?")
@@ -745,8 +754,10 @@ class LanState(GameState):
                 "from": game.lan_node.node_id,
             })
             if result.get("success"):
+                from ascii_pet.core import ITEMS
+                item_name = ITEMS.get(item_id, {}).get('name', item_id)
                 game.message = _("Received {count} {item} from {username}!").format(
-                    count=count, item=item_id, username=from_username)
+                    count=count, item=item_name, username=from_username)
             else:
                 game.message = _("Inventory full!")
             game.message_time = now
@@ -1021,20 +1032,9 @@ class LanState(GameState):
             elif self._submode == 'trade':
                 if idx < len(peers_page):
                     peer = peers_page[idx]
-                    peer_id = peer.get('node_id', '')
-                    self._submode = None
-                    if game.initiate_trade(peer_id, game.pet_idx):
-                        # Ensure active_trade is set (in case initiate_trade
-                        # didn't set it, e.g. in test mocks)
-                        if game.active_trade is None:
-                            game.active_trade = {
-                                "target": peer_id,
-                                "pet_index": game.pet_idx,
-                                "start_time": now,
-                                "role": "initiator",
-                            }
-                        game.message = _("Trade request sent, waiting for response...")
-                    # initiate_trade sets its own error message on failure
+                    self._submode_data = {'target_node_id': peer.get('node_id', '')}
+                    self._submode = 'trade_pet'
+                    game.message = _("Select pet to trade (1-3)")
                 else:
                     self._submode = None
                     game.message = _("Invalid selection")
@@ -1072,6 +1072,47 @@ class LanState(GameState):
                 self._submode = None
                 self._submode_data = None
                 game.message = _("Invalid selection")
+            game.message_time = now
+            return 'action', game.message
+
+        return 'none', None
+
+    # ── Trade pet sub-state ──
+
+    def _handle_trade_pet(self, game: Any, event: KeyEvent) -> tuple[str, Any]:
+        """Handle pet selection for trade initiation."""
+        key = event.key
+        now = time.time()
+
+        if key in ('q', '\x1b'):
+            self._submode = None
+            self._submode_data = None
+            game.message = _('Cancelled')
+            game.message_time = now
+            return 'action', game.message
+
+        if key in '123':
+            idx = int(key) - 1
+            if idx < 0 or idx >= len(game.pets_data['pets']):
+                game.message = _('Invalid pet')
+                game.message_time = now
+                return 'action', game.message
+
+            target_node_id = self._submode_data.get('target_node_id', '')
+            self._submode = None
+            self._submode_data = None
+            if game.initiate_trade(target_node_id, idx):
+                # Ensure active_trade is set (in case initiate_trade
+                # didn't set it, e.g. in test mocks)
+                if game.active_trade is None:
+                    game.active_trade = {
+                        "target": target_node_id,
+                        "pet_index": idx,
+                        "start_time": now,
+                        "role": "initiator",
+                    }
+                game.message = _("Trade request sent, waiting for response...")
+            # initiate_trade sets its own error message on failure
             game.message_time = now
             return 'action', game.message
 

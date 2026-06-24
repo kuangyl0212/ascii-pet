@@ -215,7 +215,7 @@ def render_lan_lines(game):
     visitors = game.visitor_pets
     if visitors:
         lines.append((_('─ Visitors ─'), COLOR_DIM))
-        for v in visitors:
+        for v in visitors.values():
             lines.append((_('  {}({})').format(v.get("name","?"), v.get("species","?")), COLOR_WHITE))
 
     # 操作提示
@@ -1320,7 +1320,7 @@ class PetWindow:
             g.anim_end = 0
         if g.visitor_pets and g.mode in ('compact', 'expanded'):
             from ascii_pet.core import render_sprite
-            for visitor in g.visitor_pets:
+            for visitor in g.visitor_pets.values():
                 v_bones = {
                     'species': visitor.get('species', 'blob'),
                     'eye': visitor.get('eye', '·'),

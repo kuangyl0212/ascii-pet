@@ -1243,7 +1243,10 @@ class _MockGame:
 
         # Pet data
         self.pets_data = {
-            'pets': [{'name': 'MyPet', 'species': 'cat', 'rarity': 'common', 'level': 1}],
+            'pets': [
+                {'name': 'MyPet', 'species': 'cat', 'rarity': 'common', 'level': 1},
+                {'name': 'OtherPet', 'species': 'blob', 'rarity': 'uncommon', 'level': 2},
+            ],
             'inventory': {'apple': 3, 'toy': 1},
         }
         self.pet_idx = 0
@@ -1261,7 +1264,7 @@ class _MockGame:
         self.visit_message_time = 0
 
         # Visitor tracking
-        self.visitor_pets = []
+        self.visitor_pets = {}
 
         # Battle result
         self.battle_result = None
@@ -1372,7 +1375,8 @@ class _MockGame:
         return ('Done!', None)
 
     def receive_visitor(self, snapshot):
-        self.visitor_pets.append(snapshot)
+        owner_id = snapshot.get("owner", f"_anon_{id(snapshot)}")
+        self.visitor_pets[owner_id] = snapshot
 
     def accept_challenge(self, challenge_req):
         """Mock accept_challenge: always accept."""
@@ -1800,11 +1804,26 @@ class TestLanState:
 
     # ── Selection sub-states: trade_select ──
 
-    def test_trade_select_number_calls_initiate_trade(self):
+    def test_trade_select_number_enters_trade_pet_submode(self):
+        """After selecting a trade target, should enter trade_pet submode."""
         from ascii_pet.states import KeyEvent
         lan = self._make_lan_state()
         game = self._make_game()
         lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        # Should NOT call initiate_trade yet — enter trade_pet submode first
+        assert not any(c[0] == 'initiate_trade' for c in game._calls)
+        assert lan._submode == 'trade_pet'
+        assert lan._submode_data.get('target_node_id') == 'peer1'
+
+    def test_trade_pet_number_calls_initiate_trade(self):
+        """In trade_pet submode, pressing '1' should call initiate_trade with pet_index=0."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert lan._submode == 'trade_pet'
         lan.handle_key(game, KeyEvent(key='1'))
         assert ('initiate_trade', 'peer1', 0) in game._calls
         assert lan._submode is None
@@ -1993,7 +2012,8 @@ class TestLanStateHandleLanMessage:
             'from': 'peer1', 'from_username': 'Alice', 'pet_snapshot': snapshot,
         })
         lan.handle_lan_message(game, event)
-        assert snapshot in game.visitor_pets
+        assert 'peer1' in game.visitor_pets
+        assert game.visitor_pets['peer1']['name'] == 'Fluffy'
 
     def test_visit_req_sets_message(self):
         lan = self._make_lan_state()
@@ -2082,8 +2102,8 @@ class TestLanStateHandleLanMessage:
         lan = self._make_lan_state()
         game = self._make_game()
         game.being_visited = {'from': 'peer1', 'pet_snapshot': {'name': 'Fluffy'}}
-        game.visitor_pets = [{'name': 'Fluffy'}]
-        event = self._make_event('visit_end', {})
+        game.visitor_pets = {'peer1': {'name': 'Fluffy'}}
+        event = self._make_event('visit_end', {'from': 'peer1'})
         lan.handle_lan_message(game, event)
         assert game.being_visited is None
         assert len(game.visitor_pets) == 0
@@ -2093,10 +2113,10 @@ class TestLanStateHandleLanMessage:
     def test_visit_data_calls_receive_visitor(self):
         lan = self._make_lan_state()
         game = self._make_game()
-        snapshot = {'name': 'OldPet'}
+        snapshot = {'name': 'OldPet', 'owner': 'old-peer'}
         event = self._make_event('visit_data', snapshot)
         lan.handle_lan_message(game, event)
-        assert snapshot in game.visitor_pets
+        assert 'old-peer' in game.visitor_pets
 
     def test_visit_data_sets_message(self):
         lan = self._make_lan_state()
@@ -2110,11 +2130,11 @@ class TestLanStateHandleLanMessage:
     def test_visit_leave_removes_visitor_by_name(self):
         lan = self._make_lan_state()
         game = self._make_game()
-        game.visitor_pets = [{'name': 'Fluffy'}, {'name': 'Spot'}]
-        event = self._make_event('visit_leave', {'pet_name': 'Fluffy'})
+        game.visitor_pets = {'peer1': {'name': 'Fluffy'}, 'peer2': {'name': 'Spot'}}
+        event = self._make_event('visit_leave', {'pet_name': 'Fluffy', 'from': 'peer1'})
         lan.handle_lan_message(game, event)
         assert len(game.visitor_pets) == 1
-        assert game.visitor_pets[0]['name'] == 'Spot'
+        assert game.visitor_pets['peer2']['name'] == 'Spot'
 
     # ── CHALLENGE_REQ ──
 
@@ -2210,6 +2230,39 @@ class TestLanStateHandleLanMessage:
         assert peer_id == 'peer1'
         assert msg_type == 'gift_ack'
         assert 'Alice' in game.message or 'apple' in game.message
+
+    def test_gift_item_message_shows_item_name_not_id(self):
+        """Bug 2: Gift receive message should show the item's display name, not the internal ID.
+
+        When receiving a GIFT_ITEM with item_id='apple', the message should
+        contain 'Apple' (the display name from ITEMS dict), not 'apple' (the ID).
+        """
+        lan = self._make_lan_state()
+        game = self._make_game()
+        event = self._make_event('gift_item', {
+            'from': 'peer1', 'from_username': 'Alice', 'item_id': 'apple', 'count': 1,
+        })
+        lan.handle_lan_message(game, event)
+        # The message should contain the display name 'Apple', not the raw id 'apple'
+        assert 'Apple' in game.message
+        # Verify it's the translated name, not just the lowercase id
+        # 'apple' as a substring would match both, but 'Apple' with capital A
+        # is the display name from ITEMS dict
+        from ascii_pet.core import ITEMS
+        expected_name = ITEMS.get('apple', {}).get('name', 'apple')
+        assert expected_name in game.message
+
+    def test_gift_item_message_shows_name_for_toy(self):
+        """Bug 2: Verify with a different item (toy -> 'Toy')."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        event = self._make_event('gift_item', {
+            'from': 'peer1', 'from_username': 'Bob', 'item_id': 'toy', 'count': 2,
+        })
+        lan.handle_lan_message(game, event)
+        from ascii_pet.core import ITEMS
+        expected_name = ITEMS.get('toy', {}).get('name', 'toy')
+        assert expected_name in game.message
 
     # ── GIFT_ACK ──
 
@@ -2864,13 +2917,14 @@ class TestTradeFlow:
     # ── Fix 1: Trade selection sets active_trade and shows progress ──
 
     def test_trade_select_sets_active_trade_on_success(self):
-        """After selecting a trade target, game.active_trade should be set."""
+        """After selecting a trade target AND a pet, game.active_trade should be set."""
         from ascii_pet.states import KeyEvent
         lan = self._make_lan_state()
         game = self._make_game()
         lan._submode = 'trade'
-        # initiate_trade in _MockGame returns True but does NOT set active_trade
-        # The _handle_selection code should set it after a successful initiate_trade
+        # Select peer
+        lan.handle_key(game, KeyEvent(key='1'))
+        # Select pet (index 0)
         lan.handle_key(game, KeyEvent(key='1'))
         assert game.active_trade is not None
         assert game.active_trade.get('target') == 'peer1'
@@ -2878,21 +2932,23 @@ class TestTradeFlow:
         assert game.active_trade.get('role') == 'initiator'
 
     def test_trade_select_message_includes_waiting(self):
-        """After selecting a trade target, message should indicate waiting for response."""
+        """After selecting a trade target AND a pet, message should indicate waiting for response."""
         from ascii_pet.states import KeyEvent
         lan = self._make_lan_state()
         game = self._make_game()
         lan._submode = 'trade'
         lan.handle_key(game, KeyEvent(key='1'))
+        lan.handle_key(game, KeyEvent(key='1'))
         assert game.message is not None
         assert 'waiting' in game.message.lower() or 'Waiting' in game.message
 
     def test_trade_select_returns_to_idle(self):
-        """After selecting a trade target, submode should be None (idle)."""
+        """After selecting a trade target AND a pet, submode should be None (idle)."""
         from ascii_pet.states import KeyEvent
         lan = self._make_lan_state()
         game = self._make_game()
         lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
         lan.handle_key(game, KeyEvent(key='1'))
         assert lan._submode is None
 
@@ -3043,8 +3099,8 @@ class TestTradeFlow:
 
     # ── Fix 6: pending_trade_req y/n handling ──
 
-    def test_pending_trade_req_y_accepts_trade(self):
-        """When pending_trade_req is set, pressing 'y' should accept the trade."""
+    def test_pending_trade_req_y_enters_pet_selection(self):
+        """When pending_trade_req is set, pressing 'y' should enter pet selection mode."""
         from ascii_pet.core import PetGame
         import tempfile
         from pathlib import Path
@@ -3055,10 +3111,33 @@ class TestTradeFlow:
                 'from_username': 'Alice',
                 'pet_snapshot': {'name': 'TheirPet'},
             }
-            # We need a lan_node mock for accept_trade to work
             game.lan_node = _MockLanNode()
             game.lan_enabled = True
             result = game.handle_key('y')
+            # Should NOT have accepted yet — enter pet selection
+            assert game.pending_trade_req is not None
+            assert game.pending_trade_req.get('_accepting') is True
+            assert 'select' in game.message.lower() or 'pet' in game.message.lower()
+
+    def test_pending_trade_req_y_then_number_accepts(self):
+        """After pressing 'y', pressing a number should accept with selected pet."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-accept2', data_dir=Path(tmpdir))
+            game.pending_trade_req = {
+                'from': 'peer1',
+                'from_username': 'Alice',
+                'pet_snapshot': {'name': 'TheirPet'},
+            }
+            game.lan_node = _MockLanNode()
+            game.lan_enabled = True
+            # Press 'y' to enter pet selection
+            game.handle_key('y')
+            assert game.pending_trade_req.get('_accepting') is True
+            # Press '1' to select pet index 0
+            result = game.handle_key('1')
             assert game.pending_trade_req is None
             assert 'accept' in game.message.lower() or 'Accept' in game.message
 
@@ -3080,6 +3159,136 @@ class TestTradeFlow:
             result = game.handle_key('n')
             assert game.pending_trade_req is None
             assert 'reject' in game.message.lower() or 'Reject' in game.message
+
+    # ── Bug 3: Trade should let both sides select which pet to trade ──
+
+    def test_initiator_trade_select_enters_trade_pet_submode(self):
+        """Bug 3: After selecting a trade target, should enter trade_pet submode
+        for pet selection, NOT immediately call initiate_trade."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        # Select peer 1
+        lan.handle_key(game, KeyEvent(key='1'))
+        # Should NOT have called initiate_trade yet
+        assert not any(c[0] == 'initiate_trade' for c in game._calls)
+        # Should be in trade_pet submode
+        assert lan._submode == 'trade_pet'
+        # Should store the target node id
+        assert lan._submode_data.get('target_node_id') == 'peer1'
+
+    def test_initiator_trade_pet_number_selects_pet_and_initiates(self):
+        """Bug 3: In trade_pet submode, pressing '1' should select pet index 0
+        and call initiate_trade with that pet index."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        # Select peer
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert lan._submode == 'trade_pet'
+        # Select pet 1 (index 0)
+        lan.handle_key(game, KeyEvent(key='1'))
+        # Now initiate_trade should have been called with pet_index=0
+        assert ('initiate_trade', 'peer1', 0) in game._calls
+        # Should return to idle
+        assert lan._submode is None
+
+    def test_initiator_trade_pet_number_2_selects_pet_index_1(self):
+        """Bug 3: In trade_pet submode, pressing '2' should select pet index 1."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        # Select pet 2 (index 1)
+        lan.handle_key(game, KeyEvent(key='2'))
+        assert ('initiate_trade', 'peer1', 1) in game._calls
+
+    def test_initiator_trade_pet_esc_cancels(self):
+        """Bug 3: ESC in trade_pet submode should cancel back to idle."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert lan._submode == 'trade_pet'
+        # Cancel with ESC
+        lan.handle_key(game, KeyEvent(key='\x1b'))
+        assert lan._submode is None
+        # Should NOT have called initiate_trade
+        assert not any(c[0] == 'initiate_trade' for c in game._calls)
+
+    def test_initiator_trade_pet_q_cancels(self):
+        """Bug 3: 'q' in trade_pet submode should cancel back to idle."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        lan.handle_key(game, KeyEvent(key='q'))
+        assert lan._submode is None
+        assert not any(c[0] == 'initiate_trade' for c in game._calls)
+
+    def test_initiator_trade_pet_invalid_number_shows_message(self):
+        """Bug 3: Invalid pet number in trade_pet submode should show error."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        # Game has only 1 pet, so pressing '2' is invalid
+        game.pets_data = {'pets': [{'name': 'OnlyPet'}]}
+        result = lan.handle_key(game, KeyEvent(key='2'))
+        # Should show invalid pet message
+        assert game.message_time > 0
+
+    def test_receiver_y_enters_trade_pet_submode(self):
+        """Bug 3: When pressing 'y' to accept a trade, should enter trade_pet
+        submode for pet selection, NOT immediately accept with current pet."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-pet-select', data_dir=Path(tmpdir))
+            game.pending_trade_req = {
+                'from': 'peer1',
+                'from_username': 'Alice',
+                'pet_snapshot': {'name': 'TheirPet'},
+            }
+            game.lan_node = _MockLanNode()
+            game.lan_enabled = True
+            result = game.handle_key('y')
+            # Should NOT have accepted yet - pending_trade_req should still exist
+            # with a flag indicating pet selection is needed
+            assert game.pending_trade_req is not None
+            # Should have a flag indicating we're selecting a pet for trade acceptance
+            assert game.pending_trade_req.get('_accepting') is True
+
+    def test_receiver_trade_pet_number_accepts_with_selected_pet(self):
+        """Bug 3: After pressing 'y', pressing a number should accept the trade
+        with the selected pet index."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-pet-accept', data_dir=Path(tmpdir))
+            game.pending_trade_req = {
+                'from': 'peer1',
+                'from_username': 'Alice',
+                'pet_snapshot': {'name': 'TheirPet'},
+            }
+            game.lan_node = _MockLanNode()
+            game.lan_enabled = True
+            # Press 'y' to enter pet selection
+            game.handle_key('y')
+            assert game.pending_trade_req is not None
+            assert game.pending_trade_req.get('_accepting') is True
+            # Press '1' to select pet index 0
+            result = game.handle_key('1')
+            # Now the trade should be accepted with pet_index=0
+            assert game.pending_trade_req is None
 
 
 # ─── Task 6: Mutual exclusion logic ──────────────────────────────────────────

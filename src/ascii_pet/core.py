@@ -817,7 +817,7 @@ class PetGame:
         self.lan_enabled = False
         self.lan_node = None
         self.lan_peers = []
-        self.visitor_pets = []
+        self.visitor_pets = {}
         self.active_visit = None
         self.being_visited = None
         self.visit_event_cooldown = 0.0
@@ -1352,20 +1352,44 @@ class PetGame:
             self.battle_result = None
             return 'action', 'dismiss'
 
-        # Trade confirmation: 'y' to accept, 'n' to reject
+        # Trade confirmation: 'y' to enter pet selection, 'n' to reject
+        # Number keys 1-3 accept with selected pet when _accepting flag is set
         if self.pending_trade_req is not None:
-            if key == 'y':
-                self.accept_trade(self.pending_trade_req, self.pet_idx, accepted=True)
-                self.message = _('Trade accepted')
-                self.message_time = now
-                self.pending_trade_req = None
-                return 'action', self.message
-            if key == 'n':
-                self.accept_trade(self.pending_trade_req, None, accepted=False)
-                self.message = _('Trade rejected')
-                self.message_time = now
-                self.pending_trade_req = None
-                return 'action', self.message
+            if self.pending_trade_req.get('_accepting'):
+                # Pet selection mode for trade acceptance
+                if key in ('1', '2', '3'):
+                    idx = int(key) - 1
+                    if idx < 0 or idx >= len(self.pets_data['pets']):
+                        self.message = _('Invalid pet')
+                        self.message_time = now
+                        return 'action', self.message
+                    self.accept_trade(self.pending_trade_req, idx, accepted=True)
+                    self.message = _('Trade accepted')
+                    self.message_time = now
+                    self.pending_trade_req = None
+                    return 'action', self.message
+                if key in ('q', '\x1b'):
+                    # Cancel pet selection, go back to y/n prompt
+                    del self.pending_trade_req['_accepting']
+                    self.message = _("{username} wants to trade! [y/n]").format(
+                        username=self.pending_trade_req.get('from_username', '?'))
+                    self.message_time = now
+                    return 'action', self.message
+                # Ignore other keys while in pet selection
+                return 'none', None
+            else:
+                if key == 'y':
+                    # Enter pet selection mode
+                    self.pending_trade_req['_accepting'] = True
+                    self.message = _('Select pet to trade (1-3)')
+                    self.message_time = now
+                    return 'action', self.message
+                if key == 'n':
+                    self.accept_trade(self.pending_trade_req, None, accepted=False)
+                    self.message = _('Trade rejected')
+                    self.message_time = now
+                    self.pending_trade_req = None
+                    return 'action', self.message
 
         # Dispatch to state machine
         event = KeyEvent(key=key)
@@ -1442,7 +1466,7 @@ class PetGame:
         self.lan_node = None
         self.lan_enabled = False
         self.lan_peers = []
-        self.visitor_pets = []
+        self.visitor_pets = {}
         self.active_visit = None
         self.being_visited = None
         self.visit_event_cooldown = 0.0
@@ -1519,29 +1543,28 @@ class PetGame:
     def end_visit(self):
         """结束拜访。发起方和受访者均可调用。"""
         from ascii_pet.protocol import MSG_VISIT_END
+        my_id = self.lan_node.node_id if self.lan_node else ""
         if self.active_visit:
             target = self.active_visit.get("target", "")
             if target and self.lan_node:
                 try:
-                    self.lan_node.send_to_peer(target, MSG_VISIT_END, {"reason": "manual"})
+                    self.lan_node.send_to_peer(target, MSG_VISIT_END, {"reason": "manual", "from": my_id})
                 except Exception:
                     pass
+            # 清除 visitor_pets 中该目标的条目
+            if target in self.visitor_pets:
+                del self.visitor_pets[target]
             self.active_visit = None
             return True
         if self.being_visited:
             sender = self.being_visited.get("from", "")
             if sender and self.lan_node:
                 try:
-                    self.lan_node.send_to_peer(sender, MSG_VISIT_END, {"reason": "manual"})
+                    self.lan_node.send_to_peer(sender, MSG_VISIT_END, {"reason": "manual", "from": my_id})
                 except Exception:
                     pass
-            # 从 visitor_pets 中移除对应访客
-            snap = self.being_visited.get("pet_snapshot", {})
-            snap_name = snap.get("name", "")
-            for i, v in enumerate(self.visitor_pets):
-                if v.get("name", "") == snap_name:
-                    self.visitor_pets.pop(i)
-                    break
+            # 从 visitor_pets 中按 node_id 移除对应访客
+            self.visitor_pets.pop(sender, None)
             self.being_visited = None
             return True
         return False
@@ -1821,18 +1844,23 @@ class PetGame:
         return False
 
     def receive_visitor(self, snapshot):
-        """接收访客宠物快照。"""
-        self.visitor_pets.append(snapshot)
+        """接收访客宠物快照。按 owner (node_id) 存储，重复则覆盖。"""
+        owner_id = snapshot.get("owner", "")
+        if owner_id:
+            self.visitor_pets[owner_id] = snapshot
+        else:
+            # 无 owner 信息的快照用临时 key 存储
+            self.visitor_pets[f"_anon_{id(snapshot)}"] = snapshot
 
-    def dismiss_visitor(self, index):
-        """让访客离开。"""
-        if 0 <= index < len(self.visitor_pets):
-            visitor = self.visitor_pets.pop(index)
+    def dismiss_visitor(self, node_id):
+        """让访客离开。node_id 为访客的 node_id。"""
+        visitor = self.visitor_pets.pop(node_id, None)
+        if visitor is not None:
             if self.lan_enabled and self.lan_node:
                 from ascii_pet.protocol import MSG_VISIT_LEAVE
-                owner_id = visitor.get("owner", "")
+                owner_id = visitor.get("owner", node_id)
                 if owner_id:
-                    self.lan_node.send_to_peer(owner_id, MSG_VISIT_LEAVE, {"pet_name": visitor.get("name","")})
+                    self.lan_node.send_to_peer(owner_id, MSG_VISIT_LEAVE, {"pet_name": visitor.get("name",""), "from": self.lan_node.node_id})
             return True
         return False
 
