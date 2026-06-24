@@ -6,6 +6,12 @@ from pathlib import Path
 from datetime import datetime
 from ascii_pet.i18n import _
 from ascii_pet.events import REGISTRY, apply_event, Event
+from ascii_pet.states import (
+    StateMachine, KeyEvent, TickEvent, LanMessageEvent,
+    CompactState, ExpandedState, StatsState, AchievementsState,
+    ItemsState, RenameState, ReleaseState, LanState, LanNameEditState,
+    DeadOverlayState,
+)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -743,7 +749,8 @@ class PetGame:
         self.uid = uid
         self.data_dir = data_dir
         self.frame_idx = 0
-        self.mode = 'compact'
+        self._sm = StateMachine(CompactState())
+        self._register_transitions()
         self.show_help = False
         self.message = None
         self.message_time = 0
@@ -845,6 +852,168 @@ class PetGame:
 
     def save(self):
         save_state(self.uid, self.state, self.pets_data, self.pet_idx, self.data_dir)
+
+    def _register_transitions(self):
+        """Register all valid state transitions for the StateMachine."""
+        sm = self._sm
+        # compact <-> expanded
+        sm.add_transition('compact', 'expanded')
+        sm.add_transition('expanded', 'compact')
+        # expanded <-> stats, achievements, items, lan
+        sm.add_transition('expanded', 'stats')
+        sm.add_transition('stats', 'expanded')
+        sm.add_transition('expanded', 'achievements')
+        sm.add_transition('achievements', 'expanded')
+        sm.add_transition('expanded', 'items')
+        sm.add_transition('items', 'expanded')
+        sm.add_transition('expanded', 'lan')
+        sm.add_transition('lan', 'expanded')
+        # stats <-> achievements, rename
+        sm.add_transition('stats', 'achievements')
+        sm.add_transition('achievements', 'stats')
+        sm.add_transition('stats', 'rename')
+        sm.add_transition('rename', 'stats')
+        # stats -> items (via 'u' key)
+        sm.add_transition('stats', 'items')
+        # achievements -> items (via 'u' key)
+        sm.add_transition('achievements', 'items')
+        # lan <-> lan_name_edit
+        sm.add_transition('lan', 'lan_name_edit')
+        sm.add_transition('lan_name_edit', 'lan')
+        # release -> expanded
+        sm.add_transition('release', 'expanded')
+        # compact -> release (for adopt at MAX_PETS)
+        sm.add_transition('compact', 'release')
+        # Any state -> compact (for 'c' key from any mode)
+        for sid in ['expanded', 'stats', 'achievements', 'items', 'lan', 'rename', 'release']:
+            sm.add_transition(sid, 'compact')
+        # compact -> other states (for direct key access)
+        for sid in ['stats', 'achievements', 'items', 'lan']:
+            sm.add_transition('compact', sid)
+
+    @property
+    def mode(self):
+        """Current game mode (backward-compatible with game.mode string)."""
+        return self._sm.current_state_id
+
+    @mode.setter
+    def mode(self, value):
+        """Set game mode by state name (backward-compatible)."""
+        state_map = {
+            'compact': CompactState,
+            'expanded': ExpandedState,
+            'stats': StatsState,
+            'achievements': AchievementsState,
+            'items': ItemsState,
+            'rename': RenameState,
+            'release': ReleaseState,
+            'lan': LanState,
+            'lan_name_edit': LanNameEditState,
+        }
+        state_cls = state_map.get(value)
+        if state_cls:
+            try:
+                self._sm.transition_to(self, state_cls())
+            except Exception:
+                pass  # Invalid transition, ignore
+
+    @property
+    def sm(self):
+        """Expose StateMachine for state classes to call transition_to."""
+        return self._sm
+
+    @property
+    def state_id(self):
+        """Current state ID (alias for mode)."""
+        return self._sm.current_state_id
+
+    @property
+    def _rename_input(self):
+        """Proxy to RenameState._input for backward compatibility."""
+        from ascii_pet.states import RenameState
+        if isinstance(self._sm.current_state, RenameState):
+            return self._sm.current_state._input
+        return ''
+
+    @_rename_input.setter
+    def _rename_input(self, value):
+        """Proxy to RenameState._input for backward compatibility."""
+        from ascii_pet.states import RenameState
+        if isinstance(self._sm.current_state, RenameState):
+            self._sm.current_state._input = value
+
+    @property
+    def _name_input(self):
+        """Proxy to LanNameEditState._input for backward compatibility."""
+        from ascii_pet.states import LanNameEditState
+        if isinstance(self._sm.current_state, LanNameEditState):
+            return self._sm.current_state._input
+        return ''
+
+    @_name_input.setter
+    def _name_input(self, value):
+        """Proxy to LanNameEditState._input for backward compatibility."""
+        from ascii_pet.states import LanNameEditState
+        if isinstance(self._sm.current_state, LanNameEditState):
+            self._sm.current_state._input = value
+
+    def _inner_state(self):
+        """Get the current state, unwrapping DeadOverlayState if present."""
+        from ascii_pet.states import DeadOverlayState
+        state = self._sm.current_state
+        if isinstance(state, DeadOverlayState):
+            return state._inner
+        return state
+
+    @property
+    def lan_submode(self):
+        """Proxy to LanState._submode for backward compatibility."""
+        from ascii_pet.states import LanState
+        state = self._inner_state()
+        if isinstance(state, LanState):
+            return state._submode
+        return None
+
+    @lan_submode.setter
+    def lan_submode(self, value):
+        """Proxy to LanState._submode for backward compatibility."""
+        from ascii_pet.states import LanState
+        state = self._inner_state()
+        if isinstance(state, LanState):
+            state._submode = value
+
+    @property
+    def lan_submode_data(self):
+        """Proxy to LanState._submode_data for backward compatibility."""
+        from ascii_pet.states import LanState
+        state = self._inner_state()
+        if isinstance(state, LanState):
+            return state._submode_data
+        return None
+
+    @lan_submode_data.setter
+    def lan_submode_data(self, value):
+        """Proxy to LanState._submode_data for backward compatibility."""
+        from ascii_pet.states import LanState
+        state = self._inner_state()
+        if isinstance(state, LanState):
+            state._submode_data = value
+
+    @property
+    def lan_page(self):
+        """Proxy to LanState._page for backward compatibility."""
+        from ascii_pet.states import LanState
+        state = self._inner_state()
+        if isinstance(state, LanState):
+            return state._page
+        return 0
+
+    @lan_page.setter
+    def lan_page(self, value):
+        """Proxy to LanState._page for backward compatibility."""
+        from ascii_pet.states import LanState
+        if isinstance(self._sm.current_state, LanState):
+            self._sm.current_state._page = value
 
     def count_today_adoptions(self):
         """Count how many pets were adopted today (from log, not current list)."""
@@ -1170,105 +1339,17 @@ class PetGame:
         detail: depends on action_type
         """
         now = time.time()
-        if key == 'q':
-            # In LAN submode, 'q' cancels the submode instead of quitting
-            if self.mode == 'lan' and self.lan_submode is not None:
-                self.lan_submode = None
-                self.lan_submode_data = None
-                self.message = _("Cancelled")
-                self.message_time = now
-                return 'action', self.message
-            return 'quit', None
+
+        # Handle dead pet overlay
+        if self.state.get('is_dead') and not isinstance(self._sm.current_state, DeadOverlayState):
+            self._sm._current = DeadOverlayState(self._sm.current_state)
+        elif not self.state.get('is_dead') and isinstance(self._sm.current_state, DeadOverlayState):
+            self._sm._current = self._sm.current_state._inner
 
         # If battle_result is showing, any key dismisses it (works in any mode)
         if self.battle_result is not None:
             self.battle_result = None
             return 'action', 'dismiss'
-
-        if self.state.get('is_dead'):
-            # f/p/s: still return Potion guidance (no revive)
-            if key in ('f', 'p', 's'):
-                msg, anim = self.handle_action(key if key != 'f' else 'feed')
-                if key == 'p': msg, anim = self.handle_action('play')
-                if key == 's': msg, anim = self.handle_action('sleep')
-                self.message = msg; self.message_time = now
-                return 'action', msg
-            # r: direct revive with Potion
-            if key == 'r':
-                inv = self.pets_data.get('inventory', {})
-                if inv.get('potion', 0) > 0:
-                    msg = self.use_item('potion')
-                    self.message = msg; self.message_time = now
-                    return 'action', msg
-                else:
-                    msg = _('No Potion available!')
-                    self.message = msg; self.message_time = now
-                    return 'action', msg
-            # d: release dead pet
-            if key == 'd':
-                msg = self.release_pet(self.pet_idx)
-                self.message = msg; self.message_time = now
-                return 'action', msg
-            # b/n: switch pets
-            if key == 'b':
-                if len(self.pets_data['pets']) > 1:
-                    msg = self.switch_pet(-1)
-                    self.message = msg; self.message_time = now
-                    return 'pet_switch', msg
-                return 'none', None
-            if key == 'n':
-                msg = self.switch_pet(1)
-                self.message = msg; self.message_time = now
-                return 'pet_switch', msg
-            # Allow mode switching keys to fall through
-            # u, a, t, c, h, Enter, l, e will be handled by normal key processing below
-
-        if self.mode == 'rename':
-            if key == '\r' or key == '\n':
-                new_name = self._rename_input.strip()
-                if new_name:
-                    msg = self.rename_pet(new_name)
-                    self.message = msg; self.message_time = now
-                    self.mode = 'stats'
-                    return 'mode_change', self.mode
-                else:
-                    self.message = _('Name cannot be empty')
-                    self.message_time = now
-                    return 'none', None
-            if key == '\x1b':  # ESC cancel
-                self.mode = 'stats'
-                return 'mode_change', self.mode
-            if key == '\x08':  # backspace
-                self._rename_input = self._rename_input[:-1]
-                return 'none', None
-            if len(key) == 1 and key.isprintable() and len(self._rename_input) < 20:
-                self._rename_input += key
-                return 'none', None
-            return 'none', None
-
-        if self.mode == 'lan_name_edit':
-            if key == '\r' or key == '\n':  # 回车确认
-                new_name = self._name_input.strip()
-                if new_name:
-                    if self.change_lan_username(new_name):
-                        self.message = _('Username changed to: {name}').format(name=self.lan_username)
-                    else:
-                        self.message = _('Username already in use')
-                else:
-                    self.message = _('Username cannot be empty')
-                self.message_time = now
-                self.mode = 'lan'
-                return 'mode_change', self.mode
-            if key == '\x1b':  # ESC 取消
-                self.mode = 'lan'
-                return 'mode_change', self.mode
-            if key == '\x08':  # 退格
-                self._name_input = self._name_input[:-1]
-                return 'none', None
-            if len(key) == 1 and key.isprintable():
-                self._name_input += key
-                return 'none', None
-            return 'none', None
 
         # Trade confirmation: 'y' to accept, 'n' to reject
         if self.pending_trade_req is not None:
@@ -1285,273 +1366,31 @@ class PetGame:
                 self.pending_trade_req = None
                 return 'action', self.message
 
-        if self.mode == 'lan':
-            # Handle submode
-            if self.lan_submode is not None:
-                return self._handle_lan_submode_key(key)
+        # Dispatch to state machine
+        event = KeyEvent(key=key)
+        result = self._sm.dispatch(self, event)
 
-            if key == '[':
-                if self.lan_page > 0:
-                    self.lan_page -= 1
-                return 'none', None
-            if key == ']':
-                all_peers = self.get_lan_peers()
-                total_pages = max(1, (len(all_peers) + 8) // 9)
-                if self.lan_page < total_pages - 1:
-                    self.lan_page += 1
-                return 'none', None
-            if key == 'e' and (self.active_visit or self.being_visited):
-                if self.end_visit():
-                    self.message = _('Visit ended')
-                else:
-                    self.message = _('No active visit')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'e':
-                self.message = _('No active visit')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'f' and self.active_visit:
-                if self.remote_feed():
-                    self.message = _('Remote feed sent')
-                else:
-                    self.message = _('Remote feed failed')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'f':
-                self.message = _('Remote feed failed')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'p' and self.active_visit:
-                if self.remote_play():
-                    self.message = _('Remote play sent')
-                else:
-                    self.message = _('Remote play failed')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'p':
-                self.message = _('Remote play failed')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'u':
-                self.mode = 'lan_name_edit'
-                self._name_input = self.lan_username or ''
-                return 'mode_change', self.mode
-            if key == 'o':
-                if self.lan_enabled:
-                    self.disable_lan()
-                    self.message = _('Community Plaza disconnected')
-                else:
-                    if self.enable_lan():
-                        self.message = _('Community Plaza connected')
-                    else:
-                        self.message = _('Failed to connect to Community Plaza')
-                self.message_time = now
-                return 'action', self.message
-            # Visit/challenge/gift/trade/heal actions
-            if key == 'v' and not self.active_visit and not self.being_visited:
-                if self.active_challenge:
-                    self.message = _('Already in a challenge')
-                    self.message_time = now
-                    return 'action', self.message
-                peers = self.get_lan_peers()
-                if not peers:
-                    self.message = _('No peers to visit')
-                    self.message_time = now
-                    return 'action', self.message
-                self.lan_submode = 'visit'
-                self.message = _('Select visit target')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'c' and not self.active_visit and not self.being_visited:
-                if self.active_challenge:
-                    self.message = _('Already in a challenge')
-                    self.message_time = now
-                    return 'action', self.message
-                # Daily challenge limit check
-                today = datetime.now().date().isoformat()
-                challenge_log = self.pets_data.setdefault('challenge_log', {})
-                if challenge_log.get(today, 0) >= self.MAX_DAILY_CHALLENGES:
-                    self.message = _('Daily challenge limit reached ({max}/day)').format(max=self.MAX_DAILY_CHALLENGES)
-                    self.message_time = now
-                    return 'action', self.message
-                peers = self.get_lan_peers()
-                if not peers:
-                    self.message = _('No peers to challenge')
-                    self.message_time = now
-                    return 'action', self.message
-                self.lan_submode = 'challenge'
-                self.message = _('Select challenge target')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'g' and not self.active_visit and not self.being_visited:
-                if self.active_challenge:
-                    self.message = _('Already in a challenge')
-                    self.message_time = now
-                    return 'action', self.message
-                if self.active_gift:
-                    self.message = _('Already gifting')
-                    self.message_time = now
-                    return 'action', self.message
-                peers = self.get_lan_peers()
-                inv_list = self.get_inventory_list()
-                if not peers:
-                    self.message = _('No peers or items')
-                    self.message_time = now
-                    return 'action', self.message
-                if not inv_list:
-                    self.message = _('No items to gift')
-                    self.message_time = now
-                    return 'action', self.message
-                self.lan_submode = 'gift'
-                self.message = _('Select gift target')
-                self.message_time = now
-                return 'action', self.message
-            if key == 't' and not self.active_visit and not self.being_visited:
-                if self.active_challenge:
-                    self.message = _('Already in a challenge')
-                    self.message_time = now
-                    return 'action', self.message
-                if self.active_trade:
-                    self.message = _('Already trading')
-                    self.message_time = now
-                    return 'action', self.message
-                peers = self.get_lan_peers()
-                if not peers:
-                    self.message = _('No peers to trade')
-                    self.message_time = now
-                    return 'action', self.message
-                self.lan_submode = 'trade'
-                self.message = _('Select trade target')
-                self.message_time = now
-                return 'action', self.message
-            if key == 'h':
-                self.heal_pet()
-                return 'action', self.message
-            if key == 'l':
-                self.mode = 'expanded'
-                return 'mode_change', self.mode
-            return 'none', None
-
-        if key in ('\r', '\n'):
-            if self.mode == 'compact':
-                self.mode = 'expanded'; self.show_help = False
-            elif self.mode == 'expanded':
-                self.mode = 'compact'; self.show_help = False
+        # Handle transition returns from LanState/LanNameEditState
+        if result and result[0] == 'transition':
+            target = result[1]
+            state_map = {
+                'expanded': ExpandedState,
+                'lan_name_edit': LanNameEditState,
+                'lan': LanState,
+            }
+            state_cls = state_map.get(target)
+            if state_cls:
+                try:
+                    self._sm.transition_to(self, state_cls())
+                except Exception:
+                    pass
             return 'mode_change', self.mode
 
-        if key == 'h':
-            if self.mode == 'compact':
-                self.mode = 'expanded'; self.show_help = True
-            else:
-                self.show_help = not self.show_help
-            return 'mode_change', self.mode
+        # Handle 'q' key for quit (not handled by states)
+        if key == 'q' and result == ('none', None):
+            return 'quit', None
 
-        if key == 'c':
-            if self.mode != 'compact':
-                self.mode = 'compact'; self.show_help = False
-                return 'mode_change', self.mode
-            return 'none', None
-
-        if key == 'b':
-            if len(self.pets_data['pets']) > 1:
-                msg = self.switch_pet(-1)
-                self.message = msg; self.message_time = now
-                return 'pet_switch', msg
-            return 'none', None
-
-        if key == 'n':
-            msg = self.switch_pet(1)
-            self.message = msg; self.message_time = now
-            return 'pet_switch', msg
-
-        if key == 'w':
-            msg = self.adopt_pet()
-            if msg is None:
-                return 'mode_change', self.mode
-            self.message = msg; self.message_time = now
-            return 'action', msg
-
-        if key == 't':
-            if self.mode == 'stats': self.mode = 'expanded'
-            elif self.mode == 'expanded': self.mode = 'stats'
-            else: self.mode = 'stats'
-            return 'mode_change', self.mode
-
-        if key == 'a':
-            if self.mode == 'achievements': self.mode = 'expanded'
-            elif self.mode in ('expanded', 'stats'): self.mode = 'achievements'
-            else: self.mode = 'achievements'
-            return 'mode_change', self.mode
-
-        if key == 'r' and self.mode == 'stats':
-            self._rename_input = ''
-            self.mode = 'rename'
-            return 'mode_change', self.mode
-
-        if key == 'l':
-            if self.mode == 'lan': self.mode = 'expanded'
-            elif self.mode in ('expanded', 'stats', 'achievements', 'items'): self.mode = 'lan'
-            else: self.mode = 'lan'
-            return 'mode_change', self.mode
-
-        if key == 'u' and self.mode != 'lan':
-            if self.mode == 'items':
-                self.mode = 'expanded'
-            elif self.mode in ('expanded', 'stats', 'achievements'):
-                self.mode = 'items'
-            else:
-                self.mode = 'items'
-            return 'mode_change', self.mode
-
-        if key == 'e' and self.mode not in ('compact', 'lan'):
-            return 'export', None
-
-        if key == 'f' and self.mode != 'lan':
-            msg, anim = self.handle_action('feed')
-            self.message = msg; self.message_time = now; self.action_message_time = now
-            if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
-            return 'action', msg
-
-        if key == 'p' and self.mode != 'lan':
-            msg, anim = self.handle_action('play')
-            self.message = msg; self.message_time = now; self.action_message_time = now
-            if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
-            return 'action', msg
-
-        if key == 's':
-            msg, anim = self.handle_action('sleep')
-            self.message = msg; self.message_time = now; self.action_message_time = now
-            if anim: self.anim_end = now + 1.5; self.anim_frames = ANIMATIONS[anim]; self.anim_idx = 0
-            return 'action', msg
-
-        if self.mode == 'release':
-            if key in ('1','2','3'):
-                idx = int(key) - 1
-                if idx < len(self.pets_data['pets']):
-                    msg = self.release_pet(idx)
-                    self.message = msg; self.message_time = now
-                    return 'action', msg
-            if key == 'c':
-                self.mode = 'expanded'
-                return 'mode_change', self.mode
-            return 'none', None
-
-        if self.mode == 'items':
-            if key in ('1','2','3','4','5','6','7'):
-                idx = int(key) - 1
-                inv_list = self.get_inventory_list()
-                if idx < len(inv_list):
-                    iid = inv_list[idx][0]
-                    msg = self.use_item(iid)
-                    self.message = msg; self.message_time = now
-                    return 'action', msg
-            if key == 'c':
-                self.mode = 'expanded'
-                return 'mode_change', self.mode
-            return 'none', None
-
-        return 'none', None
+        return result
 
     # ─── LAN multiplayer ──────────────────────────────────────────────────
 
@@ -2013,336 +1852,14 @@ class PetGame:
                 pass  # 单条消息处理失败不影响后续
 
     def _handle_lan_message(self, msg):
-        """处理单条网络消息。"""
-        from ascii_pet.protocol import (MSG_VISIT_REQ, MSG_VISIT_DATA, MSG_VISIT_LEAVE,
-                                  MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT, MSG_VISIT_END,
-                                  MSG_CHALLENGE_REQ, MSG_CHALLENGE_ACK, MSG_CHALLENGE_RESULT,
-                                  MSG_GIFT_ITEM, MSG_GIFT_ACK,
-                                  MSG_TRADE_REQ, MSG_TRADE_ACK, MSG_TRADE_CONFIRM)
-        msg_type = msg.get("type")
-        payload = msg.get("payload", {})
-        now = time.time()
-
-        if msg_type == MSG_VISIT_REQ:
-            # 单向拜访，自动接收
-            snapshot = payload.get("pet_snapshot", {})
-            from_id = payload.get("from", "")
-            from_username = payload.get("from_username", "?")
-            self.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot}
-            self.visitor_pets.append(snapshot)
-            self.message = _("{username}'s pet {name} came to visit!").format(username=from_username, name=snapshot.get('name','?'))
-            self.message_time = now
-            self.visit_message_time = now
-
-        elif msg_type == MSG_VISIT_FEED:
-            # 收到远程喂食请求，执行本地 feed 并显示数值变化
-            stat_key = 'HUNGER'
-            before = self.state['stats'].get(stat_key, 0)
-            result = self.handle_action('feed')
-            after = self.state['stats'].get(stat_key, 0)
-            delta = after - before
-            from_name = payload.get("from", "?")
-            if delta > 0:
-                self.message = _("{name} fed your pet! {stat} {before}->{after}(+{delta})").format(name=from_name, stat=stat_key, before=before, after=after, delta=delta)
-            else:
-                self.message = _("{name} fed your pet! {result}").format(name=from_name, result=result[0])
-            self.message_time = now
-            self.visit_message_time = now
-
-        elif msg_type == MSG_VISIT_PLAY:
-            # 收到远程玩耍请求，执行本地 play 并显示数值变化
-            stat_key = 'HAPPY'
-            before = self.state['stats'].get(stat_key, 0)
-            result = self.handle_action('play')
-            after = self.state['stats'].get(stat_key, 0)
-            delta = after - before
-            from_name = payload.get("from", "?")
-            if delta > 0:
-                self.message = _("{name} played with your pet! {stat} {before}->{after}(+{delta})").format(name=from_name, stat=stat_key, before=before, after=after, delta=delta)
-            else:
-                self.message = _("{name} played with your pet! {result}").format(name=from_name, result=result[0])
-            self.message_time = now
-            self.visit_message_time = now
-
-        elif msg_type == MSG_VISIT_EVENT:
-            # 收到随机事件，应用效果
-            description = payload.get("description", "")
-            stat_effects = payload.get("stat_effects", {})
-            event_type = payload.get("event_type", "visit_event")
-            # Build an Event from the wire-format payload and delegate to
-            # apply_event(). Event normalizes stat keys to UPPERCASE, so
-            # lowercase keys from the wire format are handled.
-            visit_evt = Event(
-                event_id=event_type,
-                description=description,
-                effects=stat_effects,
-                target='self',
-                category='visit',
-            )
-            apply_event(self.state, visit_evt)
-            self.message = _("Visit event: {desc}").format(desc=description)
-            self.message_time = now
-            self.visit_message_time = now
-
-        elif msg_type == MSG_VISIT_END:
-            # 结束拜访
-            if self.active_visit:
-                self.active_visit = None
-                self.message = _("Visit ended")
-                self.message_time = now
-            if self.being_visited:
-                snap = self.being_visited.get("pet_snapshot", {})
-                snap_name = snap.get("name", "")
-                for i, v in enumerate(self.visitor_pets):
-                    if v.get("name", "") == snap_name:
-                        self.visitor_pets.pop(i)
-                        break
-                self.being_visited = None
-                self.message = _("Visit ended")
-                self.message_time = now
-
-        elif msg_type == MSG_VISIT_DATA:
-            # 兼容旧客户端：直接加入访客列表
-            self.receive_visitor(payload)
-            self.message = _("{name} came to visit!").format(name=payload.get('name',''))
-            self.message_time = now
-
-        elif msg_type == MSG_VISIT_LEAVE:
-            # 兼容旧客户端：移除对应访客
-            pet_name = payload.get("pet_name", "")
-            for i, v in enumerate(self.visitor_pets):
-                if v.get("name") == pet_name:
-                    self.visitor_pets.pop(i)
-                    break
-
-        # ─── Battle (challenge) message handling ───────────────────────────
-        elif msg_type == MSG_CHALLENGE_REQ:
-            # Received by defender: accept or escape, then send ACK
-            from_username = payload.get("from_username", "?")
-            result = self.accept_challenge(payload)
-            if result.get("escaped"):
-                self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
-                    "escaped": True,
-                    "reason": result.get("reason", ""),
-                    "from": self.lan_node.node_id,
-                })
-                self.message = _("Your pet escaped!")
-            else:
-                self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
-                    "escaped": False,
-                    "defender_snapshot": result.get("defender_snapshot", {}),
-                    "from": self.lan_node.node_id,
-                })
-                self.message = _("{username} challenges you!").format(username=from_username)
-            self.message_time = now
-
-        elif msg_type == MSG_CHALLENGE_ACK:
-            # Received by attacker: opponent escaped or battle proceeds
-            if payload.get("escaped"):
-                self.message = _("Opponent escaped!")
-                self.active_challenge = None
-            else:
-                from ascii_pet.battle import simulate_battle
-                attacker_snapshot = self.active_challenge.get("pet_snapshot", {}) if self.active_challenge else {}
-                defender_snapshot = payload.get("defender_snapshot", {})
-                seed = int(time.time())
-                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
-                if battle_result["winner"] == attacker_snapshot.get("name", ""):
-                    winner = "attacker"
-                else:
-                    winner = "defender"
-                result = {
-                    "winner": winner,
-                    "log": battle_result["log"],
-                    "hp_loss_winner": battle_result["hp_loss_winner"],
-                    "hp_loss_loser": battle_result["hp_loss_loser"],
-                    "attacker_snapshot": attacker_snapshot,
-                    "defender_snapshot": defender_snapshot,
-                    "seed": seed,
-                }
-                self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_RESULT, result)
-                self.apply_battle_result(result)
-                self.battle_result = battle_result
-                if winner == "attacker":
-                    self.message = _("You won the battle!")
-                else:
-                    self.message = _("You lost the battle!")
-            self.message_time = now
-
-        elif msg_type == MSG_CHALLENGE_RESULT:
-            # Received by defender: re-simulate battle locally for i18n logs
-            attacker_snapshot = payload.get("attacker_snapshot")
-            defender_snapshot = payload.get("defender_snapshot")
-            seed = payload.get("seed")
-            if attacker_snapshot and defender_snapshot and seed is not None:
-                from ascii_pet.battle import simulate_battle
-                battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
-                self.apply_battle_result(payload)
-                self.battle_result = battle_result
-            else:
-                # Fallback for older clients that don't send snapshots/seed
-                self.apply_battle_result(payload)
-                self.battle_result = payload
-            if payload.get("winner") == "defender":
-                self.message = _("You won the battle!")
-            else:
-                self.message = _("You lost the battle!")
-            self.message_time = now
-
-        # ─── Gift message handling ─────────────────────────────────────────
-        elif msg_type == MSG_GIFT_ITEM:
-            # Received by receiver: add item, send ACK
-            from_username = payload.get("from_username", "?")
-            item_id = payload.get("item_id", "")
-            count = payload.get("count", 1)
-            result = self.receive_gift(item_id, count)
-            self.lan_node.send_to_peer(payload.get("from", ""), MSG_GIFT_ACK, {
-                "success": result.get("success", False),
-                "from": self.lan_node.node_id,
-            })
-            if result.get("success"):
-                self.message = _("Received {count} {item} from {username}!").format(
-                    count=count, item=item_id, username=from_username)
-            else:
-                self.message = _("Inventory full!")
-            self.message_time = now
-
-        elif msg_type == MSG_GIFT_ACK:
-            # Received by sender: confirm gift sent
-            success = payload.get("success", False)
-            self.confirm_gift_sent(success)
-
-        # ─── Trade message handling ────────────────────────────────────────
-        elif msg_type == MSG_TRADE_REQ:
-            # Received by receiver: store for UI confirmation
-            self.pending_trade_req = payload
-            from_username = payload.get("from_username", "?")
-            self.message = _("{username} wants to trade! [y/n]").format(username=from_username)
-            self.message_time = now
-
-        elif msg_type == MSG_TRADE_ACK:
-            # Received by initiator: trade accepted or rejected
-            if payload.get("accepted"):
-                if self.active_trade:
-                    my_index = self.active_trade["pet_index"]
-                    my_pet = self.pets_data['pets'][my_index]
-                    self.lan_node.send_to_peer(payload.get("from", ""), MSG_TRADE_CONFIRM, {
-                        "pet_snapshot": my_pet,
-                        "pet_index": my_index,
-                        "from": self.lan_node.node_id,
-                    })
-                    self.execute_trade(payload)
-                    self.message = _("Trade complete!")
-                else:
-                    self.message = _("Trade failed")
-            else:
-                self.active_trade = None
-                self.message = _("Trade rejected")
-            self.message_time = now
-
-        elif msg_type == MSG_TRADE_CONFIRM:
-            # Received by receiver: execute trade
-            self.execute_trade(payload)
-            self.message = _("Trade complete!")
-            self.message_time = now
-
-    def _handle_lan_submode_key(self, key):
-        """Handle key presses in LAN submode (challenge/gift/trade selection)."""
-        now = time.time()
-
-        # Cancel submode
-        if key in ('\x1b', 'q'):
-            self.lan_submode = None
-            self.lan_submode_data = None
-            self.message = _("Cancelled")
-            self.message_time = now
-            return 'action', self.message
-
-        # Digit selection
-        if key in '123456789':
-            idx = int(key) - 1
-            # Use current page peers for selection (consistent with display)
-            peers_page, total_pages, cur_page = self.get_lan_peers_page()
-            all_peers = self.get_lan_peers()
-
-            if self.lan_submode == 'visit':
-                if idx < len(peers_page):
-                    peer = peers_page[idx]
-                    peer_id = peer.get('node_id', '')
-                    self.lan_submode = None
-                    if self.invite_visit(peer_id):
-                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
-                    # invite_visit sets its own error message on failure
-                else:
-                    self.lan_submode = None
-                    self.message = _("Invalid selection")
-                self.message_time = now
-                return 'action', self.message
-
-            elif self.lan_submode == 'challenge':
-                if idx < len(peers_page):
-                    peer = peers_page[idx]
-                    peer_id = peer.get('node_id', '')
-                    self.lan_submode = None
-                    if self.initiate_challenge(peer_id):
-                        self.message = _("Challenge initiated!")
-                        # Increment daily challenge count
-                        today = datetime.now().date().isoformat()
-                        challenge_log = self.pets_data.setdefault('challenge_log', {})
-                        challenge_log[today] = challenge_log.get(today, 0) + 1
-                        self.save()
-                    # initiate_challenge sets its own error message on failure
-                else:
-                    self.lan_submode = None
-                    self.message = _("Invalid selection")
-                self.message_time = now
-                return 'action', self.message
-
-            elif self.lan_submode == 'gift':
-                if idx < len(peers_page):
-                    peer = peers_page[idx]
-                    self.lan_submode_data = {'target_node_id': peer.get('node_id', '')}
-                    self.lan_submode = 'gift_item'
-                    self.message = _("Select item to gift")
-                else:
-                    self.lan_submode = None
-                    self.message = _("Invalid selection")
-                self.message_time = now
-                return 'action', self.message
-
-            elif self.lan_submode == 'gift_item':
-                inv_list = self.get_inventory_list()
-                if idx < len(inv_list):
-                    item_id = inv_list[idx][0]
-                    target_id = self.lan_submode_data.get('target_node_id', '')
-                    self.lan_submode = None
-                    self.lan_submode_data = None
-                    if self.gift_item(target_id, item_id, 1):
-                        self.message = _("Gift sent!")
-                    # gift_item sets its own error message on failure
-                else:
-                    self.lan_submode = None
-                    self.lan_submode_data = None
-                    self.message = _("Invalid selection")
-                self.message_time = now
-                return 'action', self.message
-
-            elif self.lan_submode == 'trade':
-                if idx < len(peers_page):
-                    peer = peers_page[idx]
-                    peer_id = peer.get('node_id', '')
-                    self.lan_submode = None
-                    if self.initiate_trade(peer_id, self.pet_idx):
-                        self.message = _("Trade request sent!")
-                    # initiate_trade sets its own error message on failure
-                else:
-                    self.lan_submode = None
-                    self.message = _("Invalid selection")
-                self.message_time = now
-                return 'action', self.message
-
-        # Ignore other keys in submode
-        return 'none', None
+        """Handle a single LAN message. Delegates to LanState.handle_lan_message()."""
+        from ascii_pet.states import LanState, LanMessageEvent
+        event = LanMessageEvent(
+            msg_type=msg.get('type', ''),
+            payload=msg.get('payload', {}),
+        )
+        lan_state = LanState()
+        lan_state.handle_lan_message(self, event)
 
     def _tick_challenge_timeout(self):
         """检查挑战超时。"""

@@ -445,6 +445,8 @@ class TestAdoptPet:
         game.save()
         result = game.adopt_pet()
         assert result is None
+        # Mode change happens via handle_key('w'), not adopt_pet() directly
+        action_type, detail = game.handle_key('w')
         assert game.mode == 'release'
 
     def test_adopt_pet_daily_limit_rejected(self, game):
