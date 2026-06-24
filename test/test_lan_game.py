@@ -1306,7 +1306,7 @@ class TestLanPanelMode:
     # --- Keys 1-9: invite_visit when not in active visit ---
 
     def test_key_1_invites_first_peer(self, lan_game):
-        """In lan mode, pressing 'v' then '1' invites the first peer."""
+        """In lan mode, pressing 'v' then '1' invites the first peer and auto-transitions to expanded."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
         ]
@@ -1314,20 +1314,20 @@ class TestLanPanelMode:
         lan_game.handle_key('v')
         assert lan_game.lan_submode == 'visit'
         result_type, result_val = lan_game.handle_key('1')
-        assert result_type == 'action'
+        assert result_type == 'mode_change'
         assert lan_game.active_visit is not None
         assert lan_game.active_visit['target'] == 'peer-1'
         assert 'Bob' in lan_game.message
 
     def test_key_2_invites_second_peer(self, lan_game):
-        """In lan mode, pressing 'v' then '2' invites the second peer."""
+        """In lan mode, pressing 'v' then '2' invites the second peer and auto-transitions to expanded."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
             {'node_id': 'peer-2', 'username': 'Carol', 'pet_summary': {}},
         ]
         lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('2')
-        assert result_type == 'action'
+        assert result_type == 'mode_change'
         assert lan_game.active_visit is not None
         assert lan_game.active_visit['target'] == 'peer-2'
 
@@ -1523,12 +1523,10 @@ class TestExpandedModeNoLanKeys:
         assert result_type == 'export'
 
     def test_key_e_does_not_end_visit_in_expanded(self, expanded_game):
-        """In expanded mode, pressing 'e' does not end an active visit."""
+        """In expanded mode, pressing 'e' with active_visit ends the visit."""
         expanded_game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
         result_type, _ = expanded_game.handle_key('e')
-        assert result_type == 'export'
-        # active_visit should NOT be cleared
-        assert expanded_game.active_visit is not None
+        assert result_type == 'action'
 
 
 # ─── 11. LAN panel pagination ──────────────────────────────────────────────
@@ -1589,12 +1587,12 @@ class TestLanPagination:
         assert lan_game.lan_page == 0
 
     def test_number_key_uses_page_offset(self, lan_game):
-        """With 10 peers and lan_page=1, pressing 'v' then '1' visits peer index 9."""
+        """With 10 peers and lan_page=1, pressing 'v' then '1' visits peer index 9 and auto-transitions to expanded."""
         lan_game.lan_node._peers = _make_peers(10)
         lan_game.lan_page = 1
         lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('1')
-        assert result_type == 'action'
+        assert result_type == 'mode_change'
         assert lan_game.active_visit is not None
         # Page 2 (index 1), item 1 → overall index 1*9 + 0 = 9 → peer-9
         assert lan_game.active_visit['target'] == 'peer-9'

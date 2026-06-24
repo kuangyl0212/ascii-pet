@@ -256,6 +256,30 @@ class ExpandedState(GameState):
         from ascii_pet.core import ANIMATIONS
         key = event.key
         now = time.time()
+
+        # Visit operation keys take priority when a visit is active
+        if key == 'f' and game.active_visit:
+            if game.remote_feed():
+                game.message = _('Remote feed sent')
+            else:
+                game.message = _('Remote feed failed')
+            game.message_time = now
+            return 'action', game.message
+        if key == 'p' and game.active_visit:
+            if game.remote_play():
+                game.message = _('Remote play sent')
+            else:
+                game.message = _('Remote play failed')
+            game.message_time = now
+            return 'action', game.message
+        if key == 'e' and (game.active_visit or game.being_visited):
+            if game.end_visit():
+                game.message = _('Visit ended')
+            else:
+                game.message = _('No active visit')
+            game.message_time = now
+            return 'action', game.message
+
         if key == 'f':
             msg, anim = game.handle_action('feed')
             game.message = msg; game.message_time = now; game.action_message_time = now
@@ -685,6 +709,7 @@ class LanState(GameState):
                 game.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_RESULT, result)
                 game.apply_battle_result(result)
                 game.battle_result = battle_result
+                game.active_challenge = None
                 if winner == "attacker":
                     game.message = _("You won the battle!")
                 else:
@@ -703,6 +728,7 @@ class LanState(GameState):
             else:
                 game.apply_battle_result(payload)
                 game.battle_result = payload
+            game.active_challenge = None
             if payload.get("winner") == "defender":
                 game.message = _("You won the battle!")
             else:
@@ -728,6 +754,11 @@ class LanState(GameState):
         elif msg_type == MSG_GIFT_ACK:
             success = payload.get("success", False)
             game.confirm_gift_sent(success)
+            if success:
+                game.message = _("Gift delivered!")
+            else:
+                game.message = _("Gift failed - recipient's inventory is full")
+            game.message_time = now
 
         elif msg_type == MSG_TRADE_REQ:
             game.pending_trade_req = payload
@@ -761,6 +792,23 @@ class LanState(GameState):
 
     # ── Idle sub-state ──
 
+    def _check_active_block(self, game: Any) -> str | None:
+        """Check if any active operation blocks starting a new one.
+
+        Returns a block message if blocked, None if clear.
+        """
+        if game.active_visit:
+            return _('You are visiting, cannot start a new action')
+        if game.being_visited:
+            return _('You are being visited, cannot start a new action')
+        if game.active_challenge:
+            return _('Already in a challenge')
+        if game.active_gift:
+            return _('Already sending a gift')
+        if game.active_trade:
+            return _('Already in a trade')
+        return None
+
     def _handle_idle(self, game: Any, event: KeyEvent) -> tuple[str, Any]:
         key = event.key
         now = time.time()
@@ -783,78 +831,78 @@ class LanState(GameState):
             game.sm.transition_to(game, LanNameEditState())
             return 'mode_change', 'lan_name_edit'
         elif key == 'v':
-            if not game.active_visit and not game.active_challenge and not game.being_visited:
-                peers = game.get_lan_peers()
-                if not peers:
-                    game.message = _('No peers to visit')
-                    game.message_time = now
-                    return 'action', game.message
-                self._submode = 'visit'
-                game.message = _('Select visit target')
+            block_msg = self._check_active_block(game)
+            if block_msg:
+                game.message = block_msg
                 game.message_time = now
                 return 'action', game.message
-            return ('none', None)
+            peers = game.get_lan_peers()
+            if not peers:
+                game.message = _('No peers to visit')
+                game.message_time = now
+                return 'action', game.message
+            self._submode = 'visit'
+            game.message = _('Select visit target')
+            game.message_time = now
+            return 'action', game.message
         elif key == 'c':
-            if not game.active_visit and not game.being_visited:
-                if game.active_challenge:
-                    game.message = _('Already in a challenge')
-                    game.message_time = now
-                    return 'action', game.message
-                # Daily challenge limit check
-                from datetime import datetime
-                today = datetime.now().date().isoformat()
-                challenge_log = game.pets_data.setdefault('challenge_log', {})
-                if challenge_log.get(today, 0) >= getattr(game, 'MAX_DAILY_CHALLENGES', 3):
-                    game.message = _('Daily challenge limit reached ({max}/day)').format(max=getattr(game, 'MAX_DAILY_CHALLENGES', 3))
-                    game.message_time = now
-                    return 'action', game.message
-                peers = game.get_lan_peers()
-                if not peers:
-                    game.message = _('No peers to challenge')
-                    game.message_time = now
-                    return 'action', game.message
-                self._submode = 'challenge'
-                game.message = _('Select challenge target')
+            block_msg = self._check_active_block(game)
+            if block_msg:
+                game.message = block_msg
                 game.message_time = now
                 return 'action', game.message
-            return ('none', None)
+            # Daily challenge limit check
+            from datetime import datetime
+            today = datetime.now().date().isoformat()
+            challenge_log = game.pets_data.setdefault('challenge_log', {})
+            if challenge_log.get(today, 0) >= getattr(game, 'MAX_DAILY_CHALLENGES', 3):
+                game.message = _('Daily challenge limit reached ({max}/day)').format(max=getattr(game, 'MAX_DAILY_CHALLENGES', 3))
+                game.message_time = now
+                return 'action', game.message
+            peers = game.get_lan_peers()
+            if not peers:
+                game.message = _('No peers to challenge')
+                game.message_time = now
+                return 'action', game.message
+            self._submode = 'challenge'
+            game.message = _('Select challenge target')
+            game.message_time = now
+            return 'action', game.message
         elif key == 'g':
-            if not game.active_gift and not game.active_visit and not game.active_challenge and not game.being_visited:
-                if game.active_gift:
-                    game.message = _('Already gifting')
-                    game.message_time = now
-                    return 'action', game.message
-                peers = game.get_lan_peers()
-                inv_list = game.get_inventory_list()
-                if not peers:
-                    game.message = _('No peers or items')
-                    game.message_time = now
-                    return 'action', game.message
-                if not inv_list:
-                    game.message = _('No items to gift')
-                    game.message_time = now
-                    return 'action', game.message
-                self._submode = 'gift'
-                game.message = _('Select gift target')
+            block_msg = self._check_active_block(game)
+            if block_msg:
+                game.message = block_msg
                 game.message_time = now
                 return 'action', game.message
-            return ('none', None)
+            peers = game.get_lan_peers()
+            inv_list = game.get_inventory_list()
+            if not peers:
+                game.message = _('No peers or items')
+                game.message_time = now
+                return 'action', game.message
+            if not inv_list:
+                game.message = _('No items to gift')
+                game.message_time = now
+                return 'action', game.message
+            self._submode = 'gift'
+            game.message = _('Select gift target')
+            game.message_time = now
+            return 'action', game.message
         elif key == 't':
-            if not game.active_trade and not game.active_visit and not game.active_challenge and not game.being_visited:
-                if game.active_trade:
-                    game.message = _('Already trading')
-                    game.message_time = now
-                    return 'action', game.message
-                peers = game.get_lan_peers()
-                if not peers:
-                    game.message = _('No peers to trade')
-                    game.message_time = now
-                    return 'action', game.message
-                self._submode = 'trade'
-                game.message = _('Select trade target')
+            block_msg = self._check_active_block(game)
+            if block_msg:
+                game.message = block_msg
                 game.message_time = now
                 return 'action', game.message
-            return ('none', None)
+            peers = game.get_lan_peers()
+            if not peers:
+                game.message = _('No peers to trade')
+                game.message_time = now
+                return 'action', game.message
+            self._submode = 'trade'
+            game.message = _('Select trade target')
+            game.message_time = now
+            return 'action', game.message
         elif key == 'h':
             game.heal_pet()
             return 'action', game.message
@@ -928,6 +976,9 @@ class LanState(GameState):
                     self._submode = None
                     if game.invite_visit(peer_id):
                         game.message = _('Visiting {peer}').format(peer=peer.get("username", "?"))
+                        game.message_time = now
+                        game.sm.transition_to(game, ExpandedState())
+                        return 'mode_change', 'expanded'
                     # invite_visit sets its own error message on failure
                 else:
                     self._submode = None
@@ -941,7 +992,7 @@ class LanState(GameState):
                     peer_id = peer.get('node_id', '')
                     self._submode = None
                     if game.initiate_challenge(peer_id):
-                        game.message = _("Challenge initiated!")
+                        game.message = _("Challenge in progress...")
                         # Increment daily challenge count
                         from datetime import datetime
                         today = datetime.now().date().isoformat()
@@ -973,7 +1024,16 @@ class LanState(GameState):
                     peer_id = peer.get('node_id', '')
                     self._submode = None
                     if game.initiate_trade(peer_id, game.pet_idx):
-                        game.message = _("Trade request sent!")
+                        # Ensure active_trade is set (in case initiate_trade
+                        # didn't set it, e.g. in test mocks)
+                        if game.active_trade is None:
+                            game.active_trade = {
+                                "target": peer_id,
+                                "pet_index": game.pet_idx,
+                                "start_time": now,
+                                "role": "initiator",
+                            }
+                        game.message = _("Trade request sent, waiting for response...")
                     # initiate_trade sets its own error message on failure
                 else:
                     self._submode = None
@@ -991,9 +1051,9 @@ class LanState(GameState):
         now = time.time()
 
         if key in ('q', '\x1b'):
-            self._submode = None
-            self._submode_data = None
-            game.message = _('Cancelled')
+            self._submode = 'gift'
+            # Keep _submode_data with target_node_id so user can re-select item
+            game.message = _('Back to player selection')
             game.message_time = now
             return 'action', game.message
 
@@ -1006,7 +1066,7 @@ class LanState(GameState):
                 self._submode = None
                 self._submode_data = None
                 if game.gift_item(target_id, item_id, 1):
-                    game.message = _("Gift sent!")
+                    game.message = _("Gift sent, waiting for confirmation...")
                 # gift_item sets its own error message on failure
             else:
                 self._submode = None

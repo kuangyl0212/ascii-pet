@@ -1332,6 +1332,9 @@ class PetWindow:
                 lines.append((_('  [Visitor] {} (from {})').format(visitor.get("name","?"), visitor.get("owner","?")), COLOR_MSG))
                 for row in v_frame:
                     lines.append((f'  {row}', COLOR_DIM))
+        # Show visit operation hints in expanded/compact mode
+        if (g.active_visit or g.being_visited) and g.mode in ('compact', 'expanded'):
+            lines.append((_('[e]End Visit [f]Feed [p]Play'), COLOR_DIM))
         # Show battle log after a battle
         if g.battle_result and g.mode in ('expanded', 'lan'):
             lines.append(('', COLOR_WHITE))

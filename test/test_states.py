@@ -486,6 +486,12 @@ def _make_mock_game(initial_state_id='expanded'):
         ],
         'inventory': {'apple': 2, 'toy': 1},
     }
+    game.active_visit = None
+    game.being_visited = None
+    game.remote_feed.return_value = True
+    game.remote_play.return_value = True
+    game.end_visit.return_value = True
+
     game.handle_action.return_value = ('action_msg', None)
     game.switch_pet.return_value = 'switched_msg'
     game.adopt_pet.return_value = 'adopted_msg'
@@ -1236,7 +1242,10 @@ class _MockGame:
         self.active_trade = None
 
         # Pet data
-        self.pets_data = {}
+        self.pets_data = {
+            'pets': [{'name': 'MyPet', 'species': 'cat', 'rarity': 'common', 'level': 1}],
+            'inventory': {'apple': 3, 'toy': 1},
+        }
         self.pet_idx = 0
         self.state = {
             'is_dead': False,
@@ -1285,14 +1294,32 @@ class _MockGame:
     # ── LAN actions ──
     def invite_visit(self, peer_id):
         self._calls.append(('invite_visit', peer_id))
+        self.active_visit = {'target': peer_id, 'start_time': time.time(), 'pet_snapshot': {}}
         return True
 
     def initiate_challenge(self, peer_id):
         self._calls.append(('initiate_challenge', peer_id))
+        self.active_challenge = {
+            'target': peer_id,
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'TestPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'role': 'attacker',
+        }
         return True
 
     def gift_item(self, peer_id, item_id, count=1):
         self._calls.append(('gift_item', peer_id, item_id, count))
+        # Simulate real gift_item: set active_gift
+        self.active_gift = {
+            'target': peer_id,
+            'item_id': item_id,
+            'count': count,
+            'start_time': time.time(),
+        }
         return True
 
     def initiate_trade(self, peer_id, pet_idx):
@@ -1359,9 +1386,27 @@ class _MockGame:
 
     def confirm_gift_sent(self, success):
         self._calls.append(('confirm_gift_sent', success))
+        # Simulate real confirm_gift_sent: deduct item on success, clear active_gift
+        if self.active_gift:
+            if success:
+                # Deduct item from inventory
+                inv = self.pets_data.setdefault('inventory', {})
+                item_id = self.active_gift['item_id']
+                count = self.active_gift['count']
+                inv[item_id] = max(0, inv.get(item_id, 0) - count)
+                if inv[item_id] <= 0:
+                    del inv[item_id]
+            self.active_gift = None
 
     def execute_trade(self, payload):
         self._calls.append(('execute_trade', payload))
+        # Simulate real execute_trade: replace pet and clear active_trade
+        if self.active_trade:
+            my_index = self.active_trade["pet_index"]
+            received_pet = payload.get("pet_snapshot", {})
+            if my_index < len(self.pets_data['pets']):
+                self.pets_data['pets'][my_index] = received_pet
+            self.active_trade = None
 
     def accept_trade(self, trade_req, pet_index, accepted=True):
         self._calls.append(('accept_trade', trade_req, pet_index, accepted))
@@ -1697,25 +1742,61 @@ class TestLanState:
         lan.handle_key(game, KeyEvent(key='1'))
         # First item in inventory is 'apple'
         assert ('gift_item', 'peer1', 'apple', 1) in game._calls
+
+    def test_gift_item_sets_active_gift(self):
+        """After selecting an item, active_gift should be set with gift data."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'gift_item'
+        lan._submode_data = {'target_node_id': 'peer1'}
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert game.active_gift is not None
+        assert game.active_gift['target'] == 'peer1'
+        assert game.active_gift['item_id'] == 'apple'
+        assert game.active_gift['count'] == 1
+
+    def test_gift_item_returns_to_idle_after_sending(self):
+        """After selecting an item, submode should return to idle."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'gift_item'
+        lan._submode_data = {'target_node_id': 'peer1'}
+        lan.handle_key(game, KeyEvent(key='1'))
         assert lan._submode is None
 
-    def test_gift_item_q_returns_to_idle(self):
+    def test_gift_item_shows_waiting_message(self):
+        """After sending a gift, message should say 'waiting for confirmation'."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'gift_item'
+        lan._submode_data = {'target_node_id': 'peer1'}
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert 'waiting' in game.message.lower() or 'confirm' in game.message.lower()
+
+    def test_gift_item_q_returns_to_gift_submode(self):
+        """ESC/q in gift_item should return to gift submode (player selection), NOT idle."""
         from ascii_pet.states import KeyEvent
         lan = self._make_lan_state()
         game = self._make_game()
         lan._submode = 'gift_item'
         lan._submode_data = {'target_node_id': 'peer1'}
         lan.handle_key(game, KeyEvent(key='q'))
-        assert lan._submode is None
+        assert lan._submode == 'gift'
+        assert lan._submode_data.get('target_node_id') == 'peer1'
 
-    def test_gift_item_esc_returns_to_idle(self):
+    def test_gift_item_esc_returns_to_gift_submode(self):
+        """ESC in gift_item should return to gift submode (player selection), NOT idle."""
         from ascii_pet.states import KeyEvent
         lan = self._make_lan_state()
         game = self._make_game()
         lan._submode = 'gift_item'
         lan._submode_data = {'target_node_id': 'peer1'}
         lan.handle_key(game, KeyEvent(key='\x1b'))
-        assert lan._submode is None
+        assert lan._submode == 'gift'
+        assert lan._submode_data.get('target_node_id') == 'peer1'
 
     # ── Selection sub-states: trade_select ──
 
@@ -2132,12 +2213,83 @@ class TestLanStateHandleLanMessage:
 
     # ── GIFT_ACK ──
 
-    def test_gift_ack_confirms_gift(self):
+    def test_gift_ack_success_calls_confirm_gift_sent(self):
         lan = self._make_lan_state()
         game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
         event = self._make_event('gift_ack', {'success': True, 'from': 'peer1'})
         lan.handle_lan_message(game, event)
         assert ('confirm_gift_sent', True) in game._calls
+
+    def test_gift_ack_success_deducts_item_from_sender(self):
+        """GIFT_ACK success=True should deduct the item from sender's inventory."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
+        before_count = game.pets_data['inventory']['apple']
+        event = self._make_event('gift_ack', {'success': True, 'from': 'peer1'})
+        lan.handle_lan_message(game, event)
+        assert game.pets_data['inventory']['apple'] == before_count - 1
+
+    def test_gift_ack_success_clears_active_gift(self):
+        """GIFT_ACK success=True should clear active_gift."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
+        event = self._make_event('gift_ack', {'success': True, 'from': 'peer1'})
+        lan.handle_lan_message(game, event)
+        assert game.active_gift is None
+
+    def test_gift_ack_success_shows_delivered_message(self):
+        """GIFT_ACK success=True should show 'Gift delivered!' message."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
+        event = self._make_event('gift_ack', {'success': True, 'from': 'peer1'})
+        lan.handle_lan_message(game, event)
+        assert 'delivered' in game.message.lower()
+
+    def test_gift_ack_failure_does_not_deduct_item(self):
+        """GIFT_ACK success=False should NOT deduct item from sender's inventory."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
+        before_count = game.pets_data['inventory']['apple']
+        event = self._make_event('gift_ack', {'success': False, 'from': 'peer1'})
+        lan.handle_lan_message(game, event)
+        assert game.pets_data['inventory']['apple'] == before_count
+
+    def test_gift_ack_failure_clears_active_gift(self):
+        """GIFT_ACK success=False should still clear active_gift."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
+        event = self._make_event('gift_ack', {'success': False, 'from': 'peer1'})
+        lan.handle_lan_message(game, event)
+        assert game.active_gift is None
+
+    def test_gift_ack_failure_shows_failure_message(self):
+        """GIFT_ACK success=False should show inventory full message."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {
+            'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time(),
+        }
+        event = self._make_event('gift_ack', {'success': False, 'from': 'peer1'})
+        lan.handle_lan_message(game, event)
+        assert 'inventory' in game.message.lower() or 'full' in game.message.lower() or 'failed' in game.message.lower()
 
     # ── TRADE_REQ ──
 
@@ -2205,3 +2357,1008 @@ class TestLanStateHandleLanMessage:
         # Should not raise
         lan.handle_lan_message(game, event)
         assert game.message == ''  # no message set
+
+
+# ─── Challenge flow integration tests ────────────────────────────────────────
+
+
+class TestChallengeFlow:
+    """Test the full challenge flow: initiate → ACK → battle result.
+
+    These tests verify that after the state machine refactoring,
+    the challenge flow works end-to-end.
+    """
+
+    def _make_lan_state(self):
+        from ascii_pet.states import LanState
+        return LanState()
+
+    def _make_game(self):
+        return _MockGame()
+
+    def _make_event(self, msg_type, payload=None):
+        from ascii_pet.states import LanMessageEvent
+        return LanMessageEvent(msg_type=msg_type, payload=payload or {})
+
+    # ── Fix 1: Challenge selection sets active_challenge and shows progress ──
+
+    def test_challenge_select_sets_active_challenge_on_success(self):
+        """After selecting a challenge target, game.active_challenge should be set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'challenge'
+        # initiate_challenge in _MockGame returns True but does NOT set active_challenge
+        # The _handle_selection code should set it after a successful initiate_challenge
+        lan.handle_key(game, KeyEvent(key='2'))
+        assert game.active_challenge is not None
+
+    def test_challenge_select_shows_progress_message(self):
+        """After selecting a challenge target, message should indicate challenge in progress."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'challenge'
+        lan.handle_key(game, KeyEvent(key='2'))
+        assert game.message is not None
+        assert 'progress' in game.message.lower() or 'Challenge' in game.message
+
+    def test_challenge_select_stays_in_lan_idle(self):
+        """After selecting a challenge target, submode should be None (idle), not expanded."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'challenge'
+        lan.handle_key(game, KeyEvent(key='2'))
+        assert lan._submode is None
+
+    # ── Fix 2: CHALLENGE_ACK (not escaped) triggers battle ──
+
+    def test_challenge_ack_triggers_battle_and_sends_result(self):
+        """When CHALLENGE_ACK with escaped=False arrives, battle is simulated
+        and CHALLENGE_RESULT is sent to the opponent."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'MyPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'role': 'attacker',
+        }
+        event = self._make_event('challenge_ack', {
+            'escaped': False,
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        # Should have sent CHALLENGE_RESULT
+        assert len(game.lan_node._sent) == 1
+        peer_id, msg_type, payload = game.lan_node._sent[0]
+        assert msg_type == 'challenge_result'
+        assert 'winner' in payload
+
+    def test_challenge_ack_applies_battle_result(self):
+        """When CHALLENGE_ACK with escaped=False arrives, apply_battle_result is called."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'MyPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'role': 'attacker',
+        }
+        event = self._make_event('challenge_ack', {
+            'escaped': False,
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        # apply_battle_result should have been called
+        assert any(c[0] == 'apply_battle_result' for c in game._calls)
+
+    def test_challenge_ack_sets_battle_result(self):
+        """When CHALLENGE_ACK with escaped=False arrives, game.battle_result is set."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'MyPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'role': 'attacker',
+        }
+        event = self._make_event('challenge_ack', {
+            'escaped': False,
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert game.battle_result is not None
+
+    def test_challenge_ack_clears_active_challenge(self):
+        """When CHALLENGE_ACK with escaped=False arrives, game.active_challenge is cleared."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'MyPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'role': 'attacker',
+        }
+        event = self._make_event('challenge_ack', {
+            'escaped': False,
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert game.active_challenge is None
+
+    # ── Fix 3: CHALLENGE_RESULT for the challenged (defender) party ──
+
+    def test_challenge_result_defender_re_simulates_battle(self):
+        """When CHALLENGE_RESULT arrives for the defender, battle is re-simulated locally."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'role': 'defender',
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+        }
+        event = self._make_event('challenge_result', {
+            'winner': 'defender',
+            'attacker_snapshot': {
+                'name': 'AtkPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'seed': 42,
+            'hp_loss_winner': 5,
+            'hp_loss_loser': 25,
+        })
+        lan.handle_lan_message(game, event)
+        # battle_result should be set (from local re-simulation)
+        assert game.battle_result is not None
+
+    def test_challenge_result_defender_applies_result(self):
+        """When CHALLENGE_RESULT arrives for the defender, apply_battle_result is called."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'role': 'defender',
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+        }
+        event = self._make_event('challenge_result', {
+            'winner': 'defender',
+            'attacker_snapshot': {
+                'name': 'AtkPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'seed': 42,
+            'hp_loss_winner': 5,
+            'hp_loss_loser': 25,
+        })
+        lan.handle_lan_message(game, event)
+        assert any(c[0] == 'apply_battle_result' for c in game._calls)
+
+    def test_challenge_result_defender_clears_active_challenge(self):
+        """When CHALLENGE_RESULT arrives for the defender, active_challenge is cleared."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'role': 'defender',
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+        }
+        event = self._make_event('challenge_result', {
+            'winner': 'defender',
+            'attacker_snapshot': {
+                'name': 'AtkPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'seed': 42,
+            'hp_loss_winner': 5,
+            'hp_loss_loser': 25,
+        })
+        lan.handle_lan_message(game, event)
+        assert game.active_challenge is None
+
+    # ── Fix 4: battle_result dismissal in handle_key ──
+
+    def test_battle_result_dismissed_by_any_key(self):
+        """When battle_result is set, any key press should clear it."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        # Create a real PetGame with a temp directory
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-challenge-dismiss', data_dir=Path(tmpdir))
+            game.battle_result = {'winner': 'MyPet', 'log': [], 'hp_loss_winner': 0, 'hp_loss_loser': 25}
+            result = game.handle_key('x')
+            assert game.battle_result is None
+            assert result == ('action', 'dismiss')
+
+    # ── Fix 5: Challenge timeout ──
+
+    def test_challenge_timeout_clears_active_challenge(self):
+        """_tick_challenge_timeout should clear active_challenge after 30 seconds."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-challenge-timeout', data_dir=Path(tmpdir))
+            game.active_challenge = {
+                'target': 'peer1',
+                'start_time': time.time() - 31,  # 31 seconds ago
+                'pet_snapshot': {'name': 'MyPet'},
+                'role': 'attacker',
+            }
+            game._tick_challenge_timeout()
+            assert game.active_challenge is None
+            assert game.message is not None
+
+    def test_challenge_timeout_not_triggered_within_30s(self):
+        """_tick_challenge_timeout should NOT clear active_challenge within 30 seconds."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-challenge-notimeout', data_dir=Path(tmpdir))
+            game.active_challenge = {
+                'target': 'peer1',
+                'start_time': time.time() - 10,  # 10 seconds ago
+                'pet_snapshot': {'name': 'MyPet'},
+                'role': 'attacker',
+            }
+            game._tick_challenge_timeout()
+            assert game.active_challenge is not None
+
+
+# ─── Visit flow integration tests ────────────────────────────────────────────
+
+
+class TestVisitAutoSwitch:
+    """Test that visit selection auto-transitions to ExpandedState.
+
+    After a successful invite_visit, the game should:
+    1. Set game.active_visit (done by invite_visit in core.py)
+    2. Auto-transition to ExpandedState so the user can interact
+    """
+
+    def _make_lan_state(self):
+        from ascii_pet.states import LanState
+        return LanState()
+
+    def _make_game(self):
+        return _MockGame()
+
+    def test_visit_select_auto_transitions_to_expanded(self):
+        """After successful invite_visit, should auto-transition to ExpandedState."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'visit'
+        result = lan.handle_key(game, KeyEvent(key='1'))
+        assert game.sm.current_state_id == 'expanded'
+        assert result == ('mode_change', 'expanded')
+
+    def test_visit_select_sets_active_visit(self):
+        """After successful invite_visit, game.active_visit should be set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'visit'
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert game.active_visit is not None
+        assert game.active_visit.get('target') == 'peer1'
+
+    def test_visit_select_stays_in_lan_on_failure(self):
+        """If invite_visit fails, should stay in LanState (not transition)."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        # Make invite_visit fail
+        game.invite_visit = lambda peer_id: False
+        lan._submode = 'visit'
+        result = lan.handle_key(game, KeyEvent(key='1'))
+        assert game.sm.current_state_id == 'lan'
+        assert result[0] == 'action'
+
+    def test_visit_select_invalid_number_stays_in_lan(self):
+        """Invalid selection should stay in LanState."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.get_lan_peers_page = lambda: (game.get_lan_peers()[:2], 1, 0)
+        lan._submode = 'visit'
+        result = lan.handle_key(game, KeyEvent(key='9'))
+        assert game.sm.current_state_id == 'lan'
+
+
+class TestExpandedStateVisitKeys:
+    """Test that ExpandedState handles visit operation keys when a visit is active.
+
+    When game.active_visit is set:
+    - 'f' key → remote_feed (not local feed)
+    - 'p' key → remote_play (not local play)
+    - 'e' key → end_visit (not export)
+
+    When game.being_visited is set:
+    - 'e' key → end_visit
+    """
+
+    def test_f_key_calls_remote_feed_when_active_visit(self):
+        """When active_visit exists, 'f' key should call remote_feed."""
+        game = _make_mock_game('expanded')
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='f'))
+        game.remote_feed.assert_called_once()
+        game.handle_action.assert_not_called()
+
+    def test_f_key_calls_normal_feed_without_active_visit(self):
+        """Without active_visit, 'f' key should call handle_action('feed')."""
+        game = _make_mock_game('expanded')
+        game.active_visit = None
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='f'))
+        game.handle_action.assert_called_once_with('feed')
+        game.remote_feed.assert_not_called()
+
+    def test_p_key_calls_remote_play_when_active_visit(self):
+        """When active_visit exists, 'p' key should call remote_play."""
+        game = _make_mock_game('expanded')
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='p'))
+        game.remote_play.assert_called_once()
+        game.handle_action.assert_not_called()
+
+    def test_p_key_calls_normal_play_without_active_visit(self):
+        """Without active_visit, 'p' key should call handle_action('play')."""
+        game = _make_mock_game('expanded')
+        game.active_visit = None
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='p'))
+        game.handle_action.assert_called_once_with('play')
+        game.remote_play.assert_not_called()
+
+    def test_e_key_calls_end_visit_when_active_visit(self):
+        """When active_visit exists, 'e' key should call end_visit."""
+        game = _make_mock_game('expanded')
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='e'))
+        game.end_visit.assert_called_once()
+
+    def test_e_key_calls_end_visit_when_being_visited(self):
+        """When being_visited exists, 'e' key should call end_visit."""
+        game = _make_mock_game('expanded')
+        game.being_visited = {'from': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='e'))
+        game.end_visit.assert_called_once()
+
+    def test_e_key_exports_without_visit(self):
+        """Without active_visit or being_visited, 'e' key should export."""
+        game = _make_mock_game('expanded')
+        game.active_visit = None
+        game.being_visited = None
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='e'))
+        assert result == ('export', None)
+        game.end_visit.assert_not_called()
+
+    def test_remote_feed_sets_message(self):
+        """Remote feed should set game.message."""
+        game = _make_mock_game('expanded')
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='f'))
+        assert game.message_time > 0
+        assert result[0] == 'action'
+
+    def test_remote_play_sets_message(self):
+        """Remote play should set game.message."""
+        game = _make_mock_game('expanded')
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='p'))
+        assert game.message_time > 0
+        assert result[0] == 'action'
+
+    def test_end_visit_sets_message(self):
+        """End visit should set game.message."""
+        game = _make_mock_game('expanded')
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        s = game.sm.current_state
+        result = s.handle_key(game, KeyEvent(key='e'))
+        assert game.message_time > 0
+        assert result[0] == 'action'
+
+
+# ─── Trade flow integration tests ─────────────────────────────────────────────
+
+
+class TestTradeFlow:
+    """Test the full trade flow: initiate → ACK → CONFIRM.
+
+    These tests verify that after the state machine refactoring,
+    the trade flow works end-to-end.
+    """
+
+    def _make_lan_state(self):
+        from ascii_pet.states import LanState
+        return LanState()
+
+    def _make_game(self):
+        return _MockGame()
+
+    def _make_event(self, msg_type, payload=None):
+        from ascii_pet.states import LanMessageEvent
+        return LanMessageEvent(msg_type=msg_type, payload=payload or {})
+
+    # ── Fix 1: Trade selection sets active_trade and shows progress ──
+
+    def test_trade_select_sets_active_trade_on_success(self):
+        """After selecting a trade target, game.active_trade should be set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        # initiate_trade in _MockGame returns True but does NOT set active_trade
+        # The _handle_selection code should set it after a successful initiate_trade
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert game.active_trade is not None
+        assert game.active_trade.get('target') == 'peer1'
+        assert game.active_trade.get('pet_index') == 0
+        assert game.active_trade.get('role') == 'initiator'
+
+    def test_trade_select_message_includes_waiting(self):
+        """After selecting a trade target, message should indicate waiting for response."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert game.message is not None
+        assert 'waiting' in game.message.lower() or 'Waiting' in game.message
+
+    def test_trade_select_returns_to_idle(self):
+        """After selecting a trade target, submode should be None (idle)."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'trade'
+        lan.handle_key(game, KeyEvent(key='1'))
+        assert lan._submode is None
+
+    # ── Fix 2: TRADE_ACK(accepted=True) sends CONFIRM and executes trade ──
+
+    def test_trade_ack_accepted_sends_trade_confirm(self):
+        """When TRADE_ACK with accepted=True arrives, TRADE_CONFIRM should be sent."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        event = self._make_event('trade_ack', {
+            'accepted': True, 'from': 'peer1', 'pet_snapshot': {'name': 'TheirPet'},
+        })
+        lan.handle_lan_message(game, event)
+        # Should have sent TRADE_CONFIRM
+        assert len(game.lan_node._sent) == 1
+        peer_id, msg_type, payload = game.lan_node._sent[0]
+        assert peer_id == 'peer1'
+        assert msg_type == 'trade_confirm'
+        assert 'pet_snapshot' in payload
+
+    def test_trade_ack_accepted_executes_trade(self):
+        """When TRADE_ACK with accepted=True arrives, execute_trade should be called."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        event = self._make_event('trade_ack', {
+            'accepted': True, 'from': 'peer1', 'pet_snapshot': {'name': 'TheirPet'},
+        })
+        lan.handle_lan_message(game, event)
+        assert any(c[0] == 'execute_trade' for c in game._calls)
+
+    def test_trade_ack_accepted_clears_active_trade(self):
+        """When TRADE_ACK with accepted=True arrives, active_trade should be cleared."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        event = self._make_event('trade_ack', {
+            'accepted': True, 'from': 'peer1', 'pet_snapshot': {'name': 'TheirPet'},
+        })
+        lan.handle_lan_message(game, event)
+        assert game.active_trade is None
+
+    def test_trade_ack_accepted_shows_complete_message(self):
+        """When TRADE_ACK with accepted=True arrives, message should indicate completion."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        event = self._make_event('trade_ack', {
+            'accepted': True, 'from': 'peer1', 'pet_snapshot': {'name': 'TheirPet'},
+        })
+        lan.handle_lan_message(game, event)
+        assert 'complete' in game.message.lower() or 'Complete' in game.message
+
+    # ── Fix 3: TRADE_ACK(accepted=False) clears trade state ──
+
+    def test_trade_ack_rejected_clears_active_trade(self):
+        """When TRADE_ACK with accepted=False arrives, active_trade should be cleared."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        event = self._make_event('trade_ack', {
+            'accepted': False, 'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert game.active_trade is None
+
+    def test_trade_ack_rejected_shows_rejected_message(self):
+        """When TRADE_ACK with accepted=False arrives, message should indicate rejection."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        event = self._make_event('trade_ack', {
+            'accepted': False, 'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert 'rejected' in game.message.lower() or 'Rejected' in game.message
+
+    # ── Fix 4: TRADE_CONFIRM executes the trade ──
+
+    def test_trade_confirm_executes_trade(self):
+        """When TRADE_CONFIRM arrives, execute_trade should be called."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'receiver'}
+        event = self._make_event('trade_confirm', {
+            'pet_snapshot': {'name': 'TheirPet'}, 'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert any(c[0] == 'execute_trade' for c in game._calls)
+
+    def test_trade_confirm_clears_active_trade(self):
+        """When TRADE_CONFIRM arrives, active_trade should be cleared."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'receiver'}
+        event = self._make_event('trade_confirm', {
+            'pet_snapshot': {'name': 'TheirPet'}, 'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert game.active_trade is None
+
+    def test_trade_confirm_shows_complete_message(self):
+        """When TRADE_CONFIRM arrives, message should indicate completion."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'receiver'}
+        event = self._make_event('trade_confirm', {
+            'pet_snapshot': {'name': 'TheirPet'}, 'from': 'peer1',
+        })
+        lan.handle_lan_message(game, event)
+        assert 'complete' in game.message.lower() or 'Complete' in game.message
+
+    # ── Fix 5: Trade timeout ──
+
+    def test_trade_timeout_clears_active_trade(self):
+        """check_trade_timeout should clear active_trade after 30 seconds."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-timeout', data_dir=Path(tmpdir))
+            game.active_trade = {
+                'target': 'peer1',
+                'pet_index': 0,
+                'start_time': time.time() - 31,  # 31 seconds ago
+                'role': 'initiator',
+            }
+            game.check_trade_timeout()
+            assert game.active_trade is None
+            assert game.message is not None
+
+    def test_trade_timeout_not_triggered_within_30s(self):
+        """check_trade_timeout should NOT clear active_trade within 30 seconds."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-notimeout', data_dir=Path(tmpdir))
+            game.active_trade = {
+                'target': 'peer1',
+                'pet_index': 0,
+                'start_time': time.time() - 10,  # 10 seconds ago
+                'role': 'initiator',
+            }
+            game.check_trade_timeout()
+            assert game.active_trade is not None
+
+    # ── Fix 6: pending_trade_req y/n handling ──
+
+    def test_pending_trade_req_y_accepts_trade(self):
+        """When pending_trade_req is set, pressing 'y' should accept the trade."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-accept', data_dir=Path(tmpdir))
+            game.pending_trade_req = {
+                'from': 'peer1',
+                'from_username': 'Alice',
+                'pet_snapshot': {'name': 'TheirPet'},
+            }
+            # We need a lan_node mock for accept_trade to work
+            game.lan_node = _MockLanNode()
+            game.lan_enabled = True
+            result = game.handle_key('y')
+            assert game.pending_trade_req is None
+            assert 'accept' in game.message.lower() or 'Accept' in game.message
+
+    def test_pending_trade_req_n_rejects_trade(self):
+        """When pending_trade_req is set, pressing 'n' should reject the trade."""
+        from ascii_pet.core import PetGame
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            game = PetGame(uid='test-trade-reject', data_dir=Path(tmpdir))
+            game.pending_trade_req = {
+                'from': 'peer1',
+                'from_username': 'Alice',
+                'pet_snapshot': {'name': 'TheirPet'},
+            }
+            # We need a lan_node mock for accept_trade to work
+            game.lan_node = _MockLanNode()
+            game.lan_enabled = True
+            result = game.handle_key('n')
+            assert game.pending_trade_req is None
+            assert 'reject' in game.message.lower() or 'Reject' in game.message
+
+
+# ─── Task 6: Mutual exclusion logic ──────────────────────────────────────────
+
+
+class TestLanMutualExclusion:
+    """Test that v/c/g/t keys check ALL five active states before entering a submode.
+
+    Each of the four operations (visit, challenge, gift, trade) must check:
+    - active_visit
+    - being_visited
+    - active_challenge
+    - active_gift
+    - active_trade
+
+    If any is set, the operation should be blocked with an appropriate message.
+    """
+
+    def _make_lan_state(self):
+        from ascii_pet.states import LanState
+        return LanState()
+
+    def _make_game(self):
+        return _MockGame()
+
+    # ── 'v' key: visit ──
+
+    def test_v_blocked_if_active_gift(self):
+        """'v' should be blocked when active_gift is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_v_blocked_if_active_trade(self):
+        """'v' should be blocked when active_trade is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_v_blocked_if_being_visited(self):
+        """'v' should be blocked when being_visited is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.being_visited = {'from': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_v_blocked_shows_message_for_active_visit(self):
+        """'v' blocked by active_visit should show 'visiting' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert 'visit' in game.message.lower()
+
+    def test_v_blocked_shows_message_for_being_visited(self):
+        """'v' blocked by being_visited should show 'being visited' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.being_visited = {'from': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert 'visit' in game.message.lower()
+
+    def test_v_blocked_shows_message_for_active_challenge(self):
+        """'v' blocked by active_challenge should show 'challenge' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {'target': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}, 'role': 'attacker'}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert 'challenge' in game.message.lower()
+
+    def test_v_blocked_shows_message_for_active_gift(self):
+        """'v' blocked by active_gift should show 'gift' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert 'gift' in game.message.lower()
+
+    def test_v_blocked_shows_message_for_active_trade(self):
+        """'v' blocked by active_trade should show 'trade' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='v'))
+        assert 'trade' in game.message.lower()
+
+    # ── 'c' key: challenge ──
+
+    def test_c_blocked_if_active_gift(self):
+        """'c' should be blocked when active_gift is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_c_blocked_if_active_trade(self):
+        """'c' should be blocked when active_trade is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_c_blocked_shows_message_for_active_visit(self):
+        """'c' blocked by active_visit should show 'visiting' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert 'visit' in game.message.lower()
+
+    def test_c_blocked_shows_message_for_being_visited(self):
+        """'c' blocked by being_visited should show 'being visited' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.being_visited = {'from': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert 'visit' in game.message.lower()
+
+    def test_c_blocked_shows_message_for_active_challenge(self):
+        """'c' blocked by active_challenge should show 'challenge' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {'target': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}, 'role': 'attacker'}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert 'challenge' in game.message.lower()
+
+    def test_c_blocked_shows_message_for_active_gift(self):
+        """'c' blocked by active_gift should show 'gift' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert 'gift' in game.message.lower()
+
+    def test_c_blocked_shows_message_for_active_trade(self):
+        """'c' blocked by active_trade should show 'trade' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='c'))
+        assert 'trade' in game.message.lower()
+
+    # ── 'g' key: gift ──
+
+    def test_g_blocked_if_active_trade(self):
+        """'g' should be blocked when active_trade is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='g'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_g_blocked_shows_message_for_active_visit(self):
+        """'g' blocked by active_visit should show 'visiting' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='g'))
+        assert 'visit' in game.message.lower()
+
+    def test_g_blocked_shows_message_for_being_visited(self):
+        """'g' blocked by being_visited should show 'being visited' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.being_visited = {'from': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result = lan.handle_key(game, KeyEvent(key='g'))
+        assert 'visit' in game.message.lower()
+
+    def test_g_blocked_shows_message_for_active_challenge(self):
+        """'g' blocked by active_challenge should show 'challenge' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {'target': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}, 'role': 'attacker'}
+        result = lan.handle_key(game, KeyEvent(key='g'))
+        assert 'challenge' in game.message.lower()
+
+    def test_g_blocked_shows_message_for_active_gift(self):
+        """'g' blocked by active_gift should show 'gift' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='g'))
+        assert 'gift' in game.message.lower()
+
+    def test_g_blocked_shows_message_for_active_trade(self):
+        """'g' blocked by active_trade should show 'trade' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='g'))
+        assert 'trade' in game.message.lower()
+
+    # ── 't' key: trade ──
+
+    def test_t_blocked_if_active_gift(self):
+        """'t' should be blocked when active_gift is set."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='t'))
+        assert lan._submode is None
+        assert game.message_time > 0
+
+    def test_t_blocked_shows_message_for_active_visit(self):
+        """'t' blocked by active_visit should show 'visiting' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_visit = {'target': 'peer1', 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='t'))
+        assert 'visit' in game.message.lower()
+
+    def test_t_blocked_shows_message_for_being_visited(self):
+        """'t' blocked by being_visited should show 'being visited' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.being_visited = {'from': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}}
+        result = lan.handle_key(game, KeyEvent(key='t'))
+        assert 'visit' in game.message.lower()
+
+    def test_t_blocked_shows_message_for_active_challenge(self):
+        """'t' blocked by active_challenge should show 'challenge' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {'target': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}, 'role': 'attacker'}
+        result = lan.handle_key(game, KeyEvent(key='t'))
+        assert 'challenge' in game.message.lower()
+
+    def test_t_blocked_shows_message_for_active_gift(self):
+        """'t' blocked by active_gift should show 'gift' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_gift = {'target': 'peer1', 'item_id': 'apple', 'count': 1, 'start_time': time.time()}
+        result = lan.handle_key(game, KeyEvent(key='t'))
+        assert 'gift' in game.message.lower()
+
+    def test_t_blocked_shows_message_for_active_trade(self):
+        """'t' blocked by active_trade should show 'trade' message."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_trade = {'target': 'peer1', 'pet_index': 0, 'start_time': time.time(), 'role': 'initiator'}
+        result = lan.handle_key(game, KeyEvent(key='t'))
+        assert 'trade' in game.message.lower()

@@ -1012,8 +1012,9 @@ class PetGame:
     def lan_page(self, value):
         """Proxy to LanState._page for backward compatibility."""
         from ascii_pet.states import LanState
-        if isinstance(self._sm.current_state, LanState):
-            self._sm.current_state._page = value
+        state = self._inner_state()
+        if isinstance(state, LanState):
+            state._page = value
 
     def count_today_adoptions(self):
         """Count how many pets were adopted today (from log, not current list)."""
@@ -1858,8 +1859,13 @@ class PetGame:
             msg_type=msg.get('type', ''),
             payload=msg.get('payload', {}),
         )
-        lan_state = LanState()
-        lan_state.handle_lan_message(self, event)
+        # Use the current LanState instance from the state machine if available
+        inner = self._inner_state()
+        if isinstance(inner, LanState):
+            inner.handle_lan_message(self, event)
+        else:
+            # Fallback: create temporary instance for non-LAN states
+            LanState().handle_lan_message(self, event)
 
     def _tick_challenge_timeout(self):
         """检查挑战超时。"""
