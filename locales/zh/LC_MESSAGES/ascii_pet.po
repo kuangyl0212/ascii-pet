@@ -707,8 +707,8 @@ msgid "Already gifting"
 msgstr "已在赠送中"
 
 #: core.py - Trade messages
-msgid "Trade request sent!"
-msgstr "交换请求已发送！"
+msgid "Trade request sent, waiting for response..."
+msgstr "交换请求已发送，等待回复..."
 
 msgid "Cannot trade now"
 msgstr "现在无法交换"

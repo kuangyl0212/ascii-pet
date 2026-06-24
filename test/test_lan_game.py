@@ -130,7 +130,7 @@ class TestLanFieldInit:
         # LAN should be enabled or disabled depending on network availability
         assert isinstance(game.lan_enabled, bool)
         assert isinstance(game.lan_peers, list)
-        assert isinstance(game.visitor_pets, list)
+        assert isinstance(game.visitor_pets, dict)
 
     def test_pending_visit_request_removed(self, game):
         """pending_visit_request field has been removed (replaced by active_visit/being_visited)."""
@@ -207,7 +207,7 @@ class TestEnableDisableLan:
             game.enable_lan('alice')
         # Add some state to verify it gets cleared
         game.lan_peers = [{'node_id': 'peer1'}]
-        game.visitor_pets = [_make_snapshot()]
+        game.visitor_pets = {'peer1': _make_snapshot(owner='peer1')}
         game.active_visit = {'target': 'peer1', 'start_time': time.time(), 'pet_snapshot': {}}
         game.being_visited = {'from': 'peer2', 'start_time': time.time(), 'pet_snapshot': {}}
         game.visit_event_cooldown = time.time() + 30
@@ -217,7 +217,7 @@ class TestEnableDisableLan:
         assert game.lan_enabled is False
         assert game.lan_node is None
         assert game.lan_peers == []
-        assert game.visitor_pets == []
+        assert game.visitor_pets == {}
         assert game.active_visit is None
         assert game.being_visited is None
         assert game.visit_event_cooldown == 0
@@ -291,40 +291,39 @@ class TestGetLanStatus:
 class TestVisitorManagement:
     """receive_visitor and dismiss_visitor behavior."""
 
-    def test_receive_visitor_adds_to_list(self, game):
-        """receive_visitor appends snapshot to visitor_pets."""
+    def test_receive_visitor_adds_to_dict(self, game):
+        """receive_visitor stores snapshot in visitor_pets keyed by owner."""
         snap = _make_snapshot(name='Buddy', owner='friend-1')
         game.receive_visitor(snap)
         assert len(game.visitor_pets) == 1
-        assert game.visitor_pets[0]['name'] == 'Buddy'
+        assert game.visitor_pets['friend-1']['name'] == 'Buddy'
 
     def test_receive_visitor_multiple(self, game):
-        """Multiple visitors can be received."""
-        game.receive_visitor(_make_snapshot(name='A'))
-        game.receive_visitor(_make_snapshot(name='B'))
-        game.receive_visitor(_make_snapshot(name='C'))
+        """Multiple visitors from different owners can be received."""
+        game.receive_visitor(_make_snapshot(name='A', owner='owner-a'))
+        game.receive_visitor(_make_snapshot(name='B', owner='owner-b'))
+        game.receive_visitor(_make_snapshot(name='C', owner='owner-c'))
         assert len(game.visitor_pets) == 3
-        assert [v['name'] for v in game.visitor_pets] == ['A', 'B', 'C']
+        assert [game.visitor_pets[k]['name'] for k in ['owner-a', 'owner-b', 'owner-c']] == ['A', 'B', 'C']
 
-    def test_dismiss_visitor_valid_index(self, game):
-        """dismiss_visitor removes visitor at valid index and returns True."""
-        game.receive_visitor(_make_snapshot(name='A'))
-        game.receive_visitor(_make_snapshot(name='B'))
-        result = game.dismiss_visitor(0)
+    def test_dismiss_visitor_valid_node_id(self, game):
+        """dismiss_visitor removes visitor by node_id and returns True."""
+        game.receive_visitor(_make_snapshot(name='A', owner='owner-a'))
+        game.receive_visitor(_make_snapshot(name='B', owner='owner-b'))
+        result = game.dismiss_visitor('owner-a')
         assert result is True
         assert len(game.visitor_pets) == 1
-        assert game.visitor_pets[0]['name'] == 'B'
+        assert game.visitor_pets['owner-b']['name'] == 'B'
 
-    def test_dismiss_visitor_invalid_index_returns_false(self, game):
-        """dismiss_visitor returns False for out-of-range index."""
-        game.receive_visitor(_make_snapshot(name='A'))
-        assert game.dismiss_visitor(5) is False
-        assert game.dismiss_visitor(-1) is False
+    def test_dismiss_visitor_invalid_node_id_returns_false(self, game):
+        """dismiss_visitor returns False for unknown node_id."""
+        game.receive_visitor(_make_snapshot(name='A', owner='owner-a'))
+        assert game.dismiss_visitor('nonexistent') is False
         assert len(game.visitor_pets) == 1  # unchanged
 
-    def test_dismiss_visitor_empty_list_returns_false(self, game):
-        """dismiss_visitor on empty list returns False."""
-        assert game.dismiss_visitor(0) is False
+    def test_dismiss_visitor_empty_dict_returns_false(self, game):
+        """dismiss_visitor on empty dict returns False."""
+        assert game.dismiss_visitor('any-id') is False
 
     def test_visitor_pets_unaffected_by_tick(self, game):
         """tick() does not decay or modify visitor_pets."""
@@ -332,7 +331,7 @@ class TestVisitorManagement:
         # Add a fake stat that tick might decay (if it touched visitors)
         snap['stats'] = {'HUNGER': 50}
         game.receive_visitor(snap)
-        original_hunger = game.visitor_pets[0]['stats']['HUNGER']
+        original_hunger = game.visitor_pets['friend']['stats']['HUNGER']
 
         # Make local pet stats low so tick does decay work
         game.state['stats']['HUNGER'] = 0
@@ -341,7 +340,7 @@ class TestVisitorManagement:
         game.tick()
 
         # Visitor pet should be untouched
-        assert game.visitor_pets[0]['stats']['HUNGER'] == original_hunger
+        assert game.visitor_pets['friend']['stats']['HUNGER'] == original_hunger
         assert len(game.visitor_pets) == 1
 
     def test_visitor_pets_unaffected_by_switch_pet(self, game):
@@ -355,14 +354,14 @@ class TestVisitorManagement:
         game.save()
 
         # Add a visitor
-        game.receive_visitor(_make_snapshot(name='Visitor'))
+        game.receive_visitor(_make_snapshot(name='Visitor', owner='friend'))
         assert len(game.visitor_pets) == 1
 
         game.switch_pet(1)
 
         # Visitor should still be there
         assert len(game.visitor_pets) == 1
-        assert game.visitor_pets[0]['name'] == 'Visitor'
+        assert game.visitor_pets['friend']['name'] == 'Visitor'
 
     def test_dismiss_visitor_sends_visit_leave_when_lan_enabled(self, game):
         """dismiss_visitor sends MSG_VISIT_LEAVE to visitor's owner when LAN enabled."""
@@ -373,7 +372,7 @@ class TestVisitorManagement:
         snap = _make_snapshot(name='Buddy', owner='friend-node-id')
         game.receive_visitor(snap)
 
-        game.dismiss_visitor(0)
+        game.dismiss_visitor('friend-node-id')
 
         # Should have sent VISIT_LEAVE to the owner
         leave_calls = [c for c in fake_node.send_calls if c[1] == MSG_VISIT_LEAVE]
@@ -511,7 +510,7 @@ class TestReceiveVisit:
         game.process_lan_queues()
 
         assert len(game.visitor_pets) == 1
-        assert game.visitor_pets[0]['name'] == 'Buddy'
+        assert game.visitor_pets['peer-node-id']['name'] == 'Buddy'
 
     def test_visit_req_does_not_set_pending_visit_request(self, game):
         """VISIT_REQ must not create pending_visit_request (field removed)."""
@@ -583,7 +582,7 @@ class TestEndVisit:
         with patch('ascii_pet.lan.LanNode', return_value=fake_node):
             game.enable_lan('alice')
         game.being_visited = {'from': 'peer-1', 'start_time': time.time(), 'pet_snapshot': _make_snapshot(name='Buddy', owner='peer-1')}
-        game.visitor_pets.append(game.being_visited['pet_snapshot'])
+        game.visitor_pets['peer-1'] = game.being_visited['pet_snapshot']
 
         result = game.end_visit()
 
@@ -627,11 +626,11 @@ class TestEndVisit:
             game.enable_lan('alice')
         snap = _make_snapshot(name='Buddy', owner='peer-1')
         game.being_visited = {'from': 'peer-1', 'start_time': time.time(), 'pet_snapshot': snap}
-        game.visitor_pets.append(snap)
+        game.visitor_pets['peer-1'] = snap
 
         fake_node.ui_queue.put({
             'type': MSG_VISIT_END,
-            'payload': {'reason': 'manual'},
+            'payload': {'reason': 'manual', 'from': 'peer-1'},
         })
 
         game.process_lan_queues()
@@ -1036,7 +1035,7 @@ class TestProcessLanQueues:
         # Queue is empty
         game.process_lan_queues()
         # No exception, no state change
-        assert game.visitor_pets == []
+        assert game.visitor_pets == {}
 
     def test_process_lan_queues_malformed_message_skipped(self, game):
         """A malformed message is skipped without affecting subsequent messages."""
@@ -1060,7 +1059,7 @@ class TestProcessLanQueues:
 
         # The valid message should still be processed
         assert len(game.visitor_pets) == 1
-        assert game.visitor_pets[0]['name'] == 'Valid'
+        assert game.visitor_pets['peer-valid']['name'] == 'Valid'
 
     def test_process_lan_queues_multiple_messages(self, game):
         """Multiple messages in queue are all processed in order."""
@@ -1088,8 +1087,8 @@ class TestProcessLanQueues:
         game.process_lan_queues()
 
         assert len(game.visitor_pets) == 2
-        assert game.visitor_pets[0]['name'] == 'First'
-        assert game.visitor_pets[1]['name'] == 'Second'
+        assert game.visitor_pets['peer-1']['name'] == 'First'
+        assert game.visitor_pets['peer-2']['name'] == 'Second'
 
 
 # ─── 7. Graceful degradation ────────────────────────────────────────────────
@@ -1136,7 +1135,7 @@ class TestGracefulDegradation:
 
         # Should be a no-op
         game.process_lan_queues()
-        assert game.visitor_pets == []
+        assert game.visitor_pets == {}
 
     def test_tick_unaffected_by_lan_state(self, game):
         """tick() works the same regardless of LAN enabled/disabled."""
@@ -1306,7 +1305,7 @@ class TestLanPanelMode:
     # --- Keys 1-9: invite_visit when not in active visit ---
 
     def test_key_1_invites_first_peer(self, lan_game):
-        """In lan mode, pressing 'v' then '1' invites the first peer."""
+        """In lan mode, pressing 'v' then '1' invites the first peer and auto-transitions to expanded."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
         ]
@@ -1314,20 +1313,20 @@ class TestLanPanelMode:
         lan_game.handle_key('v')
         assert lan_game.lan_submode == 'visit'
         result_type, result_val = lan_game.handle_key('1')
-        assert result_type == 'action'
+        assert result_type == 'mode_change'
         assert lan_game.active_visit is not None
         assert lan_game.active_visit['target'] == 'peer-1'
         assert 'Bob' in lan_game.message
 
     def test_key_2_invites_second_peer(self, lan_game):
-        """In lan mode, pressing 'v' then '2' invites the second peer."""
+        """In lan mode, pressing 'v' then '2' invites the second peer and auto-transitions to expanded."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
             {'node_id': 'peer-2', 'username': 'Carol', 'pet_summary': {}},
         ]
         lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('2')
-        assert result_type == 'action'
+        assert result_type == 'mode_change'
         assert lan_game.active_visit is not None
         assert lan_game.active_visit['target'] == 'peer-2'
 
@@ -1523,12 +1522,10 @@ class TestExpandedModeNoLanKeys:
         assert result_type == 'export'
 
     def test_key_e_does_not_end_visit_in_expanded(self, expanded_game):
-        """In expanded mode, pressing 'e' does not end an active visit."""
+        """In expanded mode, pressing 'e' with active_visit ends the visit."""
         expanded_game.active_visit = {'target': 'peer-1', 'start_time': time.time(), 'pet_snapshot': {}}
         result_type, _ = expanded_game.handle_key('e')
-        assert result_type == 'export'
-        # active_visit should NOT be cleared
-        assert expanded_game.active_visit is not None
+        assert result_type == 'action'
 
 
 # ─── 11. LAN panel pagination ──────────────────────────────────────────────
@@ -1589,12 +1586,12 @@ class TestLanPagination:
         assert lan_game.lan_page == 0
 
     def test_number_key_uses_page_offset(self, lan_game):
-        """With 10 peers and lan_page=1, pressing 'v' then '1' visits peer index 9."""
+        """With 10 peers and lan_page=1, pressing 'v' then '1' visits peer index 9 and auto-transitions to expanded."""
         lan_game.lan_node._peers = _make_peers(10)
         lan_game.lan_page = 1
         lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('1')
-        assert result_type == 'action'
+        assert result_type == 'mode_change'
         assert lan_game.active_visit is not None
         # Page 2 (index 1), item 1 → overall index 1*9 + 0 = 9 → peer-9
         assert lan_game.active_visit['target'] == 'peer-9'

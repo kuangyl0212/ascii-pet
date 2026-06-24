@@ -304,13 +304,19 @@ class TestTradeSubmode:
         assert game.lan_submode == 'trade'
 
     def test_trade_digit_selects_peer(self, game):
-        """In trade submode, pressing '1' calls initiate_trade with first peer."""
+        """In trade submode, pressing '1' enters trade_pet submode for pet selection."""
         fake_node = _enable_lan_with_fake(game, peers=_make_peers(2))
         game.state['hp'] = 100
         game.state['is_dead'] = False
         game.mode = 'lan'
 
         game.handle_key('t')
+        game.handle_key('1')
+
+        # Should enter trade_pet submode (not yet sent trade request)
+        assert game.lan_submode == 'trade_pet'
+
+        # Now select pet index 0
         game.handle_key('1')
 
         # Should have sent a trade request to peer-0

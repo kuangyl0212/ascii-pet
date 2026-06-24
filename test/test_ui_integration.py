@@ -371,13 +371,21 @@ class TestHandleKeyTradeConfirmation:
     """handle_key processes 'y'/'n' when pending_trade_req exists."""
 
     def test_handle_key_y_accepts_trade(self, game):
-        """When pending_trade_req exists and key == 'y': calls accept_trade,
-        sends MSG_TRADE_ACK, clears pending_trade_req."""
+        """When pending_trade_req exists and key == 'y': enters pet selection,
+        then pressing '1' accepts trade with pet index 0, sends MSG_TRADE_ACK,
+        clears pending_trade_req."""
         fake_node = _enable_lan_with_fake(game, 'alice')
         trade_req = _make_trade_req()
         game.pending_trade_req = trade_req
 
+        # 'y' enters pet selection mode
         game.handle_key('y')
+        # pending_trade_req still exists with _accepting flag
+        assert game.pending_trade_req is not None
+        assert game.pending_trade_req.get('_accepting') is True
+
+        # Press '1' to select pet index 0 and accept
+        game.handle_key('1')
 
         # Verify MSG_TRADE_ACK sent
         ack_calls = [c for c in fake_node.send_calls if c[1] == MSG_TRADE_ACK]
@@ -425,3 +433,191 @@ class TestRenderLanLinesHpDisplay:
         assert len(hp_lines) >= 1
         # The HP value should appear in the text
         assert any('73' in str(l[0]) for l in hp_lines)
+
+
+# ─── Bug 3: Gift item inventory display + receive message ────────────────────
+
+
+class TestBug3GiftItemRendering:
+    """Bug 3: Verify gift_item submode rendering and receive message display."""
+
+    def test_lan_submode_returns_gift_item_when_in_submode(self, game):
+        """Bug 3 Problem 1: game.lan_submode should return 'gift_item' when
+        the LanState is in the gift_item submode."""
+        from ascii_pet.states import LanState
+        _enable_lan_with_fake(game, 'alice')
+        # Switch to LAN mode
+        game.mode = 'lan'
+        # Set the submode to gift_item
+        game.lan_submode = 'gift_item'
+        # Verify the property returns the correct value
+        assert game.lan_submode == 'gift_item'
+
+    def test_render_lan_lines_shows_gift_item_inventory(self, game):
+        """Bug 3 Problem 1: render_lan_lines should show inventory items with
+        correct counts when in gift_item submode."""
+        _enable_lan_with_fake(game, 'alice')
+        # Add items to inventory
+        game.pets_data['inventory'] = {'apple': 5, 'toy': 2}
+        # Switch to LAN mode and gift_item submode
+        game.mode = 'lan'
+        game.lan_submode = 'gift_item'
+
+        win_mod = _load_win_module()
+        lines = win_mod.render_lan_lines(game)
+
+        # Should show "Select item to gift:" or similar
+        text_lines = [str(l[0]) for l in lines]
+        # Should contain the item count '5' for apple
+        assert any('5' in t for t in text_lines), f"Expected count '5' in lines: {text_lines}"
+        # Should contain the item count '2' for toy
+        assert any('2' in t for t in text_lines), f"Expected count '2' in lines: {text_lines}"
+
+    def test_render_lan_lines_shows_game_message(self, game):
+        """Bug 3 Problem 2: render_lan_lines should show game.message so the
+        receiver can see 'Received item' messages."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        # Set a message as if a gift was received
+        game.message = 'Received 1 Apple from Bob!'
+        game.message_time = time.time()
+
+        win_mod = _load_win_module()
+        lines = win_mod.render_lan_lines(game)
+
+        # The message should appear in the rendered lines
+        text_lines = [str(l[0]) for l in lines]
+        assert any('Received 1 Apple from Bob!' in t for t in text_lines), \
+            f"Expected 'Received 1 Apple from Bob!' in lines: {text_lines}"
+
+    def test_render_lan_lines_shows_gift_received_message_after_gift(self, game):
+        """Bug 3 Problem 2: After receiving a GIFT_ITEM message, the rendered
+        LAN panel should show the 'Received' message."""
+        fake_node = _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        # Add some initial inventory to avoid "Inventory full!"
+        game.pets_data['inventory'] = {}
+
+        # Simulate receiving a gift
+        fake_node.ui_queue.put({
+            'type': MSG_GIFT_ITEM,
+            'payload': {
+                'from': 'peer-1',
+                'from_username': 'Bob',
+                'item_id': 'apple',
+                'count': 1,
+            },
+        })
+        game.process_lan_queues()
+
+        # The message should be set
+        assert 'Received' in game.message
+        assert 'Bob' in game.message
+
+        # Render the LAN panel
+        win_mod = _load_win_module()
+        lines = win_mod.render_lan_lines(game)
+
+        # The message should appear in the rendered lines
+        text_lines = [str(l[0]) for l in lines]
+        assert any('Received' in t for t in text_lines), \
+            f"Expected 'Received' in lines: {text_lines}"
+
+
+# ─── Bug 4: Trade pet selection rendering + timeout ──────────────────────────
+
+
+class TestBug4TradePetSelectionRendering:
+    """Bug 4: Verify trade pet selection rendering and pending_trade_req timeout."""
+
+    def test_render_lan_lines_shows_pet_list_when_accepting_trade(self, game):
+        """Bug 4 Problem 3: When pending_trade_req has _accepting=True, the
+        LAN panel should show the pet list for selection."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        # Set up pending_trade_req in accepting mode
+        game.pending_trade_req = {
+            'from': 'peer-1',
+            'from_username': 'Bob',
+            'pet_snapshot': {'name': 'BobPet'},
+            '_accepting': True,
+        }
+
+        win_mod = _load_win_module()
+        lines = win_mod.render_lan_lines(game)
+
+        # Should show "Select pet to trade" or similar
+        text_lines = [str(l[0]) for l in lines]
+        assert any('Select pet' in t or 'select pet' in t.lower() for t in text_lines), \
+            f"Expected 'Select pet' in lines: {text_lines}"
+        # Should show pet names from pets_data
+        pet_names = [p['name'] for p in game.pets_data['pets']]
+        for name in pet_names[:3]:
+            assert any(name in t for t in text_lines), \
+                f"Expected pet name '{name}' in lines: {text_lines}"
+
+    def test_render_lan_lines_shows_trade_pet_submode(self, game):
+        """Bug 4 Problem 3: When in trade_pet submode (initiator side), the
+        LAN panel should show the pet list for selection."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        # Set the submode to trade_pet
+        game.lan_submode = 'trade_pet'
+
+        win_mod = _load_win_module()
+        lines = win_mod.render_lan_lines(game)
+
+        # Should show "Select pet to trade" or similar
+        text_lines = [str(l[0]) for l in lines]
+        assert any('Select pet' in t or 'select pet' in t.lower() for t in text_lines), \
+            f"Expected 'Select pet' in lines: {text_lines}"
+        # Should show pet names from pets_data
+        pet_names = [p['name'] for p in game.pets_data['pets']]
+        for name in pet_names[:3]:
+            assert any(name in t for t in text_lines), \
+                f"Expected pet name '{name}' in lines: {text_lines}"
+
+
+class TestBug4TradePendingTimeout:
+    """Bug 4 Problem 2: pending_trade_req should timeout after 30 seconds."""
+
+    def test_check_pending_trade_timeout_clears_after_30s(self, game):
+        """Bug 4: check_pending_trade_timeout should clear pending_trade_req
+        after 30 seconds."""
+        _enable_lan_with_fake(game, 'alice')
+        game.pending_trade_req = {
+            'from': 'peer-1',
+            'from_username': 'Bob',
+            'pet_snapshot': {'name': 'BobPet'},
+            'start_time': time.time() - 31,  # 31 seconds ago
+        }
+        game.check_pending_trade_timeout()
+        assert game.pending_trade_req is None
+        assert game.message is not None
+
+    def test_check_pending_trade_timeout_not_triggered_within_30s(self, game):
+        """Bug 4: check_pending_trade_timeout should NOT clear pending_trade_req
+        within 30 seconds."""
+        _enable_lan_with_fake(game, 'alice')
+        game.pending_trade_req = {
+            'from': 'peer-1',
+            'from_username': 'Bob',
+            'pet_snapshot': {'name': 'BobPet'},
+            'start_time': time.time() - 10,  # 10 seconds ago
+        }
+        game.check_pending_trade_timeout()
+        assert game.pending_trade_req is not None
+
+    def test_tick_calls_check_pending_trade_timeout(self, game):
+        """Bug 4: tick() should call check_pending_trade_timeout to clear
+        stale pending_trade_req."""
+        _enable_lan_with_fake(game, 'alice')
+        game.pending_trade_req = {
+            'from': 'peer-1',
+            'from_username': 'Bob',
+            'pet_snapshot': {'name': 'BobPet'},
+            'start_time': time.time() - 31,  # 31 seconds ago
+        }
+        # tick() should clear the pending_trade_req via timeout
+        game.tick()
+        assert game.pending_trade_req is None
