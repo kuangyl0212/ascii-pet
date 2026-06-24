@@ -589,6 +589,17 @@ class LanState(GameState):
                 username=from_username, name=snapshot.get('name', '?'))
             game.message_time = now
             game.visit_message_time = now
+            # Send own pet snapshot back to initiator so both sides can see
+            # both pets. The initiator stores it in visitor_pets[from_id]
+            # via the MSG_VISIT_DATA handler.
+            if from_id and game.lan_node:
+                from ascii_pet.protocol import make_pet_snapshot
+                own_snapshot = make_pet_snapshot(
+                    game.state, game.lan_username or game.uid)
+                try:
+                    game.lan_node.send_to_peer(from_id, MSG_VISIT_DATA, own_snapshot)
+                except Exception:
+                    pass
 
         elif msg_type == MSG_VISIT_FEED:
             stat_key = 'HUNGER'
@@ -641,6 +652,14 @@ class LanState(GameState):
         elif msg_type == MSG_VISIT_END:
             from_id = payload.get("from", "")
             if game.active_visit:
+                # Initiator side: clear visitor_pets entry for the visited
+                # party so their pet no longer renders on our screen.
+                target = game.active_visit.get("target", "")
+                if from_id:
+                    game.visitor_pets.pop(from_id, None)
+                elif target:
+                    # Fallback: use active_visit target when 'from' missing
+                    game.visitor_pets.pop(target, None)
                 game.active_visit = None
                 game.message = _("Visit ended")
                 game.message_time = now
@@ -681,20 +700,23 @@ class LanState(GameState):
                     "escaped": True,
                     "reason": result.get("reason", ""),
                     "from": game.lan_node.node_id,
+                    "from_username": game.lan_username or "?",
                 })
-                game.message = _("Your pet escaped!")
+                game.message = _("Your pet escaped from {username}'s challenge!").format(username=from_username)
             else:
                 game.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_ACK, {
                     "escaped": False,
                     "defender_snapshot": result.get("defender_snapshot", {}),
                     "from": game.lan_node.node_id,
+                    "from_username": game.lan_username or "?",
                 })
                 game.message = _("{username} challenges you!").format(username=from_username)
             game.message_time = now
 
         elif msg_type == MSG_CHALLENGE_ACK:
             if payload.get("escaped"):
-                game.message = _("Opponent escaped!")
+                defender_username = payload.get("from_username", "?")
+                game.message = _("{username} escaped!").format(username=defender_username)
                 game.active_challenge = None
             else:
                 from ascii_pet.battle import simulate_battle
@@ -719,10 +741,14 @@ class LanState(GameState):
                 game.apply_battle_result(result)
                 game.battle_result = battle_result
                 game.active_challenge = None
+                attacker_name = attacker_snapshot.get("name", "?")
+                defender_name = defender_snapshot.get("name", "?")
                 if winner == "attacker":
-                    game.message = _("You won the battle!")
+                    game.message = _("You won the battle! {atk} vs {defn}").format(
+                        atk=attacker_name, defn=defender_name)
                 else:
-                    game.message = _("You lost the battle!")
+                    game.message = _("You lost the battle! {atk} vs {defn}").format(
+                        atk=attacker_name, defn=defender_name)
             game.message_time = now
 
         elif msg_type == MSG_CHALLENGE_RESULT:
@@ -738,10 +764,14 @@ class LanState(GameState):
                 game.apply_battle_result(payload)
                 game.battle_result = payload
             game.active_challenge = None
+            attacker_name = attacker_snapshot.get("name", "?") if attacker_snapshot else "?"
+            defender_name = defender_snapshot.get("name", "?") if defender_snapshot else "?"
             if payload.get("winner") == "defender":
-                game.message = _("You won the battle!")
+                game.message = _("You won the battle! {atk} vs {defn}").format(
+                    atk=attacker_name, defn=defender_name)
             else:
-                game.message = _("You lost the battle!")
+                game.message = _("You lost the battle! {atk} vs {defn}").format(
+                    atk=attacker_name, defn=defender_name)
             game.message_time = now
 
         elif msg_type == MSG_GIFT_ITEM:
@@ -1001,9 +1031,10 @@ class LanState(GameState):
                 if idx < len(peers_page):
                     peer = peers_page[idx]
                     peer_id = peer.get('node_id', '')
+                    target_username = peer.get('username', '?')
                     self._submode = None
                     if game.initiate_challenge(peer_id):
-                        game.message = _("Challenge in progress...")
+                        game.message = _("Challenging {username}...").format(username=target_username)
                         # Increment daily challenge count
                         from datetime import datetime
                         today = datetime.now().date().isoformat()

@@ -193,6 +193,11 @@ def render_lan_lines(game):
         lines.append((_('★ {} is visiting you ({}m{}s)').format(visitor_name, minutes, seconds), COLOR_MSG))
         lines.append(('', COLOR_WHITE))
 
+    # 显示游戏消息（如收到礼物、交易状态等）
+    if game.message and time.time() - getattr(game, 'message_time', 0) < 10:
+        lines.append((f'  {game.message}', COLOR_MSG))
+        lines.append(('', COLOR_WHITE))
+
     # 对等节点列表（分页）
     all_peers = game.get_lan_peers() if enabled else []
     if enabled:
@@ -264,6 +269,15 @@ def render_lan_lines(game):
                 species = pet.get('species', '?')
                 lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
             lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.lan_submode == 'trade_pet':
+            lines.append((_('Select pet to trade:'), COLOR_MSG))
+            pets = game.pets_data.get('pets', [])
+            for i, pet in enumerate(pets[:9]):
+                pet_name = pet.get('name', '?')
+                species = pet.get('species', '?')
+                level = pet.get('level', 1)
+                lines.append((_('[{}] {} - {}(Lv.{})').format(i+1, pet_name, species, level), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
         elif game.active_visit or game.being_visited:
             lines.append((_('[e]End Visit [f]Remote Feed [p]Remote Play'), COLOR_DIM))
         else:
@@ -280,9 +294,20 @@ def render_lan_lines(game):
                 lines.append((_('[v]Visit [c]Challenge [g]Gift [t]Trade [h]Heal'), COLOR_DIM))
         # Trade confirmation hint
         if game.pending_trade_req is not None:
-            from_username = game.pending_trade_req.get('from_username', '?')
-            pet_name = game.pending_trade_req.get('pet_snapshot', {}).get('name', '?')
-            lines.append((_('{} wants to trade {}! [y]Accept [n]Reject').format(from_username, pet_name), COLOR_MSG))
+            if game.pending_trade_req.get('_accepting'):
+                # Pet selection mode for trade acceptance
+                lines.append((_('Select pet to trade:'), COLOR_MSG))
+                pets = game.pets_data.get('pets', [])
+                for i, pet in enumerate(pets[:9]):
+                    pet_name = pet.get('name', '?')
+                    species = pet.get('species', '?')
+                    level = pet.get('level', 1)
+                    lines.append((_('[{}] {} - {}(Lv.{})').format(i+1, pet_name, species, level), COLOR_WHITE))
+                lines.append((_('[ESC]Cancel'), COLOR_DIM))
+            else:
+                from_username = game.pending_trade_req.get('from_username', '?')
+                pet_name = game.pending_trade_req.get('pet_snapshot', {}).get('name', '?')
+                lines.append((_('{} wants to trade {}! [y]Accept [n]Reject').format(from_username, pet_name), COLOR_MSG))
         if total_pages >= 2:
             lines.append((_('Prev Page: [  Next Page: ]'), COLOR_DIM))
         lines.append((_('[l]Back [o]Disable LAN'), COLOR_DIM))

@@ -1254,8 +1254,14 @@ class _MockGame:
             'is_dead': False,
             'stats': {'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50},
             'name': 'TestPet',
-            'hp': 100,
+            'species': 'cat',
+            'rarity': 'common',
             'level': 1,
+            'shiny': False,
+            'eye': '·',
+            'hat': 'none',
+            'mood': 'normal',
+            'hp': 100,
         }
 
         # Messages
@@ -2454,7 +2460,7 @@ class TestChallengeFlow:
         lan._submode = 'challenge'
         lan.handle_key(game, KeyEvent(key='2'))
         assert game.message is not None
-        assert 'progress' in game.message.lower() or 'Challenge' in game.message
+        assert 'progress' in game.message.lower() or 'challeng' in game.message.lower()
 
     def test_challenge_select_stays_in_lan_idle(self):
         """After selecting a challenge target, submode should be None (idle), not expanded."""
@@ -2728,6 +2734,130 @@ class TestChallengeFlow:
             }
             game._tick_challenge_timeout()
             assert game.active_challenge is not None
+
+    # ── Bug 2: Challenge info incomplete ──
+
+    def test_challenge_select_message_includes_target_username(self):
+        """Bug 2: After selecting a challenge target, message should include
+        the target's username so the initiator knows who they're challenging."""
+        from ascii_pet.states import KeyEvent
+        lan = self._make_lan_state()
+        game = self._make_game()
+        lan._submode = 'challenge'
+        # Press '2' to select peer2 (User2)
+        lan.handle_key(game, KeyEvent(key='2'))
+        # Message should include the target username 'User2'
+        assert 'User2' in game.message
+
+    def test_challenge_req_escaped_message_includes_challenger_username(self):
+        """Bug 2: When the defender's pet escapes, the message should include
+        the challenger's username so the defender knows who challenged them."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        # Override accept_challenge to return escaped=True
+        game.accept_challenge = lambda req: {"escaped": True, "reason": "low_hp"}
+        event = self._make_event('challenge_req', {
+            'from': 'peer1', 'from_username': 'Alice',
+        })
+        lan.handle_lan_message(game, event)
+        # Message should include the challenger's username 'Alice'
+        assert 'Alice' in game.message
+
+    def test_challenge_ack_escaped_includes_from_username_in_payload(self):
+        """Bug 2: CHALLENGE_ACK payload should include from_username so the
+        initiator knows who escaped."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.lan_username = 'DefenderUser'
+        game.accept_challenge = lambda req: {"escaped": True, "reason": "low_hp"}
+        event = self._make_event('challenge_req', {
+            'from': 'peer1', 'from_username': 'Alice',
+        })
+        lan.handle_lan_message(game, event)
+        # The sent CHALLENGE_ACK should include from_username
+        assert len(game.lan_node._sent) == 1
+        peer_id, msg_type, payload = game.lan_node._sent[0]
+        assert msg_type == 'challenge_ack'
+        assert payload.get('from_username') == 'DefenderUser'
+
+    def test_challenge_ack_escaped_message_includes_defender_username(self):
+        """Bug 2: When the initiator receives CHALLENGE_ACK with escaped=True,
+        the message should include the defender's username."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'target': 'peer1', 'pet_snapshot': {'name': 'MyPet'}, 'role': 'attacker',
+        }
+        event = self._make_event('challenge_ack', {
+            'escaped': True, 'from': 'peer1', 'from_username': 'DefenderUser',
+        })
+        lan.handle_lan_message(game, event)
+        # Message should include the defender's username 'DefenderUser'
+        assert 'DefenderUser' in game.message
+
+    def test_challenge_ack_not_escaped_message_includes_defender_name(self):
+        """Bug 2: When the initiator receives CHALLENGE_ACK with escaped=False,
+        the message should include the defender's pet name."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'MyPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'role': 'attacker',
+        }
+        event = self._make_event('challenge_ack', {
+            'escaped': False,
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'from': 'peer1',
+            'from_username': 'DefenderUser',
+        })
+        lan.handle_lan_message(game, event)
+        # Message should include the defender's pet name 'DefPet'
+        assert 'DefPet' in game.message
+
+    def test_challenge_result_message_includes_both_pet_names(self):
+        """Bug 2: CHALLENGE_RESULT message should include both pet names."""
+        lan = self._make_lan_state()
+        game = self._make_game()
+        game.active_challenge = {
+            'role': 'defender',
+            'target': 'peer1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+        }
+        event = self._make_event('challenge_result', {
+            'winner': 'defender',
+            'attacker_snapshot': {
+                'name': 'AtkPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'defender_snapshot': {
+                'name': 'DefPet', 'level': 1, 'hp': 100,
+                'attack': 10, 'defense': 10, 'speed': 10,
+                'skills': ['tackle'],
+            },
+            'seed': 42,
+            'hp_loss_winner': 5,
+            'hp_loss_loser': 25,
+        })
+        lan.handle_lan_message(game, event)
+        # Message should include both pet names
+        assert 'AtkPet' in game.message
+        assert 'DefPet' in game.message
 
 
 # ─── Visit flow integration tests ────────────────────────────────────────────

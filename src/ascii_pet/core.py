@@ -1117,6 +1117,7 @@ class PetGame:
                 self._tick_visit_timeout()
                 self._tick_visit_events()
                 self._tick_challenge_timeout()
+                self.check_pending_trade_timeout()
             except Exception:
                 pass
 
@@ -1840,6 +1841,24 @@ class PetGame:
             self.message = _("Trade timed out")
             self.message_time = time.time()
             self.active_trade = None
+            return True
+        return False
+
+    def check_pending_trade_timeout(self):
+        """Clear pending_trade_req if it has timed out (30 seconds).
+
+        The receiver must accept/reject within 30s, otherwise the request
+        is auto-rejected to avoid blocking the UI indefinitely.
+        """
+        if self.pending_trade_req is None:
+            return False
+        start_time = self.pending_trade_req.get("start_time", 0)
+        if not start_time:
+            return False
+        if time.time() - start_time > 30:
+            self.message = _("Trade request timed out")
+            self.message_time = time.time()
+            self.pending_trade_req = None
             return True
         return False
 
