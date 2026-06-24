@@ -251,7 +251,7 @@ msgid "LAN disabled"
 msgstr "联机已关闭"
 
 msgid "LAN enabled! Username: {username}"
-msgstr "联机已开启！用户名: {username}"
+msgstr "已连接社区广场！用户名: {username}"
 
 msgid "LAN failed to start (port in use or firewall)"
 msgstr "联机开启失败（端口被占用或防火墙）"
@@ -347,8 +347,8 @@ msgstr "成就面板 (A)"
 msgid "Items (U)"
 msgstr "物品栏 (U)"
 
-msgid "LAN Multiplayer (L)"
-msgstr "局域网联机 (L)"
+msgid "Community Plaza (L)"
+msgstr "社区广场 (L)"
 
 msgid "Auto-start on Boot"
 msgstr "开机自启动"
@@ -525,26 +525,26 @@ msgid "Setting failed: {}"
 msgstr "设置失败: {}"
 
 #: ascii-pet-win.py - LAN panel
-msgid "═ LAN Multiplayer ═"
-msgstr "═ 局域网联机 ═"
+msgid "═ Community Plaza ═"
+msgstr "═ 社区广场 ═"
 
-msgid "═ Edit Username ═"
-msgstr "═ 修改用户名 ═"
+msgid "═ Edit Name ═"
+msgstr "═ 修改名称 ═"
 
 msgid "(not set)"
 msgstr "(未设置)"
 
-msgid "Current username: {}"
-msgstr "当前用户名: {}"
+msgid "Current name: {}"
+msgstr "当前名称: {}"
 
-msgid "New username: {}_"
-msgstr "新用户名: {}_"
+msgid "New name: {}_"
+msgstr "新名称: {}_"
 
 msgid "[Enter]Confirm [ESC]Cancel"
 msgstr "[Enter]确认 [ESC]取消"
 
-msgid "Username: {} [{}] Nodes: {}"
-msgstr "用户名: {} [{}] 节点: {}"
+msgid "Username: {}  |  Players online: {}"
+msgstr "用户名: {}  |  在线玩家: {}"
 
 msgid "Master"
 msgstr "主节点"
@@ -564,8 +564,8 @@ msgstr "★ 正在拜访中 ({}分{}秒)"
 msgid "★ {} is visiting you ({}m{}s)"
 msgstr "★ {} 正在拜访你 ({}分{}秒)"
 
-msgid "─ Online Players ─"
-msgstr "─ 在线玩家 ─"
+msgid "─ Online Players (Page {}/{}) ─"
+msgstr "─ 在线玩家 (第{}/{}页) ─"
 
 msgid "(No other players)"
 msgstr "（暂无其他玩家）"
@@ -580,13 +580,13 @@ msgid "[e]End Visit [f]Remote Feed [p]Remote Play"
 msgstr "[e]结束拜访 [f]远程喂食 [p]远程玩耍"
 
 msgid "[1-9]Visit Player [u]Edit Username"
-msgstr "[1-9]拜访玩家 [u]修改用户名"
+msgstr "[1-9]拜访玩家 [u]修改名称"
 
 msgid "[o]Disable LAN"
-msgstr "[o]关闭联机"
+msgstr "[o]断开连接"
 
 msgid "[o]Enable LAN"
-msgstr "[o]开启联机"
+msgstr "[o]连接社区"
 
 msgid "[l]Back [c]Compact Mode"
 msgstr "[l]返回 [c]紧凑模式"
@@ -596,6 +596,18 @@ msgstr "  [访客] {} (来自 {})"
 
 msgid "from {}"
 msgstr "来自 {}"
+
+msgid "Page: [ = Previous  ] = Next"
+msgstr "翻页: [ = 上一页  ] = 下一页"
+
+msgid "Community Plaza connected! Username: {username}"
+msgstr "已连接社区广场！用户名: {username}"
+
+msgid "Community Plaza disconnected"
+msgstr "已断开社区广场连接"
+
+msgid "Failed to connect to Community Plaza"
+msgstr "连接社区广场失败"
 
 #: ascii-pet-win.py - Help line
 msgid "[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit"

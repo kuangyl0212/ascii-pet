@@ -162,54 +162,15 @@ def render_items_lines(game):
     return lines
 
 def render_lan_lines(game):
-    """渲染联机信息（集成到 expanded 视图）。"""
+    """渲染独立联机面板。"""
     lines = []
     status = game.get_lan_status()
     enabled = status.get('enabled', False)
 
-    # 拜访状态
-    if game.active_visit:
-        elapsed = int(time.time() - game.active_visit.get('start_time', 0))
-        minutes, seconds = divmod(elapsed, 60)
-        lines.append((_('★ Visiting ({}m{}s)').format(minutes, seconds), COLOR_MSG))
-    if game.being_visited:
-        elapsed = int(time.time() - game.being_visited.get('start_time', 0))
-        minutes, seconds = divmod(elapsed, 60)
-        visitor_name = game.being_visited.get('pet_snapshot', {}).get('name', '?')
-        lines.append((_('★ {} is visiting you ({}m{}s)').format(visitor_name, minutes, seconds), COLOR_MSG))
-
-    # 对等节点列表
+    lines.append((_('═ Community Plaza ═'), COLOR_MSG))
     if enabled:
-        peers = game.get_lan_peers()
-        if peers:
-            lines.append((_('─ Online Players ─'), COLOR_DIM))
-            for i, peer in enumerate(peers[:5]):
-                username = peer.get('username', '?')
-                pet = peer.get('pet_summary', {})
-                pet_name = pet.get('name', '?')
-                species = pet.get('species', '?')
-                lines.append((f'[{i+1}] {username} - {pet_name}({species})', COLOR_WHITE))
-        # 访客列表
-        visitors = game.visitor_pets
-        if visitors:
-            lines.append((_('─ Visitors ─'), COLOR_DIM))
-            for v in visitors:
-                lines.append((f'  {v.get("name","?")}({v.get("species","?")})', COLOR_WHITE))
-        # 操作提示
-        if game.active_visit or game.being_visited:
-            lines.append((_('[e]End [f]Feed [p]Play'), COLOR_DIM))
-        elif peers:
-            lines.append((_('[1-9]Visit player'), COLOR_DIM))
-    elif not enabled:
-        lines.append((_('LAN: disconnected'), COLOR_BAR_EMPTY))
-
-    return lines
-
-    lines.append((_('═ LAN Multiplayer ═'), COLOR_MSG))
-    if enabled:
-        role = _('Master') if status.get('is_master') else _('Slave')
         peer_count = status.get('peer_count', 0)
-        lines.append((_('Username: {} [{}] Nodes: {}').format(game.lan_username or '?', role, peer_count), COLOR_BAR_FILL))
+        lines.append((_('Username: {}  |  Players online: {}').format(game.lan_username or '?', peer_count), COLOR_BAR_FILL))
     else:
         lines.append((_('Status: Disconnected'), COLOR_BAR_EMPTY))
         error = status.get('error')
@@ -230,11 +191,15 @@ def render_lan_lines(game):
         lines.append((_('★ {} is visiting you ({}m{}s)').format(visitor_name, minutes, seconds), COLOR_MSG))
         lines.append(('', COLOR_WHITE))
 
-    # 对等节点列表
-    peers = game.get_lan_peers() if enabled else []
-    if peers:
-        lines.append((_('─ Online Players ─'), COLOR_DIM))
-        for i, peer in enumerate(peers[:9]):
+    # 对等节点列表（分页）
+    all_peers = game.get_lan_peers() if enabled else []
+    if enabled:
+        peers_page, total_pages, cur_page = game.get_lan_peers_page()
+    else:
+        peers_page, total_pages, cur_page = [], 0, 0
+    if all_peers:
+        lines.append((_('─ Online Players (Page {}/{}) ─').format(cur_page + 1, total_pages), COLOR_DIM))
+        for i, peer in enumerate(peers_page):
             username = peer.get('username', '?')
             pet = peer.get('pet_summary', {})
             pet_name = pet.get('name', '?')
@@ -244,14 +209,6 @@ def render_lan_lines(game):
         lines.append((_('(No other players)'), COLOR_DIM))
     lines.append(('', COLOR_WHITE))
 
-    # 访客列表
-    visitors = game.visitor_pets
-    if visitors:
-        lines.append((_('─ Current Visitors ─'), COLOR_DIM))
-        for i, v in enumerate(visitors):
-            lines.append((f'  {v.get("name","?")}({v.get("species","?")}) - ' + _('from {}').format(v.get("owner","?")), COLOR_WHITE))
-    lines.append(('', COLOR_WHITE))
-
     # 操作提示
     lines.append((_('─ Actions ─'), COLOR_DIM))
     if enabled:
@@ -259,10 +216,26 @@ def render_lan_lines(game):
             lines.append((_('[e]End Visit [f]Remote Feed [p]Remote Play'), COLOR_DIM))
         else:
             lines.append((_('[1-9]Visit Player [u]Edit Username'), COLOR_DIM))
+        if total_pages >= 2:
+            lines.append((_('Prev Page: [  Next Page: ]'), COLOR_DIM))
         lines.append((_('[o]Disable LAN'), COLOR_DIM))
     else:
         lines.append((_('[o]Enable LAN'), COLOR_DIM))
     lines.append((_('[l]Back [c]Compact Mode'), COLOR_DIM))
+
+    return lines
+
+def render_lan_name_edit_lines(game):
+    """渲染用户名编辑面板。"""
+    lines = []
+    lines.append((_('═ Edit Name ═'), COLOR_MSG))
+    lines.append(('', COLOR_WHITE))
+    lines.append((_('Current name: {}').format(game.lan_username or '?'), COLOR_BAR_FILL))
+    lines.append(('', COLOR_WHITE))
+    current_input = getattr(game, '_name_input', '')
+    lines.append((_('New name: {}_').format(current_input), COLOR_WHITE))
+    lines.append(('', COLOR_WHITE))
+    lines.append((_('[Enter]Confirm [ESC]Cancel'), COLOR_DIM))
     return lines
 
 def render_release_lines(game):
@@ -1056,6 +1029,7 @@ class PetWindow:
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'stats' else 0), ID_STATS, _('Stats Panel (T)'))
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'achievements' else 0), ID_ACHIEVE, _('Achievements (A)'))
         user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'items' else 0), ID_ITEMS, _('Items (U)'))
+        user32.AppendMenuW(hmenu, MF_STRING | (MF_CHECKED if self.game.mode == 'lan' else 0), ID_LAN, _('Community Plaza (L)'))
         user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
         auto_flag = MF_CHECKED if is_autostart_enabled() else 0
         user32.AppendMenuW(hmenu, MF_STRING | auto_flag, ID_TRAY_AUTOSTART, _('Auto-start on Boot'))
@@ -1135,6 +1109,8 @@ class PetWindow:
             self.game.mode = 'achievements'; self.resize_window(self.game.mode)
         elif cmd == ID_ITEMS:
             self.game.mode = 'items'; self.resize_window(self.game.mode)
+        elif cmd == ID_LAN:
+            self.game.mode = 'lan'; self.game.show_help = False; self.resize_window(self.game.mode)
         elif cmd == ID_TRAY_AUTOSTART:
             try:
                 set_autostart(not is_autostart_enabled())
@@ -1212,11 +1188,6 @@ class PetWindow:
             lines = render_compact_lines(g.bones, g.frame_idx, g.state)
         elif g.mode == 'expanded':
             lines = render_expanded_lines(g.state, g.bones, g.frame_idx, g.show_help)
-            # Append LAN info to expanded view
-            lan_lines = render_lan_lines(g)
-            if lan_lines:
-                lines.append(('', COLOR_WHITE))
-                lines.extend(lan_lines)
         elif g.mode == 'stats':
             lines = render_stats_lines(g.state, g.bones, g.frame_idx, g.pet_idx, len(g.pets_data['pets']))
         elif g.mode == 'achievements':
@@ -1225,6 +1196,10 @@ class PetWindow:
             lines = render_items_lines(g)
         elif g.mode == 'rename':
             lines = render_rename_lines(g)
+        elif g.mode == 'lan':
+            lines = render_lan_lines(g)
+        elif g.mode == 'lan_name_edit':
+            lines = render_lan_name_edit_lines(g)
         elif g.mode == 'release':
             lines = render_release_lines(g)
         else:

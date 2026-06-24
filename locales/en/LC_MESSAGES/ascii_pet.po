@@ -525,26 +525,26 @@ msgid "Setting failed: {}"
 msgstr "Setting failed: {}"
 
 #: ascii-pet-win.py - LAN panel
-msgid "═ LAN Multiplayer ═"
-msgstr "═ LAN Multiplayer ═"
+msgid "═ Community Plaza ═"
+msgstr "═ Community Plaza ═"
 
-msgid "═ Edit Username ═"
-msgstr "═ Edit Username ═"
+msgid "═ Edit Name ═"
+msgstr "═ Edit Name ═"
 
 msgid "(not set)"
 msgstr "(not set)"
 
-msgid "Current username: {}"
-msgstr "Current username: {}"
+msgid "Current name: {}"
+msgstr "Current name: {}"
 
-msgid "New username: {}_"
-msgstr "New username: {}_"
+msgid "New name: {}_"
+msgstr "New name: {}_"
 
 msgid "[Enter]Confirm [ESC]Cancel"
 msgstr "[Enter]Confirm [ESC]Cancel"
 
-msgid "Username: {} [{}] Nodes: {}"
-msgstr "Username: {} [{}] Nodes: {}"
+msgid "Username: {}  |  Players online: {}"
+msgstr "Username: {}  |  Players online: {}"
 
 msgid "Master"
 msgstr "Master"
@@ -564,8 +564,8 @@ msgstr "★ Visiting ({}m{}s)"
 msgid "★ {} is visiting you ({}m{}s)"
 msgstr "★ {} is visiting you ({}m{}s)"
 
-msgid "─ Online Players ─"
-msgstr "─ Online Players ─"
+msgid "─ Online Players (Page {}/{}) ─"
+msgstr "─ Online Players (Page {}/{}) ─"
 
 msgid "(No other players)"
 msgstr "(No other players)"
@@ -583,10 +583,10 @@ msgid "[1-9]Visit Player [u]Edit Username"
 msgstr "[1-9]Visit Player [u]Edit Username"
 
 msgid "[o]Disable LAN"
-msgstr "[o]Disable LAN"
+msgstr "[o]Disconnect"
 
 msgid "[o]Enable LAN"
-msgstr "[o]Enable LAN"
+msgstr "[o]Connect"
 
 msgid "[l]Back [c]Compact Mode"
 msgstr "[l]Back [c]Compact Mode"
@@ -596,6 +596,18 @@ msgstr "  [Visitor] {} (from {})"
 
 msgid "from {}"
 msgstr "from {}"
+
+msgid "Page: [ = Previous  ] = Next"
+msgstr "Page: [ = Previous  ] = Next"
+
+msgid "Community Plaza connected! Username: {username}"
+msgstr "Community Plaza connected! Username: {username}"
+
+msgid "Community Plaza disconnected"
+msgstr "Community Plaza disconnected"
+
+msgid "Failed to connect to Community Plaza"
+msgstr "Failed to connect to Community Plaza"
 
 #: ascii-pet-win.py - Help line
 msgid "[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [Enter]compact [q]quit"
