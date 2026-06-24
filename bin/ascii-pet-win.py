@@ -221,8 +221,17 @@ def render_lan_lines(game):
     # 操作提示
     lines.append((_('─ Actions ─'), COLOR_DIM))
     if enabled:
-        # Submode hints (when in challenge/gift/trade selection)
-        if game.lan_submode == 'challenge':
+        # Submode hints (when in visit/challenge/gift/trade selection)
+        if game.lan_submode == 'visit':
+            lines.append((_('Select visit target:'), COLOR_MSG))
+            for i, peer in enumerate(all_peers[:9]):
+                username = peer.get('username', '?')
+                pet = peer.get('pet_summary', {})
+                pet_name = pet.get('name', '?')
+                species = pet.get('species', '?')
+                lines.append((_('[{}] {} - {}({})').format(i+1, username, pet_name, species), COLOR_WHITE))
+            lines.append((_('[ESC]Cancel'), COLOR_DIM))
+        elif game.lan_submode == 'challenge':
             lines.append((_('Select challenge target:'), COLOR_MSG))
             for i, peer in enumerate(all_peers[:9]):
                 username = peer.get('username', '?')
@@ -258,7 +267,7 @@ def render_lan_lines(game):
         elif game.active_visit or game.being_visited:
             lines.append((_('[e]End Visit [f]Remote Feed [p]Remote Play'), COLOR_DIM))
         else:
-            lines.append((_('[1-9]Visit Player [u]Edit Username'), COLOR_DIM))
+            lines.append((_('[u]Edit Username'), COLOR_DIM))
         # Challenge/gift/trade/heal action hints (only when not in submode)
         if game.lan_submode is None:
             if game.active_challenge:
@@ -268,7 +277,7 @@ def render_lan_lines(game):
             elif game.active_trade:
                 lines.append((_('★ Trading... (timeout 30s)'), COLOR_MSG))
             elif all_peers:
-                lines.append((_('[c]Challenge [g]Gift [t]Trade [h]Heal'), COLOR_DIM))
+                lines.append((_('[v]Visit [c]Challenge [g]Gift [t]Trade [h]Heal'), COLOR_DIM))
         # Trade confirmation hint
         if game.pending_trade_req is not None:
             from_username = game.pending_trade_req.get('from_username', '?')

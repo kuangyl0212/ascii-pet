@@ -790,6 +790,24 @@ msgstr "[ESC]取消"
 msgid "[c]Challenge [g]Gift [t]Trade [h]Heal"
 msgstr "[c]挑战 [g]赠送 [t]交换 [h]治疗"
 
+msgid "[v]Visit [c]Challenge [g]Gift [t]Trade [h]Heal"
+msgstr "[v]拜访 [c]挑战 [g]赠送 [t]交换 [h]治疗"
+
+msgid "Select visit target:"
+msgstr "选择拜访目标："
+
+msgid "No peers to visit"
+msgstr "没有可拜访的玩家"
+
+msgid "Select visit target"
+msgstr "选择拜访目标"
+
+msgid "Daily challenge limit reached ({max}/day)"
+msgstr "已达每日挑战上限（{max}/天）"
+
+msgid "[1-9]Visit Player [u]Edit Username"
+msgstr "[1-9]拜访玩家 [u]修改名称"
+
 msgid "[l]Back [o]Disable LAN"
 msgstr "[l]返回 [o]断开连接"
 

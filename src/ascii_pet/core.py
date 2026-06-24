@@ -823,6 +823,7 @@ class PetGame:
         self.lan_submode = None
         self.lan_submode_data = None
         self.pending_trade_req = None
+        self.MAX_DAILY_CHALLENGES = 5
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
         # Migrate old username.txt if no username in save
@@ -1287,20 +1288,6 @@ class PetGame:
             if self.lan_submode is not None:
                 return self._handle_lan_submode_key(key)
 
-            if key in ('1','2','3','4','5','6','7','8','9') and not self.active_visit and not self.being_visited:
-                peers_page, total_pages, cur_page = self.get_lan_peers_page()
-                idx = cur_page * 9 + (int(key) - 1)
-                all_peers = self.get_lan_peers()
-                if idx < len(all_peers):
-                    peer = all_peers[idx]
-                    peer_id = peer.get('node_id', '')
-                    if self.invite_visit(peer_id):
-                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
-                    else:
-                        pass
-                    self.message_time = now
-                    return 'action', self.message
-                return 'none', None
             if key == '[':
                 if self.lan_page > 0:
                     self.lan_page -= 1
@@ -1359,10 +1346,27 @@ class PetGame:
                         self.message = _('Failed to connect to Community Plaza')
                 self.message_time = now
                 return 'action', self.message
-            # Challenge/gift/trade/heal actions
+            # Visit/challenge/gift/trade/heal actions
+            if key == 'v' and not self.active_visit and not self.being_visited:
+                peers = self.get_lan_peers()
+                if not peers:
+                    self.message = _('No peers to visit')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'visit'
+                self.message = _('Select visit target')
+                self.message_time = now
+                return 'action', self.message
             if key == 'c' and not self.active_visit and not self.being_visited:
                 if self.active_challenge:
                     self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                # Daily challenge limit check
+                today = datetime.now().date().isoformat()
+                challenge_log = self.pets_data.setdefault('challenge_log', {})
+                if challenge_log.get(today, 0) >= self.MAX_DAILY_CHALLENGES:
+                    self.message = _('Daily challenge limit reached ({max}/day)').format(max=self.MAX_DAILY_CHALLENGES)
                     self.message_time = now
                     return 'action', self.message
                 peers = self.get_lan_peers()
@@ -2239,16 +2243,37 @@ class PetGame:
         # Digit selection
         if key in '123456789':
             idx = int(key) - 1
-            peers = self.get_lan_peers()
+            # Use current page peers for selection (consistent with display)
+            peers_page, total_pages, cur_page = self.get_lan_peers_page()
+            all_peers = self.get_lan_peers()
 
-            if self.lan_submode == 'challenge':
-                if idx < len(peers):
-                    peer_id = peers[idx].get('node_id', '')
+            if self.lan_submode == 'visit':
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    peer_id = peer.get('node_id', '')
+                    self.lan_submode = None
+                    if self.invite_visit(peer_id):
+                        self.message = _('Visiting {peer}').format(peer=peer.get("username","?"))
+                    # invite_visit sets its own error message on failure
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'challenge':
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    peer_id = peer.get('node_id', '')
                     self.lan_submode = None
                     if self.initiate_challenge(peer_id):
                         self.message = _("Challenge initiated!")
-                    else:
-                        self.message = _("Cannot challenge now")
+                        # Increment daily challenge count
+                        today = datetime.now().date().isoformat()
+                        challenge_log = self.pets_data.setdefault('challenge_log', {})
+                        challenge_log[today] = challenge_log.get(today, 0) + 1
+                        self.save()
+                    # initiate_challenge sets its own error message on failure
                 else:
                     self.lan_submode = None
                     self.message = _("Invalid selection")
@@ -2256,8 +2281,9 @@ class PetGame:
                 return 'action', self.message
 
             elif self.lan_submode == 'gift':
-                if idx < len(peers):
-                    self.lan_submode_data = {'target_node_id': peers[idx].get('node_id', '')}
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    self.lan_submode_data = {'target_node_id': peer.get('node_id', '')}
                     self.lan_submode = 'gift_item'
                     self.message = _("Select item to gift")
                 else:
@@ -2275,8 +2301,7 @@ class PetGame:
                     self.lan_submode_data = None
                     if self.gift_item(target_id, item_id, 1):
                         self.message = _("Gift sent!")
-                    else:
-                        self.message = _("Cannot gift now")
+                    # gift_item sets its own error message on failure
                 else:
                     self.lan_submode = None
                     self.lan_submode_data = None
@@ -2285,13 +2310,13 @@ class PetGame:
                 return 'action', self.message
 
             elif self.lan_submode == 'trade':
-                if idx < len(peers):
-                    peer_id = peers[idx].get('node_id', '')
+                if idx < len(peers_page):
+                    peer = peers_page[idx]
+                    peer_id = peer.get('node_id', '')
                     self.lan_submode = None
                     if self.initiate_trade(peer_id, self.pet_idx):
                         self.message = _("Trade request sent!")
-                    else:
-                        self.message = _("Cannot trade now")
+                    # initiate_trade sets its own error message on failure
                 else:
                     self.lan_submode = None
                     self.message = _("Invalid selection")

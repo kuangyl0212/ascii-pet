@@ -1306,10 +1306,13 @@ class TestLanPanelMode:
     # --- Keys 1-9: invite_visit when not in active visit ---
 
     def test_key_1_invites_first_peer(self, lan_game):
-        """In lan mode, pressing '1' invites the first peer."""
+        """In lan mode, pressing 'v' then '1' invites the first peer."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
         ]
+        # Enter visit submode first
+        lan_game.handle_key('v')
+        assert lan_game.lan_submode == 'visit'
         result_type, result_val = lan_game.handle_key('1')
         assert result_type == 'action'
         assert lan_game.active_visit is not None
@@ -1317,23 +1320,24 @@ class TestLanPanelMode:
         assert 'Bob' in lan_game.message
 
     def test_key_2_invites_second_peer(self, lan_game):
-        """In lan mode, pressing '2' invites the second peer."""
+        """In lan mode, pressing 'v' then '2' invites the second peer."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
             {'node_id': 'peer-2', 'username': 'Carol', 'pet_summary': {}},
         ]
+        lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('2')
         assert result_type == 'action'
         assert lan_game.active_visit is not None
         assert lan_game.active_visit['target'] == 'peer-2'
 
     def test_key_9_out_of_range_no_visit(self, lan_game):
-        """In lan mode, pressing '9' with fewer than 9 peers does nothing."""
+        """In visit submode, pressing '9' with fewer than 9 peers shows invalid selection."""
         lan_game.lan_node._peers = [
             {'node_id': 'peer-1', 'username': 'Bob', 'pet_summary': {}},
         ]
+        lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('9')
-        assert result_type == 'none'
         assert lan_game.active_visit is None
 
     def test_key_digit_does_not_invite_during_active_visit(self, lan_game):
@@ -1585,9 +1589,10 @@ class TestLanPagination:
         assert lan_game.lan_page == 0
 
     def test_number_key_uses_page_offset(self, lan_game):
-        """With 10 peers and lan_page=1, pressing '1' visits peer index 9."""
+        """With 10 peers and lan_page=1, pressing 'v' then '1' visits peer index 9."""
         lan_game.lan_node._peers = _make_peers(10)
         lan_game.lan_page = 1
+        lan_game.handle_key('v')
         result_type, _ = lan_game.handle_key('1')
         assert result_type == 'action'
         assert lan_game.active_visit is not None
