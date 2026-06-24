@@ -359,9 +359,9 @@ class TestHandleLanMessageChallengeResult:
         assert game.state['hp'] == 75  # 100 - 25
         # active_challenge cleared
         assert game.active_challenge is None
-        # battle_log stored
-        assert game.battle_log is not None
-        assert len(game.battle_log) == 2
+        # battle_result stored
+        assert game.battle_result is not None
+        assert len(game.battle_result.get('log', [])) == 2
 
 
 # ─── Task 15: handle_key 'y'/'n' trade confirmation ─────────────────────────

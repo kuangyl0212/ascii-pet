@@ -819,7 +819,9 @@ class PetGame:
         self.active_gift = None
         self.active_trade = None
         self.last_heal_time = 0.0
-        self.battle_log = None
+        self.battle_result = None
+        self.lan_submode = None
+        self.lan_submode_data = None
         self.pending_trade_req = None
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
@@ -1166,6 +1168,13 @@ class PetGame:
         """
         now = time.time()
         if key == 'q':
+            # In LAN submode, 'q' cancels the submode instead of quitting
+            if self.mode == 'lan' and self.lan_submode is not None:
+                self.lan_submode = None
+                self.lan_submode_data = None
+                self.message = _("Cancelled")
+                self.message_time = now
+                return 'action', self.message
             return 'quit', None
 
         if self.state.get('is_dead'):
@@ -1269,6 +1278,15 @@ class PetGame:
                 return 'action', self.message
 
         if self.mode == 'lan':
+            # If battle_result is showing, any key dismisses it
+            if self.battle_result is not None:
+                self.battle_result = None
+                return 'action', 'dismiss'
+
+            # Handle submode
+            if self.lan_submode is not None:
+                return self._handle_lan_submode_key(key)
+
             if key in ('1','2','3','4','5','6','7','8','9') and not self.active_visit and not self.being_visited:
                 peers_page, total_pages, cur_page = self.get_lan_peers_page()
                 idx = cur_page * 9 + (int(key) - 1)
@@ -1348,14 +1366,12 @@ class PetGame:
                     self.message_time = now
                     return 'action', self.message
                 peers = self.get_lan_peers()
-                if peers:
-                    peer_id = peers[0].get('node_id', '')
-                    if self.initiate_challenge(peer_id):
-                        self.message = _('Challenge initiated!')
-                    else:
-                        self.message = _('Cannot challenge now')
-                else:
+                if not peers:
                     self.message = _('No peers to challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'challenge'
+                self.message = _('Select challenge target')
                 self.message_time = now
                 return 'action', self.message
             if key == 'g' and not self.active_visit and not self.being_visited:
@@ -1365,15 +1381,16 @@ class PetGame:
                     return 'action', self.message
                 peers = self.get_lan_peers()
                 inv_list = self.get_inventory_list()
-                if peers and inv_list:
-                    peer_id = peers[0].get('node_id', '')
-                    item_id = inv_list[0][0]
-                    if self.gift_item(peer_id, item_id, 1):
-                        self.message = _('Gift sent!')
-                    else:
-                        self.message = _('Cannot gift now')
-                else:
+                if not peers:
                     self.message = _('No peers or items')
+                    self.message_time = now
+                    return 'action', self.message
+                if not inv_list:
+                    self.message = _('No items to gift')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'gift'
+                self.message = _('Select gift target')
                 self.message_time = now
                 return 'action', self.message
             if key == 't' and not self.active_visit and not self.being_visited:
@@ -1382,14 +1399,12 @@ class PetGame:
                     self.message_time = now
                     return 'action', self.message
                 peers = self.get_lan_peers()
-                if peers:
-                    peer_id = peers[0].get('node_id', '')
-                    if self.initiate_trade(peer_id, self.pet_idx):
-                        self.message = _('Trade request sent!')
-                    else:
-                        self.message = _('Cannot trade now')
-                else:
+                if not peers:
                     self.message = _('No peers to trade')
+                    self.message_time = now
+                    return 'action', self.message
+                self.lan_submode = 'trade'
+                self.message = _('Select trade target')
                 self.message_time = now
                 return 'action', self.message
             if key == 'h':
@@ -2123,7 +2138,7 @@ class PetGame:
                 }
                 self.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_RESULT, result)
                 self.apply_battle_result(result)
-                self.battle_log = battle_result["log"]
+                self.battle_result = battle_result
                 if winner == "attacker":
                     self.message = _("You won the battle!")
                 else:
@@ -2133,7 +2148,7 @@ class PetGame:
         elif msg_type == MSG_CHALLENGE_RESULT:
             # Received by defender: apply battle result
             self.apply_battle_result(payload)
-            self.battle_log = payload.get("log", [])
+            self.battle_result = payload
             if payload.get("winner") == "defender":
                 self.message = _("You won the battle!")
             else:
@@ -2194,6 +2209,83 @@ class PetGame:
             self.execute_trade(payload)
             self.message = _("Trade complete!")
             self.message_time = now
+
+    def _handle_lan_submode_key(self, key):
+        """Handle key presses in LAN submode (challenge/gift/trade selection)."""
+        now = time.time()
+
+        # Cancel submode
+        if key in ('\x1b', 'q'):
+            self.lan_submode = None
+            self.lan_submode_data = None
+            self.message = _("Cancelled")
+            self.message_time = now
+            return 'action', self.message
+
+        # Digit selection
+        if key in '123456789':
+            idx = int(key) - 1
+            peers = self.get_lan_peers()
+
+            if self.lan_submode == 'challenge':
+                if idx < len(peers):
+                    peer_id = peers[idx].get('node_id', '')
+                    self.lan_submode = None
+                    if self.initiate_challenge(peer_id):
+                        self.message = _("Challenge initiated!")
+                    else:
+                        self.message = _("Cannot challenge now")
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'gift':
+                if idx < len(peers):
+                    self.lan_submode_data = {'target_node_id': peers[idx].get('node_id', '')}
+                    self.lan_submode = 'gift_item'
+                    self.message = _("Select item to gift")
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'gift_item':
+                inv_list = self.get_inventory_list()
+                if idx < len(inv_list):
+                    item_id = inv_list[idx][0]
+                    target_id = self.lan_submode_data.get('target_node_id', '')
+                    self.lan_submode = None
+                    self.lan_submode_data = None
+                    if self.gift_item(target_id, item_id, 1):
+                        self.message = _("Gift sent!")
+                    else:
+                        self.message = _("Cannot gift now")
+                else:
+                    self.lan_submode = None
+                    self.lan_submode_data = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+            elif self.lan_submode == 'trade':
+                if idx < len(peers):
+                    peer_id = peers[idx].get('node_id', '')
+                    self.lan_submode = None
+                    if self.initiate_trade(peer_id, self.pet_idx):
+                        self.message = _("Trade request sent!")
+                    else:
+                        self.message = _("Cannot trade now")
+                else:
+                    self.lan_submode = None
+                    self.message = _("Invalid selection")
+                self.message_time = now
+                return 'action', self.message
+
+        # Ignore other keys in submode
+        return 'none', None
 
     def _tick_visit_timeout(self):
         """检查拜访超时（10分钟）。"""

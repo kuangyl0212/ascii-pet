@@ -1,6 +1,7 @@
 """Battle simulation engine for ASCII pet. Pure functions, zero dependencies."""
 import random
 from ascii_pet.core import SKILLS
+from ascii_pet.i18n import _
 
 
 def simulate_battle(attacker, defender, seed):
@@ -67,13 +68,17 @@ def _do_attack(attacker, defender, rng, log):
         ) * multiplier
         defender['battle_bp'] -= damage
         log.append(
-            f"{attacker['name']} used {skill['name']}! Damage: {damage:.1f}. "
-            f"{defender['name']} BP: {defender['battle_bp']:.1f}"
+            _("{name} used {skill}! Damage: {damage}. {target} BP: {bp}").format(
+                name=attacker['name'], skill=skill['name'],
+                damage=f"{damage:.1f}", target=defender['name'],
+                bp=f"{defender['battle_bp']:.1f}")
         )
     else:
         log.append(
-            f"{attacker['name']} used {skill['name']}! Missed! "
-            f"{defender['name']} BP: {defender['battle_bp']:.1f}"
+            _("{name} used {skill}! Missed! {target} BP: {bp}").format(
+                name=attacker['name'], skill=skill['name'],
+                target=defender['name'],
+                bp=f"{defender['battle_bp']:.1f}")
         )
 
 

@@ -335,3 +335,65 @@ class TestCalcEscapeChance:
     def test_returns_float(self):
         result = battle.calc_escape_chance(10, 10)
         assert isinstance(result, float)
+
+
+# ─── Battle log i18n ─────────────────────────────────────────────────────────
+
+
+class TestBattleLogI18n:
+    """Test that battle log entries use translatable text via _()."""
+
+    def test_hit_log_uses_translatable_format(self):
+        """Hit log entries should be produced via _() so they can be translated.
+        Verify the format contains expected patterns (name, skill, damage, BP)."""
+        attacker = make_combatant(name='Alice', attack=20, defense=20,
+                                  speed=100, skills=['tackle'])
+        defender = make_combatant(name='Bob', attack=20, defense=20,
+                                  speed=10, skills=['tackle'])
+        # Force a hit: accuracy check passes, multiplier = 1.0
+        fake_rng = FakeRandom(random_values=[0.0, 0.5], default=0.0)
+        with patch_battle_rng(fake_rng):
+            result = battle.simulate_battle(attacker, defender, seed=0)
+        first_log = result['log'][0]
+        # Should contain attacker name, skill name, damage value, defender name, BP
+        assert 'Alice' in first_log
+        assert 'Tackle' in first_log
+        assert 'Bob' in first_log
+        assert 'BP' in first_log
+        # Should NOT contain raw f-string pattern like "used ...! Damage:"
+        # (it should use the _() translated format instead)
+
+    def test_miss_log_uses_translatable_format(self):
+        """Miss log entries should be produced via _() so they can be translated.
+        Verify the format contains expected patterns (name, skill, Missed, BP)."""
+        attacker = make_combatant(name='Alice', attack=50, defense=50,
+                                  speed=100, skills=['tackle'])
+        defender = make_combatant(name='Bob', attack=10, defense=10,
+                                  speed=10, skills=['tail_whip'])
+        # Force a miss: accuracy check fails
+        fake_rng = FakeRandom(random_values=[0.96], default=0.0)
+        with patch_battle_rng(fake_rng):
+            result = battle.simulate_battle(attacker, defender, seed=0)
+        first_log = result['log'][0]
+        assert 'Alice' in first_log
+        assert 'Tackle' in first_log
+        assert 'Bob' in first_log
+        assert 'BP' in first_log
+        assert 'miss' in first_log.lower()
+
+    def test_chinese_translation_produces_chinese_log(self):
+        """When language is set to zh, battle log should contain Chinese characters."""
+        from ascii_pet.i18n import set_language
+        set_language('zh')
+        try:
+            attacker = make_combatant(name='Alice', speed=100, skills=['tackle'])
+            defender = make_combatant(name='Bob', speed=10, skills=['tackle'])
+            result = battle.simulate_battle(attacker, defender, seed=42)
+            # At least one log entry should contain Chinese characters
+            has_chinese = any(
+                any('\u4e00' <= c <= '\u9fff' for c in entry)
+                for entry in result['log']
+            )
+            assert has_chinese, f'Expected Chinese characters in log: {result["log"]}'
+        finally:
+            set_language('en')
