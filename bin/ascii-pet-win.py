@@ -234,12 +234,17 @@ def render_lan_lines(game):
             lines.append((_('★ Trading... (timeout 30s)'), COLOR_MSG))
         elif all_peers:
             lines.append((_('[c]Challenge [g]Gift [t]Trade [h]Heal'), COLOR_DIM))
+        # Trade confirmation hint
+        if game.pending_trade_req is not None:
+            from_username = game.pending_trade_req.get('from_username', '?')
+            pet_name = game.pending_trade_req.get('pet_snapshot', {}).get('name', '?')
+            lines.append((_('{} wants to trade {}! [y]Accept [n]Reject').format(from_username, pet_name), COLOR_MSG))
         if total_pages >= 2:
             lines.append((_('Prev Page: [  Next Page: ]'), COLOR_DIM))
-        lines.append((_('[o]Disable LAN'), COLOR_DIM))
+        lines.append((_('[l]Back [o]Disable LAN'), COLOR_DIM))
     else:
         lines.append((_('[o]Enable LAN'), COLOR_DIM))
-    lines.append((_('[l]Back [c]Compact Mode'), COLOR_DIM))
+    lines.append((_('[l]Back'), COLOR_DIM))
 
     return lines
 
@@ -1229,50 +1234,8 @@ class PetWindow:
     def on_char(self, wparam):
         ch = chr(wparam)
         now = time.time()
-        # Handle LAN action keys in expanded mode with LAN enabled
-        if self.game.mode == 'expanded' and self.game.lan_enabled:
-            if ch == 'c':
-                peers = self.game.get_lan_peers()
-                if peers:
-                    peer_id = peers[0].get('node_id', '')
-                    if self.game.initiate_challenge(peer_id):
-                        self.game.message = _('Challenge initiated!')
-                        self.game.message_time = now
-                else:
-                    self.game.message = _('No peers to challenge')
-                    self.game.message_time = now
-                user32.InvalidateRect(self.hwnd, None, False)
-                return
-            if ch == 'g':
-                peers = self.game.get_lan_peers()
-                inv_list = self.game.get_inventory_list()
-                if peers and inv_list:
-                    peer_id = peers[0].get('node_id', '')
-                    item_id = inv_list[0][0]
-                    if self.game.gift_item(peer_id, item_id, 1):
-                        self.game.message = _('Gift sent!')
-                        self.game.message_time = now
-                else:
-                    self.game.message = _('No peers or items')
-                    self.game.message_time = now
-                user32.InvalidateRect(self.hwnd, None, False)
-                return
-            if ch == 't':
-                peers = self.game.get_lan_peers()
-                if peers:
-                    peer_id = peers[0].get('node_id', '')
-                    if self.game.initiate_trade(peer_id, self.game.pet_idx):
-                        self.game.message = _('Trade request sent!')
-                        self.game.message_time = now
-                else:
-                    self.game.message = _('No peers to trade')
-                    self.game.message_time = now
-                user32.InvalidateRect(self.hwnd, None, False)
-                return
-            if ch == 'h':
-                self.game.heal_pet()
-                user32.InvalidateRect(self.hwnd, None, False)
-                return
+        # Handle LAN action keys in LAN mode (c/g/t/h are handled by handle_key's lan branch)
+        # No need to intercept here anymore — they flow through handle_key
         atype, detail = self.game.handle_key(ch)
         if atype == 'quit':
             user32.DestroyWindow(self.hwnd); return
@@ -1326,13 +1289,13 @@ class PetWindow:
                 for row in v_frame:
                     lines.append((f'  {row}', COLOR_DIM))
         # Show battle log after a battle
-        if g.battle_log and g.mode == 'expanded':
+        if g.battle_log and g.mode in ('expanded', 'lan'):
             battle_result = {'log': g.battle_log, 'winner': '?', 'loser': '?',
                              'hp_loss_winner': 0, 'hp_loss_loser': 0}
             lines.append(('', COLOR_WHITE))
             lines.extend(render_battle_log_lines(battle_result))
         # Show trade confirmation when a trade request is pending
-        if g.pending_trade_req is not None and g.mode == 'expanded':
+        if g.pending_trade_req is not None and g.mode in ('expanded', 'lan'):
             lines.append(('', COLOR_WHITE))
             lines.extend(render_trade_confirm_lines(g.pending_trade_req))
         return lines

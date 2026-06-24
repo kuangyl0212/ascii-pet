@@ -243,6 +243,7 @@ class TestHPLossCaps:
 class TestUnderdogWinRate:
     """Test that underdog (weak pet) can win against strong pet."""
 
+    @pytest.mark.slow
     def test_weak_pet_wins_at_least_10_percent(self):
         """Level 5 common pet vs level 20 rare pet, weak wins >= 10%."""
         # Use dragon (common lv5) vs mushroom (rare lv20):

@@ -129,6 +129,7 @@ class TestRollRarityDistribution:
         # RARITY_WEIGHTS['legendary']=1/100; must be < 5%
         assert legendary_ratio < 0.05, f"legendary ratio {legendary_ratio:.3f} >= 5%"
 
+    @pytest.mark.slow
     def test_all_rarities_appear(self):
         rng = _uniform_rng(12345)
         seen = set()
@@ -290,6 +291,7 @@ class TestShinyProbability:
     the real mulberry32.
     """
 
+    @pytest.mark.slow
     def test_shiny_ratio_about_1_percent(self):
         n = 10000
         shiny_count = 0
@@ -305,6 +307,7 @@ class TestShinyProbability:
         assert ratio < 0.02, (
             f"shiny ratio {ratio:.4f} too high (> 2%), count={shiny_count}")
 
+    @pytest.mark.slow
     def test_shiny_is_bool_in_large_sample(self):
         for i in range(1000):
             c = generate_companion("testuser", str(i))

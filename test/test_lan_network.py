@@ -266,6 +266,7 @@ class TestLanNodeStart:
 
     @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(recv_should_error=True))
+    @pytest.mark.slow
     def test_network_thread_exception_exits_gracefully(self, mock_sock, mock_ip):
         """Network thread exception doesn't crash main thread (test 9)."""
         node = lan.LanNode("alice", _minimal_pet_state())
@@ -744,6 +745,7 @@ class TestThreadExceptionNotification:
 
     @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
     @patch('socket.socket', side_effect=_fake_socket_factory(recv_should_error=True))
+    @pytest.mark.slow
     def test_thread_exception_puts_error_in_ui_queue(self, mock_sock, mock_ip):
         """Network thread exception puts an error message in ui_queue."""
         node = lan.LanNode("alice", _minimal_pet_state())

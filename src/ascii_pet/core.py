@@ -1341,7 +1341,61 @@ class PetGame:
                         self.message = _('Failed to connect to Community Plaza')
                 self.message_time = now
                 return 'action', self.message
-            if key in ('l', 'c'):
+            # Challenge/gift/trade/heal actions
+            if key == 'c' and not self.active_visit and not self.being_visited:
+                if self.active_challenge:
+                    self.message = _('Already in a challenge')
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                if peers:
+                    peer_id = peers[0].get('node_id', '')
+                    if self.initiate_challenge(peer_id):
+                        self.message = _('Challenge initiated!')
+                    else:
+                        self.message = _('Cannot challenge now')
+                else:
+                    self.message = _('No peers to challenge')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'g' and not self.active_visit and not self.being_visited:
+                if self.active_gift:
+                    self.message = _('Already gifting')
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                inv_list = self.get_inventory_list()
+                if peers and inv_list:
+                    peer_id = peers[0].get('node_id', '')
+                    item_id = inv_list[0][0]
+                    if self.gift_item(peer_id, item_id, 1):
+                        self.message = _('Gift sent!')
+                    else:
+                        self.message = _('Cannot gift now')
+                else:
+                    self.message = _('No peers or items')
+                self.message_time = now
+                return 'action', self.message
+            if key == 't' and not self.active_visit and not self.being_visited:
+                if self.active_trade:
+                    self.message = _('Already trading')
+                    self.message_time = now
+                    return 'action', self.message
+                peers = self.get_lan_peers()
+                if peers:
+                    peer_id = peers[0].get('node_id', '')
+                    if self.initiate_trade(peer_id, self.pet_idx):
+                        self.message = _('Trade request sent!')
+                    else:
+                        self.message = _('Cannot trade now')
+                else:
+                    self.message = _('No peers to trade')
+                self.message_time = now
+                return 'action', self.message
+            if key == 'h':
+                self.heal_pet()
+                return 'action', self.message
+            if key == 'l':
                 self.mode = 'expanded'
                 return 'mode_change', self.mode
             return 'none', None

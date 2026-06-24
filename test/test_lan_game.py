@@ -1430,11 +1430,11 @@ class TestLanPanelMode:
         assert result_type == 'mode_change'
         assert lan_game.mode == 'expanded'
 
-    def test_key_c_returns_to_expanded(self, lan_game):
-        """In lan mode, pressing 'c' returns to expanded mode."""
+    def test_key_c_initiates_challenge_in_lan_mode(self, lan_game):
+        """In lan mode, pressing 'c' initiates a challenge (no peers → message)."""
         result_type, result_val = lan_game.handle_key('c')
-        assert result_type == 'mode_change'
-        assert lan_game.mode == 'expanded'
+        # No peers available, so challenge fails with message
+        assert result_type == 'action'
 
     # --- f/p do NOT do local actions in lan mode ---
 
