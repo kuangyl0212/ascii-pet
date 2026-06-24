@@ -357,6 +357,14 @@ class TestLANPanelI18n:
         i18n.set_language('zh')
         assert i18n._('[1-9]Visit Player [u]Edit Username') == '[1-9]拜访玩家 [u]修改名称'
 
+    def test_edit_username_hint_zh(self):
+        i18n.set_language('zh')
+        assert i18n._('[u]Edit Username') == '[u]修改名称'
+
+    def test_edit_username_hint_en(self):
+        i18n.set_language('en')
+        assert i18n._('[u]Edit Username') == '[u]Edit Username'
+
     def test_pagination_hint_zh(self):
         i18n.set_language('zh')
         assert i18n._('Page: [ = Previous  ] = Next') == '翻页: [ = 上一页  ] = 下一页'

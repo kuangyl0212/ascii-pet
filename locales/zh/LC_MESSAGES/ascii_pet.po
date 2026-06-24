@@ -594,6 +594,9 @@ msgstr "[e]结束拜访 [f]远程喂食 [p]远程玩耍"
 msgid "[1-9]Visit Player [u]Edit Username"
 msgstr "[1-9]拜访玩家 [u]修改名称"
 
+msgid "[u]Edit Username"
+msgstr "[u]修改名称"
+
 msgid "[o]Disable LAN"
 msgstr "[o]断开连接"
 

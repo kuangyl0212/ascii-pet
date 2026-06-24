@@ -582,6 +582,9 @@ msgstr "[e]End Visit [f]Remote Feed [p]Remote Play"
 msgid "[1-9]Visit Player [u]Edit Username"
 msgstr "[1-9]Visit Player [u]Edit Username"
 
+msgid "[u]Edit Username"
+msgstr "[u]Edit Username"
+
 msgid "[o]Disable LAN"
 msgstr "[o]Disconnect"
 
