@@ -5,6 +5,8 @@ GameEvent objects dispatched through a StateMachine to the current
 GameState, which handles the event and optionally triggers transitions.
 """
 
+from __future__ import annotations
+
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
