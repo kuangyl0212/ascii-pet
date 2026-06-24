@@ -20,6 +20,9 @@ from ascii_pet.protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
     MSG_VISIT_LEAVE, MSG_BYE,
+    MSG_CHALLENGE_REQ, MSG_CHALLENGE_ACK, MSG_CHALLENGE_RESULT,
+    MSG_GIFT_ITEM, MSG_GIFT_ACK,
+    MSG_TRADE_REQ, MSG_TRADE_ACK, MSG_TRADE_CONFIRM,
     encode_message, decode_message,
     make_pet_snapshot, make_hello, make_hello_lite,
 )
@@ -551,6 +554,22 @@ class LanNode:
         elif msg_type == MSG_VISIT_DATA:
             self.ui_queue.put({"type": msg_type, "payload": payload})
         elif msg_type == MSG_VISIT_LEAVE:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_CHALLENGE_REQ:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_CHALLENGE_ACK:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_CHALLENGE_RESULT:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_GIFT_ITEM:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_GIFT_ACK:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_TRADE_REQ:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_TRADE_ACK:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_TRADE_CONFIRM:
             self.ui_queue.put({"type": msg_type, "payload": payload})
         elif msg_type == MSG_HEARTBEAT:
             pass  # heartbeat, no ui_queue action needed

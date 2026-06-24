@@ -45,6 +45,17 @@ MSG_VISIT_EVENT = "visit_event"
 MSG_VISIT_END = "visit_end"
 MSG_NAME_CHECK = "name_check"
 
+# Battle / gift / trade message types (Task 6).
+MSG_CHALLENGE_REQ = "challenge_req"
+MSG_CHALLENGE_ACK = "challenge_ack"
+MSG_CHALLENGE_RESULT = "challenge_result"
+MSG_GIFT_ITEM = "gift_item"
+MSG_GIFT_ACK = "gift_ack"
+MSG_TRADE_REQ = "trade_req"
+MSG_TRADE_ACK = "trade_ack"
+MSG_TRADE_CONFIRM = "trade_confirm"
+MSG_TRADE_COMPLETE = "trade_complete"
+
 # ─── Framing ────────────────────────────────────────────────────────────────
 
 _LENGTH_PREFIX = struct.Struct(">I")  # 4-byte big-endian unsigned int
@@ -123,6 +134,17 @@ _SNAPSHOT_FIELDS = (
     "mood",
 )
 
+# Combat fields added to snapshots in Task 6. These may not exist in older
+# pet states, so make_pet_snapshot uses .get() with defaults for backward
+# compatibility. make_battle_snapshot computes them via calculate_combat_stats.
+_COMBAT_SNAPSHOT_DEFAULTS = {
+    "hp": 100,
+    "attack": 0,
+    "defense": 0,
+    "speed": 0,
+    "skills": list,
+}
+
 
 def make_pet_snapshot(state, owner):
     """Build a read-only snapshot of a pet for sharing over the LAN.
@@ -132,12 +154,55 @@ def make_pet_snapshot(state, owner):
         owner: Username of the pet's owner (string).
 
     Returns:
-        dict with exactly these keys:
-        ``name, species, rarity, level, shiny, eye, hat, mood, owner``.
+        dict with these keys:
+        ``name, species, rarity, level, shiny, eye, hat, mood, owner`` plus
+        combat fields ``hp, attack, defense, speed, skills``. The combat
+        fields use ``state.get(field, default)`` so older states without
+        combat data still produce a valid snapshot.
     """
     snap = {field: state[field] for field in _SNAPSHOT_FIELDS}
+    for field, default in _COMBAT_SNAPSHOT_DEFAULTS.items():
+        value = state.get(field)
+        if value is None:
+            snap[field] = default() if callable(default) else default
+        else:
+            snap[field] = list(value) if field == "skills" else value
     snap["owner"] = owner
     return snap
+
+
+def make_battle_snapshot(state, owner):
+    """Build a battle-ready snapshot including calculated combat stats.
+
+    Unlike ``make_pet_snapshot`` (which reads combat fields verbatim from
+    state with defaults), this function calls ``calculate_combat_stats`` to
+    derive hp/attack/defense/speed/skills from the pet's level, rarity, and
+    species. Use this when sending a pet into a LAN battle.
+
+    Args:
+        state: The pet state dict (as produced by ``pet_core.init_state``).
+        owner: Username of the pet's owner (string).
+
+    Returns:
+        dict with keys:
+        ``name, species, rarity, level, shiny, owner, hp, attack, defense,
+        speed, skills``.
+    """
+    from ascii_pet.core import calculate_combat_stats
+    combat = calculate_combat_stats(state)
+    return {
+        "name": state["name"],
+        "species": state["species"],
+        "rarity": state["rarity"],
+        "level": state["level"],
+        "shiny": state.get("shiny", False),
+        "owner": owner,
+        "hp": combat["hp"],
+        "attack": combat["attack"],
+        "defense": combat["defense"],
+        "speed": combat["speed"],
+        "skills": combat["skills"],
+    }
 
 
 # ─── Hello message builder ──────────────────────────────────────────────────
