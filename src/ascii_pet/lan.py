@@ -21,7 +21,7 @@ from ascii_pet.protocol import (
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
     MSG_VISIT_LEAVE, MSG_BYE,
     encode_message, decode_message,
-    make_pet_snapshot, make_hello,
+    make_pet_snapshot, make_hello, make_hello_lite,
 )
 
 # ─── Constants ─────────────────────────────────────────────────────────────
@@ -29,8 +29,8 @@ from ascii_pet.protocol import (
 DEFAULT_UDP_PORT = 50007
 DEFAULT_TCP_PORT = 50008
 BROADCAST_ADDR = "255.255.255.255"
-HELLO_INTERVAL = 2.0       # seconds between HELLO broadcasts
-HEARTBEAT_INTERVAL = 10.0  # seconds between heartbeats
+HELLO_INTERVAL = 5.0       # seconds between HELLO broadcasts
+HEARTBEAT_INTERVAL = 15.0  # seconds between heartbeats
 PEER_TIMEOUT = 30.0        # seconds before a peer is considered expired
 SOCKET_TIMEOUT = 1.0       # recv timeout so worker threads can poll _running
 THREAD_JOIN_TIMEOUT = 2.0  # seconds to wait for thread shutdown in stop()
@@ -116,6 +116,32 @@ def _get_local_ip():
         return "127.0.0.1"
 
 
+def _compute_broadcast_addr(local_ip):
+    """Compute the subnet-directed broadcast address for the given local IP.
+
+    Uses a /24 mask (255.255.255.0) which covers the common home/LAN case.
+    Falls back to 255.255.255.255 (limited broadcast) for loopback or
+    unparseable addresses so tests and single-machine scenarios still work.
+
+    Args:
+        local_ip: IPv4 address string (e.g. "192.168.1.100").
+
+    Returns:
+        Subnet broadcast address (e.g. "192.168.1.255"), or
+        "255.255.255.255" if local_ip is loopback or invalid.
+    """
+    try:
+        parts = local_ip.split(".")
+        if len(parts) != 4:
+            return BROADCAST_ADDR
+        if parts[0] == "127":
+            return BROADCAST_ADDR
+        # /24 subnet: zero the host portion, set it to 255
+        return ".".join(parts[:3]) + ".255"
+    except Exception:
+        return BROADCAST_ADDR
+
+
 # ─── LanNode ───────────────────────────────────────────────────────────────
 
 
@@ -142,6 +168,7 @@ class LanNode:
         self.tcp_port = tcp_port
 
         self.local_ip = _get_local_ip()
+        self._broadcast_addr = _compute_broadcast_addr(self.local_ip)
         self.node_id = generate_node_id(self.local_ip, tcp_port, username)
 
         self.enabled = False
@@ -151,6 +178,7 @@ class LanNode:
         # Star topology: master election state
         self._master_id = self.node_id  # initially self is master
         self._master_sock = None        # slave's TCP connection to master
+        self._hello_sent = False        # first HELLO carries full snapshot
 
         # node_id -> peer info dict
         self._peers = {}
@@ -319,7 +347,7 @@ class LanNode:
     def _send_broadcast_raw(self, msg_type, payload):
         """Send a UDP broadcast (internal, may raise)."""
         data = encode_message(msg_type, payload)
-        self._udp_socket.sendto(data, (BROADCAST_ADDR, self.udp_port))
+        self._udp_socket.sendto(data, (self._broadcast_addr, self.udp_port))
 
     def send_to_peer(self, peer_node_id, msg_type, payload):
         """Send a message to a specific peer via TCP.
@@ -590,20 +618,37 @@ class LanNode:
         node_id = payload.get("node_id")
         if not node_id or node_id == self.node_id:
             return  # ignore self
+        # 判断是否为新 peer
+        is_new_peer = False
         with self._peers_lock:
-            self._peers[node_id] = {
-                "node_id": node_id,
-                "username": payload.get("username", ""),
-                "pet_summary": payload.get("pet_summary", {}),
-                "last_seen": time.time(),
-                "addr": addr,
-                "ip": addr[0] if addr else None,
-            }
-        # Re-elect master after peer update
-        changed = self._reelect_master()
-        if changed:
-            old_master, new_master = changed
-            self._on_master_change(old_master, new_master)
+            existing = self._peers.get(node_id)
+            if existing is not None:
+                # 已知 peer：仅更新 last_seen 和地址，保留旧 pet_summary
+                existing["last_seen"] = time.time()
+                existing["addr"] = addr
+                existing["ip"] = addr[0] if addr else None
+                # 若 payload 带了新快照（非 None），更新快照
+                new_snapshot = payload.get("pet_summary")
+                if new_snapshot is not None:
+                    existing["pet_summary"] = new_snapshot
+                existing["username"] = payload.get("username", existing.get("username", ""))
+            else:
+                # 新 peer：插入
+                self._peers[node_id] = {
+                    "node_id": node_id,
+                    "username": payload.get("username", ""),
+                    "pet_summary": payload.get("pet_summary") or {},
+                    "last_seen": time.time(),
+                    "addr": addr,
+                    "ip": addr[0] if addr else None,
+                }
+                is_new_peer = True
+        # 仅新 peer 触发重选
+        if is_new_peer:
+            changed = self._reelect_master()
+            if changed:
+                old_master, new_master = changed
+                self._on_master_change(old_master, new_master)
 
     def _reelect_master(self):
         """Re-compute the master from the current peer set.
@@ -771,8 +816,17 @@ class LanNode:
                 del self._peers[nid]
 
     def _broadcast_hello(self):
-        """Send a HELLO broadcast with the current pet snapshot."""
-        snapshot = make_pet_snapshot(self.pet_state, self.username)
-        hello = make_hello(self.node_id, self.username, snapshot)
+        """Send a HELLO broadcast.
+
+        First call sends a full HELLO with pet_snapshot; subsequent calls
+        send a lightweight HELLO (pet_summary=None) to save bandwidth.
+        Receivers retain the previously cached snapshot.
+        """
+        if not self._hello_sent:
+            snapshot = make_pet_snapshot(self.pet_state, self.username)
+            hello = make_hello(self.node_id, self.username, snapshot)
+            self._hello_sent = True
+        else:
+            hello = make_hello_lite(self.node_id, self.username)
         payload = {k: v for k, v in hello.items() if k != "type"}
         self._send_broadcast_raw(MSG_HELLO, payload)

@@ -585,3 +585,48 @@ class TestEncodeDecodeNewVisitMessages:
             msg_type, decoded = result
             assert msg_type == MSG_VISIT_EVENT
             assert decoded == payload
+
+
+# ─── make_hello_lite ────────────────────────────────────────────────────────
+
+
+class TestMakeHelloLite:
+    """make_hello_lite: 构造不含 pet_summary 的轻量 HELLO。"""
+
+    def test_returns_dict_with_required_fields(self):
+        from ascii_pet.protocol import make_hello_lite
+        result = make_hello_lite("node-1", "alice")
+        assert isinstance(result, dict)
+        for key in ("type", "node_id", "username", "timestamp", "pet_summary"):
+            assert key in result, f"缺少键: {key}"
+
+    def test_type_is_hello(self):
+        from ascii_pet.protocol import make_hello_lite, MSG_HELLO
+        result = make_hello_lite("node-1", "alice")
+        assert result["type"] == MSG_HELLO
+
+    def test_node_id_and_username_correct(self):
+        from ascii_pet.protocol import make_hello_lite
+        result = make_hello_lite("node-1", "alice")
+        assert result["node_id"] == "node-1"
+        assert result["username"] == "alice"
+
+    def test_pet_summary_is_none(self):
+        from ascii_pet.protocol import make_hello_lite
+        result = make_hello_lite("node-1", "alice")
+        assert result["pet_summary"] is None
+
+    def test_timestamp_is_float(self):
+        from ascii_pet.protocol import make_hello_lite
+        result = make_hello_lite("node-1", "alice")
+        assert isinstance(result["timestamp"], float)
+
+    def test_encode_decode_roundtrip(self):
+        from ascii_pet.protocol import make_hello_lite, encode_message, decode_message, MSG_HELLO
+        result = make_hello_lite("node-1", "alice")
+        payload = {k: v for k, v in result.items() if k != "type"}
+        data = encode_message(MSG_HELLO, payload)
+        msg_type, decoded_payload = decode_message(data)
+        assert msg_type == MSG_HELLO
+        assert decoded_payload["node_id"] == "node-1"
+        assert decoded_payload["pet_summary"] is None

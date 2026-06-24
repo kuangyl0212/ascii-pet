@@ -18,6 +18,7 @@ import os
 import queue
 import socket
 import sys
+import threading
 import time
 from unittest.mock import patch
 
@@ -67,6 +68,7 @@ class _FakeSocket:
         self._closed = False
         self._bind_should_fail = False
         self._recv_should_error = False
+        self._timeout = 1.0
 
     def setsockopt(self, *args, **kwargs):
         pass
@@ -76,7 +78,7 @@ class _FakeSocket:
             raise socket.error("Address already in use")
 
     def settimeout(self, t):
-        pass
+        self._timeout = t
 
     def listen(self, n):
         pass
@@ -87,19 +89,19 @@ class _FakeSocket:
     def recvfrom(self, bufsize):
         if self._recv_should_error:
             raise RuntimeError("Simulated unexpected thread error")
-        time.sleep(0.02)
+        time.sleep(self._timeout)
         raise socket.timeout()
 
     def accept(self):
         if self._recv_should_error:
             raise RuntimeError("Simulated unexpected thread error")
-        time.sleep(0.02)
+        time.sleep(self._timeout)
         raise socket.timeout()
 
     def recv(self, bufsize):
         if self._recv_should_error:
             raise RuntimeError("Simulated unexpected thread error")
-        time.sleep(0.02)
+        time.sleep(self._timeout)
         raise socket.timeout()
 
     def sendto(self, data, addr):
@@ -126,6 +128,31 @@ def _fake_socket_factory(bind_should_fail=False, recv_should_error=False):
         s._recv_should_error = recv_should_error
         return s
     return factory
+
+
+# ─── _FakeSocket timeout consistency tests ─────────────────────────────────
+
+
+class TestFakeSocketTimeout:
+    """_FakeSocket 应记录 settimeout 并按真实超时阻塞。"""
+
+    def test_settimeout_records_timeout(self):
+        s = _FakeSocket()
+        s.settimeout(1.0)
+        assert s._timeout == 1.0
+
+    def test_default_timeout_is_1_second(self):
+        s = _FakeSocket()
+        assert s._timeout == 1.0
+
+    def test_recvfrom_blocks_for_real_timeout(self):
+        s = _FakeSocket()
+        s.settimeout(0.3)
+        start = time.time()
+        with pytest.raises(socket.timeout):
+            s.recvfrom(4096)
+        elapsed = time.time() - start
+        assert elapsed >= 0.25, f"recvfrom 仅阻塞 {elapsed:.3f}s，预期 >= 0.25s（应按真实超时而非固定 0.02s）"
 
 
 # ─── Pure function tests (no network) ──────────────────────────────────────
@@ -677,15 +704,13 @@ class TestFailover:
         assert node.is_master is False
         msg = node.ui_queue.get_nowait()
         assert msg["type"] == "master_change"
-        # Clean up
-        node._running = False
-        with node._client_sockets_lock:
-            if node._master_sock:
-                try:
-                    node._master_sock.close()
-                except Exception:
-                    pass
-                node._master_sock = None
+        # Clean up — stop() sets _running=False and closes sockets.
+        # _connect_to_master spawns lan-master-recv outside _threads,
+        # so join it explicitly to avoid thread leakage.
+        node.stop()
+        for t in threading.enumerate():
+            if t.name == "lan-master-recv" and t.is_alive():
+                t.join(timeout=2.0)
 
     def test_self_becomes_master_when_no_other_peers(self):
         """When master disconnects and no other peers, self becomes master."""
@@ -1019,4 +1044,242 @@ class TestCheckNameConflict:
         """Returns False when peers lack 'username' key (no match)."""
         peers = [{"node_id": "peer-1", "pet_summary": {}}]
         assert lan.check_name_conflict("alice", peers) is False
+
+
+# ─── LAN constants tests ──────────────────────────────────────────────────
+
+
+class TestLanConstants:
+    """LAN 常量值应符合修复后的规格。"""
+
+    def test_hello_interval_is_5_seconds(self):
+        assert lan.HELLO_INTERVAL == 5.0
+
+    def test_heartbeat_interval_is_15_seconds(self):
+        assert lan.HEARTBEAT_INTERVAL == 15.0
+
+    def test_peer_timeout_unchanged(self):
+        assert lan.PEER_TIMEOUT == 30.0
+
+
+# ─── Subnet-directed broadcast tests ──────────────────────────────────────
+
+
+class TestComputeBroadcastAddr:
+    """_compute_broadcast_addr: 基于本地 IP 计算子网定向广播地址。"""
+
+    def test_class_c_24_subnet(self):
+        assert lan._compute_broadcast_addr("192.168.1.100") == "192.168.1.255"
+
+    def test_class_a_24_subnet(self):
+        assert lan._compute_broadcast_addr("10.0.0.5") == "10.0.0.255"
+
+    def test_loopback_falls_back_to_global(self):
+        assert lan._compute_broadcast_addr("127.0.0.1") == "255.255.255.255"
+
+    def test_class_b_24_subnet(self):
+        assert lan._compute_broadcast_addr("172.16.5.20") == "172.16.5.255"
+
+
+class TestSendBroadcastUsesSubnetAddr:
+    """_send_broadcast_raw 应使用计算后的子网广播地址。"""
+
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
+    @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
+    def test_node_uses_subnet_broadcast_addr(self, mock_sock, mock_ip):
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.start()
+        # _broadcast_addr 应为子网定向广播
+        assert node._broadcast_addr == "192.168.1.255"
+        node.stop()
+
+
+# ─── Master re-election optimization tests ────────────────────────────────
+
+
+class TestMasterReelectionOptimization:
+    """_on_peer_hello 应仅在 peer 列表变化时触发 _reelect_master。"""
+
+    def test_known_peer_does_not_trigger_reelect(self):
+        """已知 peer 的 HELLO 不应触发 _reelect_master。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        # 预先插入一个已知 peer
+        with node._peers_lock:
+            node._peers["node-x"] = {
+                "node_id": "node-x",
+                "username": "bob",
+                "pet_summary": {"name": "BobPet"},
+                "last_seen": time.time(),
+                "addr": ("192.168.1.50", 50007),
+                "ip": "192.168.1.50",
+            }
+        # mock _reelect_master 计数
+        original_reelect = node._reelect_master
+        call_count = {"count": 0}
+        def counting_reelect():
+            call_count["count"] += 1
+            return original_reelect()
+        node._reelect_master = counting_reelect
+        # 收到已知 peer 的 HELLO
+        payload = {
+            "node_id": "node-x",
+            "username": "bob",
+            "pet_summary": {"name": "BobPet"},
+        }
+        node._on_peer_hello(payload, ("192.168.1.50", 50007))
+        assert call_count["count"] == 0, "已知 peer 的 HELLO 不应触发 _reelect_master"
+
+    def test_new_peer_triggers_reelect_once(self):
+        """新 peer 的 HELLO 应触发一次 _reelect_master。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        original_reelect = node._reelect_master
+        call_count = {"count": 0}
+        def counting_reelect():
+            call_count["count"] += 1
+            return original_reelect()
+        node._reelect_master = counting_reelect
+        # 收到新 peer 的 HELLO
+        payload = {
+            "node_id": "node-y",
+            "username": "carol",
+            "pet_summary": {"name": "CarolPet"},
+        }
+        node._on_peer_hello(payload, ("192.168.1.60", 50007))
+        assert call_count["count"] == 1, "新 peer 的 HELLO 应触发一次 _reelect_master"
+
+    def test_known_peer_last_seen_updated(self):
+        """已知 peer 的 HELLO 应更新 last_seen。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        old_time = time.time() - 100
+        with node._peers_lock:
+            node._peers["node-x"] = {
+                "node_id": "node-x",
+                "username": "bob",
+                "pet_summary": {"name": "BobPet"},
+                "last_seen": old_time,
+                "addr": ("192.168.1.50", 50007),
+                "ip": "192.168.1.50",
+            }
+        payload = {
+            "node_id": "node-x",
+            "username": "bob",
+            "pet_summary": {"name": "BobPet"},
+        }
+        node._on_peer_hello(payload, ("192.168.1.50", 50007))
+        with node._peers_lock:
+            assert node._peers["node-x"]["last_seen"] > old_time
+
+
+# ─── HELLO snapshot split tests ────────────────────────────────────────────
+
+
+class TestHelloSnapshotSplit:
+    """_broadcast_hello 首次携带完整快照，后续为轻量（pet_summary=None）。"""
+
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
+    @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
+    def test_first_hello_has_full_snapshot(self, mock_sock, mock_ip):
+        """首次 _broadcast_hello 发送的 pet_summary 为完整 dict。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.start()
+        try:
+            # 捕获 _send_broadcast_raw 发送的 payload
+            captured = []
+            original_send = node._send_broadcast_raw
+            def capturing_send(msg_type, payload):
+                if msg_type == lan_protocol.MSG_HELLO:
+                    captured.append(payload)
+                return original_send(msg_type, payload)
+            node._send_broadcast_raw = capturing_send
+            node._broadcast_hello()
+            assert len(captured) == 1
+            assert captured[0]["pet_summary"] is not None
+            assert isinstance(captured[0]["pet_summary"], dict)
+            assert "name" in captured[0]["pet_summary"]
+        finally:
+            node.stop()
+
+    @patch('ascii_pet.lan._get_local_ip', return_value='192.168.1.100')
+    @patch('socket.socket', side_effect=_fake_socket_factory(bind_should_fail=False))
+    def test_second_hello_is_lite(self, mock_sock, mock_ip):
+        """第二次 _broadcast_hello 发送的 pet_summary 为 None。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.start()
+        try:
+            captured = []
+            original_send = node._send_broadcast_raw
+            def capturing_send(msg_type, payload):
+                if msg_type == lan_protocol.MSG_HELLO:
+                    captured.append(payload)
+                return original_send(msg_type, payload)
+            node._send_broadcast_raw = capturing_send
+            node._broadcast_hello()  # 首次
+            node._broadcast_hello()  # 第二次
+            assert len(captured) == 2
+            assert captured[0]["pet_summary"] is not None  # 首次完整
+            assert captured[1]["pet_summary"] is None       # 第二次轻量
+        finally:
+            node.stop()
+
+    def test_on_peer_hello_lite_keeps_cached_snapshot(self):
+        """收到轻量 HELLO（pet_summary=None）时保留已缓存 peer 的快照。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        # 预先缓存 peer 的快照
+        old_snapshot = {"name": "BobPet", "species": "cat", "owner": "bob"}
+        with node._peers_lock:
+            node._peers["node-x"] = {
+                "node_id": "node-x",
+                "username": "bob",
+                "pet_summary": old_snapshot,
+                "last_seen": time.time() - 100,
+                "addr": ("192.168.1.50", 50007),
+                "ip": "192.168.1.50",
+            }
+        # 收到轻量 HELLO
+        payload = {
+            "node_id": "node-x",
+            "username": "bob",
+            "pet_summary": None,
+        }
+        node._on_peer_hello(payload, ("192.168.1.50", 50007))
+        with node._peers_lock:
+            assert node._peers["node-x"]["pet_summary"] == old_snapshot  # 保留旧快照
+            assert node._peers["node-x"]["last_seen"] > time.time() - 50  # last_seen 已更新
+
+    def test_on_peer_hello_lite_new_peer_stores_empty_dict(self):
+        """首次收到轻量 HELLO（pet_summary=None）的新 peer 存空 dict。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        payload = {
+            "node_id": "node-y",
+            "username": "carol",
+            "pet_summary": None,
+        }
+        node._on_peer_hello(payload, ("192.168.1.60", 50007))
+        with node._peers_lock:
+            assert "node-y" in node._peers
+            assert node._peers["node-y"]["pet_summary"] == {}  # 空 dict
+            assert node._peers["node-y"]["username"] == "carol"
+
+    def test_on_peer_hello_full_snapshot_updates_cached(self):
+        """收到完整快照 HELLO 时更新已缓存 peer 的快照（向后兼容旧版节点）。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        old_snapshot = {"name": "OldName", "species": "cat", "owner": "bob"}
+        with node._peers_lock:
+            node._peers["node-x"] = {
+                "node_id": "node-x",
+                "username": "bob",
+                "pet_summary": old_snapshot,
+                "last_seen": time.time() - 100,
+                "addr": ("192.168.1.50", 50007),
+                "ip": "192.168.1.50",
+            }
+        new_snapshot = {"name": "NewName", "species": "dog", "owner": "bob"}
+        payload = {
+            "node_id": "node-x",
+            "username": "bob",
+            "pet_summary": new_snapshot,
+        }
+        node._on_peer_hello(payload, ("192.168.1.50", 50007))
+        with node._peers_lock:
+            assert node._peers["node-x"]["pet_summary"] == new_snapshot  # 更新为新快照
 

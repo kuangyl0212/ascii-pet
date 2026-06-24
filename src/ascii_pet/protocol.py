@@ -164,6 +164,29 @@ def make_hello(node_id, username, pet_summary):
     }
 
 
+def make_hello_lite(node_id, username):
+    """Build a lightweight HELLO message without pet_snapshot.
+
+    Used for subsequent HELLO broadcasts after the first one. Receivers
+    retain the previously cached pet_summary.
+
+    Args:
+        node_id:  Unique peer identifier (string).
+        username: Human-readable owner username (string).
+
+    Returns:
+        dict with keys ``type, node_id, username, timestamp, pet_summary``.
+        ``pet_summary`` is ``None`` to signal "no snapshot, keep cached".
+    """
+    return {
+        "type": MSG_HELLO,
+        "node_id": node_id,
+        "username": username,
+        "timestamp": time.time(),
+        "pet_summary": None,
+    }
+
+
 # ─── Visit events ───────────────────────────────────────────────────────────
 
 
