@@ -170,9 +170,12 @@ def render_lan_lines(game):
     lines.append((_('═ Community Plaza ═'), COLOR_MSG))
     if enabled:
         peer_count = status.get('peer_count', 0)
-        # Show current pet HP
+        lines.append((_('Username: {}  |  Players online: {}').format(game.lan_username or '?', peer_count), COLOR_BAR_FILL))
+        pet_name = game.state.get('name', '?')
+        species = game.state.get('species', '?')
+        level = game.state.get('level', 1)
         hp = game.state.get('hp', 100)
-        lines.append((_('Username: {}  |  Players online: {}  |  HP: {}/100').format(game.lan_username or '?', peer_count, hp), COLOR_BAR_FILL))
+        lines.append((_('{} | {} | Lv.{} | HP:{}/100').format(pet_name, species, level, hp), COLOR_DIM))
     else:
         lines.append((_('Status: Disconnected'), COLOR_BAR_EMPTY))
         error = status.get('error')

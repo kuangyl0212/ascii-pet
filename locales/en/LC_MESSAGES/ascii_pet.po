@@ -550,6 +550,9 @@ msgstr "[Enter]Confirm [ESC]Cancel"
 msgid "Username: {}  |  Players online: {}"
 msgstr "Username: {}  |  Players online: {}"
 
+msgid "{} | {} | Lv.{} | HP:{}/100"
+msgstr "{} | {} | Lv.{} | HP:{}/100"
+
 msgid "Master"
 msgstr "Master"
 

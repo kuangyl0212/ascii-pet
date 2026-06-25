@@ -546,6 +546,9 @@ msgstr "[Enter]确认 [ESC]取消"
 msgid "Username: {}  |  Players online: {}"
 msgstr "用户名: {}  |  在线玩家: {}"
 
+msgid "{} | {} | Lv.{} | HP:{}/100"
+msgstr "{} | {} | Lv.{} | HP:{}/100"
+
 msgid "Username: {}  |  Players online: {}  |  HP: {}/100"
 msgstr "用户名: {}  |  在线玩家: {}  |  HP: {}/100"
 

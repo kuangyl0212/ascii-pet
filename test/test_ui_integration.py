@@ -417,22 +417,36 @@ class TestHandleKeyTradeConfirmation:
 
 
 class TestRenderLanLinesHpDisplay:
-    """render_lan_lines shows current pet HP when LAN is enabled."""
+    """render_lan_lines shows local pet info below the status bar."""
 
-    def test_render_lan_lines_includes_hp_display(self, game):
-        """When LAN is enabled, render_lan_lines includes a line showing
-        'Pet HP: {hp}/100'."""
+    def test_render_lan_lines_shows_local_pet_info(self, game):
+        """When LAN is enabled, render_lan_lines shows the current pet's
+        name, species, level, and HP below the status bar."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['name'] = 'MyCat'
+        game.state['species'] = 'cat'
+        game.state['level'] = 5
+        game.state['hp'] = 73
+
+        win_mod = _load_win_module()
+        lines = win_mod.render_lan_lines(game)
+
+        text_lines = [str(l[0]) for l in lines]
+        assert any('MyCat' in t and 'cat' in t and 'Lv.5' in t and '73' in t
+                    for t in text_lines), \
+            f"Expected local pet info in lines: {text_lines}"
+
+    def test_render_lan_lines_hp_not_in_status_bar(self, game):
+        """HP should not appear in the status bar line itself."""
         _enable_lan_with_fake(game, 'alice')
         game.state['hp'] = 73
 
         win_mod = _load_win_module()
         lines = win_mod.render_lan_lines(game)
 
-        # At least one line should mention HP
-        hp_lines = [l for l in lines if 'HP' in str(l[0])]
-        assert len(hp_lines) >= 1
-        # The HP value should appear in the text
-        assert any('73' in str(l[0]) for l in hp_lines)
+        status_bar = str(lines[1][0])
+        assert 'HP' not in status_bar, \
+            f"HP should not be in status bar: {status_bar}"
 
 
 # ─── Bug 3: Gift item inventory display + receive message ────────────────────
