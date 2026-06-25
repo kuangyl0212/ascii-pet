@@ -743,6 +743,8 @@ user32.FillRect.restype = c_int
 user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
 user32.MoveWindow.argtypes = [wintypes.HWND, c_int, c_int, c_int, c_int, wintypes.BOOL]
 user32.InvalidateRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT), wintypes.BOOL]
+user32.UpdateWindow.argtypes = [wintypes.HWND]
+user32.UpdateWindow.restype = wintypes.BOOL
 user32.BeginPaint.argtypes = [wintypes.HWND, ctypes.POINTER(PAINTSTRUCT)]
 user32.BeginPaint.restype = wintypes.HDC
 user32.EndPaint.argtypes = [wintypes.HWND, ctypes.POINTER(PAINTSTRUCT)]
@@ -1211,15 +1213,15 @@ class PetWindow:
         now = time.time()
         if cmd == ID_FEED:
             msg, anim = self.game.handle_action('feed')
-            self.game.message = msg; self.game.message_time = now
+            self.game.message = msg; self.game.message_time = now; self.game.action_message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
         elif cmd == ID_PLAY:
             msg, anim = self.game.handle_action('play')
-            self.game.message = msg; self.game.message_time = now
+            self.game.message = msg; self.game.message_time = now; self.game.action_message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
         elif cmd == ID_SLEEP:
             msg, anim = self.game.handle_action('sleep')
-            self.game.message = msg; self.game.message_time = now
+            self.game.message = msg; self.game.message_time = now; self.game.action_message_time = now
             if anim: self.game.anim_end = now + 1.5; self.game.anim_frames = __import__('pet_core').ANIMATIONS[anim]
         elif cmd == ID_ADOPT:
             msg = self.game.adopt_pet()
@@ -1296,6 +1298,14 @@ class PetWindow:
         elif cmd == ID_QUIT:
             user32.DestroyWindow(self.hwnd); return
         user32.InvalidateRect(self.hwnd, None, False)
+        # Force synchronous WM_PAINT after TrackPopupMenu closes.
+        # InvalidateRect only marks the window dirty; WM_PAINT is low-priority
+        # and gets delayed by menu-close messages (WM_MENUSELECT etc.)
+        # entering the queue after TrackPopupMenu returns. This caused ~400ms
+        # delay before the action message appeared, vs ~2ms for keyboard path.
+        # UpdateWindow sends WM_PAINT directly, bypassing the queue.
+        if cmd in (ID_FEED, ID_PLAY, ID_SLEEP):
+            user32.UpdateWindow(self.hwnd)
 
     def on_keydown(self, wparam):
         now = time.time()

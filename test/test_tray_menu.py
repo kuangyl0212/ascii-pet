@@ -9,12 +9,18 @@ Uses importlib because the module filename 'ascii-pet-win.py' contains a hyphen.
 
 import sys
 import os
+import time
 import importlib.util
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ascii_pet import i18n
+from ascii_pet import core as _core
+
+# bin/ascii-pet-win.py uses __import__('pet_core') for ANIMATIONS lookup.
+# Register the alias so execute_menu_command's anim branch works in tests.
+sys.modules.setdefault('pet_core', _core)
 
 # Load ascii-pet-win.py via importlib (hyphen in filename prevents normal import)
 _MOD_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ascii-pet-win.py')
@@ -312,4 +318,148 @@ class TestBackupRestoreIds:
         assert ID_RESTORE_START not in existing_ids
         assert ID_BACKUP != ID_RESTORE
         assert ID_RESTORE_START > 4999  # 确保起始值足够大以容纳子菜单
+
+
+# ─── Bug 修复: 右键菜单 feed/play/sleep 需设置 action_message_time ──────────
+
+class TestExecuteMenuActionMessageTime:
+    """验证 execute_menu_command 在 feed/play/sleep 分支设置 action_message_time。
+
+    Bug 现象：右键菜单执行喂食/玩耍/睡觉后，动作提示（如 '+25 Hunger, +5 Happy'）
+    不显示，仅 2 秒后看到属性面板的数值变化。
+
+    根因：execute_menu_command 只设置了 message/message_time，漏设 action_message_time。
+    导致 core.py tick() 中的 2 秒保护守卫失效：
+        if msg and now - self.action_message_time < 2:
+            msg = None
+    action_message_time 始终为初始值 0，now - 0 是巨大时间戳，永远不 < 2，守卫从不触发。
+    下一个 tick（500ms 后）产生的警告/事件消息会立即覆盖动作消息。
+
+    对比键盘路径（states.py）正确设置了 action_message_time = now，所以键盘操作不受影响。
+    """
+
+    def test_execute_menu_feed_sets_action_message_time(self, pet_window):
+        """ID_FEED 分支应设置 game.action_message_time 为当前时间。"""
+        pet_window.game.handle_action.return_value = ('+25 Hunger, +5 Happy', 'feed')
+        before = time.time()
+        pet_window.execute_menu_command(ascii_pet_win.ID_FEED)
+        after = time.time()
+        amt = pet_window.game.action_message_time
+        assert amt is not None, 'action_message_time 未被设置'
+        assert before <= amt <= after, (
+            f'action_message_time={amt} 不在 [{before}, {after}] 范围内，'
+            f'应设置为当前时间以启用 tick() 的 2 秒保护守卫'
+        )
+
+    def test_execute_menu_play_sets_action_message_time(self, pet_window):
+        """ID_PLAY 分支应设置 game.action_message_time 为当前时间。"""
+        pet_window.game.handle_action.return_value = ('+30 Happy, -15 Energy', 'play')
+        before = time.time()
+        pet_window.execute_menu_command(ascii_pet_win.ID_PLAY)
+        after = time.time()
+        amt = pet_window.game.action_message_time
+        assert amt is not None, 'action_message_time 未被设置'
+        assert before <= amt <= after, (
+            f'action_message_time={amt} 不在 [{before}, {after}] 范围内'
+        )
+
+    def test_execute_menu_sleep_sets_action_message_time(self, pet_window):
+        """ID_SLEEP 分支应设置 game.action_message_time 为当前时间。"""
+        pet_window.game.handle_action.return_value = ('+40 Energy', 'sleep')
+        before = time.time()
+        pet_window.execute_menu_command(ascii_pet_win.ID_SLEEP)
+        after = time.time()
+        amt = pet_window.game.action_message_time
+        assert amt is not None, 'action_message_time 未被设置'
+        assert before <= amt <= after, (
+            f'action_message_time={amt} 不在 [{before}, {after}] 范围内'
+        )
+
+    def test_action_message_time_distinct_from_message_time(self, pet_window):
+        """action_message_time 应与 message_time 同时被设置（两者用途不同）。
+
+        message_time 控制消息显示时长（2 秒），action_message_time 控制 tick()
+        保护守卫（2 秒内不被覆盖）。两者必须同时设置才能正确显示动作提示。
+        """
+        pet_window.game.handle_action.return_value = ('+25 Hunger, +5 Happy', 'feed')
+        pet_window.execute_menu_command(ascii_pet_win.ID_FEED)
+        # 两者都应被设置
+        assert pet_window.game.message_time is not None
+        assert pet_window.game.action_message_time is not None
+        # 两者应大致相等（同一时刻设置）
+        assert abs(pet_window.game.action_message_time - pet_window.game.message_time) < 0.1
+
+
+# ─── Bug 修复: 右键菜单 feed/play/sleep 后需强制立即重绘 ─────────────────────
+
+class TestExecuteMenuUpdateWindow:
+    """验证 execute_menu_command 在 feed/play/sleep 分支后调用 UpdateWindow。
+
+    Bug 现象：右键菜单执行喂食/玩耍/睡觉后，动作提示文字延迟 ~400ms 才出现，
+    而键盘 F/P/S 键的操作提示立即出现（~2ms）。
+
+    根因（通过诊断日志定位）：execute_menu_command 末尾的 InvalidateRect 只标记
+    窗口为脏，WM_PAINT 是低优先级消息，只有当消息队列空时才处理。而
+    TrackPopupMenu 返回后会注入菜单关闭相关消息（WM_MENUSELECT /
+    WM_UNINITMENUPOPUP 等），这些消息在 InvalidateRect 之后进入队列，推迟了
+    WM_PAINT 的处理，导致首次渲染延迟。
+
+    诊断日志证据（w:\\workspace\\ascii-pet\\logs\\ascii-pet.log）：
+        右键路径: menu feed EXIT t=...464.305 → render SHOW age=0.412 (412ms)
+        键盘路径: key 'f' EXIT  t=...527.681 → render SHOW age=0.002 (2ms)
+
+    修复：在 feed/play/sleep 分支后调用 UpdateWindow(hwnd) 强制同步重绘。
+    UpdateWindow 直接发送 WM_PAINT，绕过消息队列的低优先级调度。
+
+    对照：键盘路径 on_char 末尾的 InvalidateRect 不受此问题影响，因为 WM_CHAR
+    处理后消息队列较空，WM_PAINT 立即被调度。
+    """
+
+    def test_execute_menu_feed_calls_update_window(self, pet_window):
+        """ID_FEED 分支应调用 UpdateWindow 强制立即重绘。
+
+        InvalidateRect 仅标记窗口脏，WM_PAINT 会被 TrackPopupMenu 关闭后的
+        残留消息推迟。UpdateWindow 同步发送 WM_PAINT，确保动作提示立即显示。
+        """
+        pet_window.game.handle_action.return_value = ('+25 Hunger, +5 Happy', 'feed')
+        pet_window.hwnd = 12345  # fake hwnd
+        with patch.object(ascii_pet_win.user32, 'UpdateWindow') as mock_update:
+            pet_window.execute_menu_command(ascii_pet_win.ID_FEED)
+        mock_update.assert_called_once_with(12345)
+
+    def test_execute_menu_play_calls_update_window(self, pet_window):
+        """ID_PLAY 分支应调用 UpdateWindow 强制立即重绘。"""
+        pet_window.game.handle_action.return_value = ('+30 Happy, -15 Energy', 'play')
+        pet_window.hwnd = 12345
+        with patch.object(ascii_pet_win.user32, 'UpdateWindow') as mock_update:
+            pet_window.execute_menu_command(ascii_pet_win.ID_PLAY)
+        mock_update.assert_called_once_with(12345)
+
+    def test_execute_menu_sleep_calls_update_window(self, pet_window):
+        """ID_SLEEP 分支应调用 UpdateWindow 强制立即重绘。"""
+        pet_window.game.handle_action.return_value = ('+40 Energy', 'sleep')
+        pet_window.hwnd = 12345
+        with patch.object(ascii_pet_win.user32, 'UpdateWindow') as mock_update:
+            pet_window.execute_menu_command(ascii_pet_win.ID_SLEEP)
+        mock_update.assert_called_once_with(12345)
+
+    def test_update_window_called_after_invalidate_rect(self, pet_window):
+        """UpdateWindow 应在 InvalidateRect 之后调用（先标记脏，再强制绘制）。"""
+        pet_window.game.handle_action.return_value = ('+25 Hunger, +5 Happy', 'feed')
+        pet_window.hwnd = 12345
+        call_order = []
+        with patch.object(ascii_pet_win.user32, 'InvalidateRect',
+                          side_effect=lambda *a, **k: call_order.append('InvalidateRect')), \
+             patch.object(ascii_pet_win.user32, 'UpdateWindow',
+                          side_effect=lambda *a, **k: call_order.append('UpdateWindow')):
+            pet_window.execute_menu_command(ascii_pet_win.ID_FEED)
+        # InvalidateRect 在 execute_menu_command 末尾统一调用，
+        # UpdateWindow 应在其后或替代之。至少两者都被调用，且顺序为 Invalidate → Update
+        assert 'InvalidateRect' in call_order
+        assert 'UpdateWindow' in call_order
+        invalidate_idx = call_order.index('InvalidateRect')
+        update_idx = call_order.index('UpdateWindow')
+        assert invalidate_idx < update_idx, (
+            f'UpdateWindow 应在 InvalidateRect 之后调用，实际顺序: {call_order}'
+        )
 
