@@ -742,8 +742,8 @@ msgid "{username} challenges you!"
 msgstr "{username} 向你发起挑战！"
 
 #: core.py - Heal messages
-msgid "Healed!"
-msgstr "治疗完成！"
+msgid "Healed +20 HP!"
+msgstr "治愈 +20 HP！"
 
 msgid "HP is full"
 msgstr "HP 已满"

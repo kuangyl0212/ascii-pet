@@ -97,8 +97,8 @@ class TestHealPet:
     """PetGame.heal_pet: heal current pet at the LAN healing center."""
 
     def test_heal_pet_when_lan_enabled_and_hp_below_100_heals_and_returns_true(self, game):
-        """When lan_enabled=True and hp<100: sets state['hp'] to 100,
-        updates last_heal_time, sets message 'Healed!', returns True."""
+        """When lan_enabled=True and hp<100: adds 20 HP (capped at 100),
+        updates last_heal_time, sets message 'Healed +20 HP!', returns True."""
         _enable_lan_with_fake(game, 'alice')
         game.state['hp'] = 50
         # Ensure no cooldown is in effect
@@ -109,9 +109,9 @@ class TestHealPet:
         after = time.time()
 
         assert result is True
-        assert game.state['hp'] == 100
+        assert game.state['hp'] == 70  # 50 + 20
         assert before <= game.last_heal_time <= after
-        assert game.message == 'Healed!'
+        assert game.message == 'Healed +20 HP!'
         assert game.message_time > 0
 
     def test_heal_pet_when_hp_already_full_returns_false_with_message(self, game):
@@ -149,7 +149,7 @@ class TestHealPet:
         # First heal succeeds
         first_result = game.heal_pet()
         assert first_result is True
-        assert game.state['hp'] == 100
+        assert game.state['hp'] == 70  # 50 + 20
 
         # Damage pet again so hp<100, then try to heal within cooldown
         game.state['hp'] = 30
@@ -173,8 +173,8 @@ class TestHealPet:
         result = game.heal_pet()
 
         assert result is True
-        assert game.state['hp'] == 100
-        assert game.message == 'Healed!'
+        assert game.state['hp'] == 60  # 40 + 20
+        assert game.message == 'Healed +20 HP!'
         assert game.message_time > 0
         # last_heal_time should be updated to roughly now
         assert game.last_heal_time > time.time() - 5
@@ -189,5 +189,5 @@ class TestHealPet:
             result = game.heal_pet()
 
         assert result is True
-        assert game.state['hp'] == 100
+        assert game.state['hp'] == 70  # 50 + 20
         mock_save.assert_called_once()

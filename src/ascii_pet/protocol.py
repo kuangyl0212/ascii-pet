@@ -187,7 +187,7 @@ def make_battle_snapshot(state, owner):
     Returns:
         dict with keys:
         ``name, species, rarity, level, shiny, owner, hp, attack, defense,
-        speed, skills``.
+        speed, skills, chaos``.
     """
     from ascii_pet.core import calculate_combat_stats
     combat = calculate_combat_stats(state)
@@ -203,6 +203,7 @@ def make_battle_snapshot(state, owner):
         "defense": combat["defense"],
         "speed": combat["speed"],
         "skills": combat["skills"],
+        "chaos": state.get("stats", {}).get("CHAOS", 0),
     }
 
 

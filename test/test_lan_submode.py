@@ -364,8 +364,8 @@ class TestHealKey:
         game.handle_key('h')
 
         assert game.lan_submode is None
-        # HP should be restored to 100
-        assert game.state['hp'] == 100
+        # HP should be restored by +20 (capped at 100)
+        assert game.state['hp'] == 70  # 50 + 20
 
 
 class TestSubmodeIgnoresOtherKeys:

@@ -93,7 +93,7 @@ def test_feed_full_rejected(make_state):
 
 
 def test_feed_normal(make_state):
-    """5.2 Given HUNGER=50, When feed_pet, Then HUNGER+25, HAPPY+5, xp+10, counts+1."""
+    """5.2 Given HUNGER=50, When feed_pet, Then HUNGER+25, HAPPY+5, xp+2, counts+1."""
     state = make_state(stats={'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50,
                               'WISDOM': 50, 'CHAOS': 50})
     old_last_fed = state['last_fed']
@@ -104,10 +104,21 @@ def test_feed_normal(make_state):
     assert anim == 'feed'
     assert state['stats']['HUNGER'] == 75
     assert state['stats']['HAPPY'] == 55
-    assert state['xp'] == 10
+    assert state['xp'] == 2
     assert state['feed_count'] == 1
     assert state['total_interactions'] == 1
     assert state['last_fed'] != old_last_fed
+
+
+def test_feed_gives_2_xp(make_state):
+    """SubTask 2.1/2.2: feed_pet should grant exactly 2 XP (reduced from 10)."""
+    state = make_state(stats={'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50,
+                              'WISDOM': 50, 'CHAOS': 50})
+    state['xp'] = 0
+
+    feed_pet(state)
+
+    assert state['xp'] == 2
 
 
 # ─── play_pet (SubTasks 5.3-5.4) ──────────────────────────────────────────────
@@ -129,7 +140,7 @@ def test_play_tired(make_state):
 
 
 def test_play_normal(make_state):
-    """5.4 Given normal stats, When play_pet, Then HAPPY+30, ENERGY-15, HUNGER-10, xp+15."""
+    """5.4 Given normal stats, When play_pet, Then HAPPY+30, ENERGY-15, HUNGER-10, xp+3."""
     state = make_state(stats={'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50,
                               'WISDOM': 50, 'CHAOS': 50})
 
@@ -140,9 +151,23 @@ def test_play_normal(make_state):
     assert state['stats']['HAPPY'] == 80
     assert state['stats']['ENERGY'] == 35
     assert state['stats']['HUNGER'] == 40
-    assert state['xp'] == 15
+    assert state['xp'] == 3
     assert state['play_count'] == 1
     assert state['total_interactions'] == 1
+
+
+def test_play_gives_3_xp(make_state):
+    """SubTask 2.3/2.4: play_pet should grant exactly 3 XP (reduced from 15).
+
+    ENERGY=50 satisfies the ENERGY >= 10 gate so the action succeeds.
+    """
+    state = make_state(stats={'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50,
+                              'WISDOM': 50, 'CHAOS': 50})
+    state['xp'] = 0
+
+    play_pet(state)
+
+    assert state['xp'] == 3
 
 
 # ─── sleep_pet (SubTasks 5.5-5.6) ─────────────────────────────────────────────
@@ -163,7 +188,7 @@ def test_sleep_full_energy(make_state):
 
 
 def test_sleep_normal(make_state):
-    """5.6 Given normal stats, When sleep_pet, Then ENERGY+40, HUNGER-5, xp+5."""
+    """5.6 Given normal stats, When sleep_pet, Then ENERGY+40, HUNGER-5, xp+0."""
     state = make_state(stats={'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50,
                               'WISDOM': 50, 'CHAOS': 50})
 
@@ -173,9 +198,27 @@ def test_sleep_normal(make_state):
     assert anim == 'sleep'
     assert state['stats']['ENERGY'] == 90
     assert state['stats']['HUNGER'] == 45
-    assert state['xp'] == 5
+    assert state['xp'] == 0
     assert state['sleep_count'] == 1
     assert state['total_interactions'] == 1
+
+
+def test_sleep_gives_no_xp(make_state):
+    """SubTask 2.5/2.6: sleep_pet should grant 0 XP (removed +5).
+
+    ENERGY=50 satisfies the ENERGY < 100 gate so the action succeeds and
+    still restores ENERGY/HUNGER, but no XP is awarded.
+    """
+    state = make_state(stats={'HUNGER': 50, 'HAPPY': 50, 'ENERGY': 50,
+                              'WISDOM': 50, 'CHAOS': 50})
+    state['xp'] = 0
+
+    sleep_pet(state)
+
+    assert state['xp'] == 0
+    # Sanity-check sleep still restores ENERGY/HUNGER.
+    assert state['stats']['ENERGY'] == 90
+    assert state['stats']['HUNGER'] == 45
 
 
 # ─── check_level_up (SubTasks 5.7-5.11) ───────────────────────────────────────

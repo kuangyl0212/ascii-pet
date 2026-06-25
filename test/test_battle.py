@@ -424,11 +424,11 @@ class TestBattleXPRewards:
         result = battle.simulate_battle(attacker, defender, seed=42)
         assert 'xp_loser' in result
 
-    def test_xp_winner_is_30(self):
+    def test_xp_winner_is_40(self):
         attacker = make_combatant(name='Attacker', speed=20)
         defender = make_combatant(name='Defender', speed=10)
         result = battle.simulate_battle(attacker, defender, seed=42)
-        assert result['xp_winner'] == 30
+        assert result['xp_winner'] == 40
 
     def test_xp_loser_is_10(self):
         attacker = make_combatant(name='Attacker', speed=20)
@@ -453,5 +453,172 @@ class TestBattleXPRewards:
 
     def test_constants_exposed(self):
         from ascii_pet import battle as battle_mod
-        assert battle_mod.WIN_XP == 30
+        assert battle_mod.WIN_XP == 40
         assert battle_mod.LOSE_XP == 10
+
+
+# ─── Task 5: make_battle_snapshot chaos field ────────────────────────────────
+
+
+def test_battle_snapshot_includes_chaos():
+    """Battle snapshot must include chaos field from pet stats."""
+    from ascii_pet.protocol import make_battle_snapshot
+    state = {
+        'name': 'TestPet',
+        'species': 'blob',
+        'rarity': 'common',
+        'level': 5,
+        'shiny': False,
+        'hp': 100,
+        'stats': {'HUNGER': 80, 'HAPPY': 70, 'ENERGY': 60, 'WISDOM': 50, 'CHAOS': 42},
+    }
+    snapshot = make_battle_snapshot(state, 'TestOwner')
+    assert 'chaos' in snapshot
+    assert snapshot['chaos'] == 42
+
+
+def test_battle_snapshot_chaos_default_0():
+    """Battle snapshot should default chaos to 0 when CHAOS key is missing."""
+    from ascii_pet.protocol import make_battle_snapshot
+    state = {
+        'name': 'TestPet',
+        'species': 'blob',
+        'rarity': 'common',
+        'level': 5,
+        'shiny': False,
+        'hp': 100,
+        'stats': {'HUNGER': 80, 'HAPPY': 70, 'ENERGY': 60, 'WISDOM': 50},  # no CHAOS
+    }
+    snapshot = make_battle_snapshot(state, 'TestOwner')
+    assert snapshot['chaos'] == 0
+
+
+# ─── Task 6: CHAOS crit/dodge mechanics ─────────────────────────────────────
+
+
+def test_crit_chance_chaos_0_is_5_percent():
+    """Crit chance at CHAOS=0 should be 5%."""
+    from ascii_pet.battle import calc_crit_chance
+    assert calc_crit_chance(0) == pytest.approx(0.05)
+
+
+def test_crit_chance_chaos_100_is_35_percent():
+    """Crit chance at CHAOS=100 should be capped at 35%."""
+    from ascii_pet.battle import calc_crit_chance
+    assert calc_crit_chance(100) == pytest.approx(0.35)
+
+
+def test_crit_chance_chaos_50_is_20_percent():
+    """Crit chance at CHAOS=50 should be 5% + 50*0.3% = 20%."""
+    from ascii_pet.battle import calc_crit_chance
+    assert calc_crit_chance(50) == pytest.approx(0.20)
+
+
+def test_dodge_chance_chaos_0_is_0_percent():
+    """Dodge chance at CHAOS=0 should be 0%."""
+    from ascii_pet.battle import calc_dodge_chance
+    assert calc_dodge_chance(0) == pytest.approx(0.0)
+
+
+def test_dodge_chance_chaos_100_is_20_percent():
+    """Dodge chance at CHAOS=100 should be capped at 20%."""
+    from ascii_pet.battle import calc_dodge_chance
+    assert calc_dodge_chance(100) == pytest.approx(0.20)
+
+
+def test_dodge_chance_chaos_50_is_10_percent():
+    """Dodge chance at CHAOS=50 should be 50*0.2% = 10%."""
+    from ascii_pet.battle import calc_dodge_chance
+    assert calc_dodge_chance(50) == pytest.approx(0.10)
+
+
+def test_missing_chaos_defaults_to_0():
+    """Attacker/defender without chaos field should be treated as CHAOS=0."""
+    from ascii_pet.battle import simulate_battle
+    # No 'chaos' key in attacker or defender
+    attacker = {'name': 'A', 'level': 1, 'hp': 100, 'attack': 50, 'defense': 10,
+                'speed': 15, 'skills': ['tackle']}
+    defender = {'name': 'D', 'level': 1, 'hp': 100, 'attack': 10, 'defense': 10,
+                'speed': 10, 'skills': ['tackle']}
+    # Should not raise
+    result = simulate_battle(attacker, defender, seed=123)
+    assert 'winner' in result
+    assert 'xp_winner' in result
+
+
+def test_battle_with_chaos_does_not_crash():
+    """Battle with chaos field should complete normally."""
+    from ascii_pet.battle import simulate_battle
+    attacker = {'name': 'A', 'level': 1, 'hp': 100, 'attack': 50, 'defense': 10,
+                'speed': 15, 'skills': ['tackle'], 'chaos': 80}
+    defender = {'name': 'D', 'level': 1, 'hp': 100, 'attack': 10, 'defense': 10,
+                'speed': 10, 'skills': ['tackle'], 'chaos': 30}
+    result = simulate_battle(attacker, defender, seed=456)
+    assert 'winner' in result
+    # Verify log may contain Crit! or Dodged! when chaos > 0
+    log_text = ' '.join(result['log'])
+    # Just verify it runs; specific crit/dodge depends on rng
+    assert len(result['log']) > 0
+
+
+def test_crit_deterministic_with_seed():
+    """Same seed + input should produce identical battle log."""
+    from ascii_pet.battle import simulate_battle
+    attacker = {'name': 'A', 'level': 1, 'hp': 100, 'attack': 50, 'defense': 10,
+                'speed': 15, 'skills': ['tackle'], 'chaos': 100}
+    defender = {'name': 'D', 'level': 1, 'hp': 100, 'attack': 10, 'defense': 10,
+                'speed': 10, 'skills': ['tackle'], 'chaos': 100}
+    r1 = simulate_battle(dict(attacker), dict(defender), seed=789)
+    r2 = simulate_battle(dict(attacker), dict(defender), seed=789)
+    assert r1['log'] == r2['log']
+    assert r1['winner'] == r2['winner']
+
+
+# ─── SubTask 6.4 & 6.5: crit×1.5 damage and dodge zero-damage ──────────────
+
+
+def test_crit_multiplies_damage_by_1_5():
+    """When crit triggers, damage should be base_damage × 1.5.
+
+    Uses FakeRandom to force (defender has no chaos → dodge check skipped;
+    attacker chaos=100 → crit_chance=0.35, crit check executes):
+      1st random() = 0.0  → accuracy check (hit, 0 < 95)
+      2nd random() = 0.5  → multiplier (1.0x)
+      3rd random() = 0.0  → crit check (0 < 0.35 → crit)
+    Base damage = 35 * (20/(20+20)) * 1.0 = 17.5
+    Crit damage = 17.5 * 1.5 = 26.25
+    """
+    attacker = make_combatant(name='Attacker', attack=20, defense=20,
+                              speed=100, skills=['tackle'])
+    attacker['chaos'] = 100  # crit_chance = 0.35
+    defender = make_combatant(name='Defender', attack=20, defense=20,
+                              speed=10, skills=['tail_whip'])
+    fake_rng = FakeRandom(random_values=[0.0, 0.5, 0.0], default=0.0)
+    with patch_battle_rng(fake_rng):
+        result = battle.simulate_battle(attacker, defender, seed=0)
+    first_log = result['log'][0]
+    assert 'Crit' in first_log, f'Expected crit in log: {first_log}'
+    # Crit damage = 17.5 * 1.5 = 26.25
+    assert '26.2' in first_log, f'Expected crit damage 26.2 in log: {first_log}'
+
+
+def test_dodge_zero_damage_logs_dodged():
+    """When defender dodges, damage is 0 and log contains 'Dodged!'.
+
+    Uses FakeRandom to force (defender chaos=100 → dodge_chance=0.20,
+    dodge check executes FIRST and consumes the first rng.random()):
+      1st random() = 0.0 → dodge check (0 < 0.20 → dodge)
+    After dodge, defender['battle_bp'] should be unchanged at 100.0.
+    """
+    attacker = make_combatant(name='Attacker', attack=20, defense=20,
+                              speed=100, skills=['tackle'])
+    defender = make_combatant(name='Defender', attack=20, defense=20,
+                              speed=10, skills=['tail_whip'])
+    defender['chaos'] = 100  # dodge_chance = 0.20
+    fake_rng = FakeRandom(random_values=[0.0], default=0.0)
+    with patch_battle_rng(fake_rng):
+        result = battle.simulate_battle(attacker, defender, seed=0)
+    first_log = result['log'][0]
+    assert 'Dodge' in first_log, f'Expected Dodged! in log: {first_log}'
+    # BP should be unchanged (100.0) since no damage was dealt
+    assert '100.0' in first_log, f'Expected BP 100.0 in log: {first_log}'

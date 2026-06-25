@@ -443,6 +443,10 @@ msgstr "unlocked"
 msgid "  ??? Locked"
 msgstr "  ??? Locked"
 
+#: core.py - Heal messages
+msgid "Healed +20 HP!"
+msgstr "Healed +20 HP!"
+
 msgid "Inventory ({}/{})"
 msgstr "Inventory ({}/{})"
 

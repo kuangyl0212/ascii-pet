@@ -112,16 +112,18 @@ bin/ascii-pet-win.py     ← Windows wrapper
 
 - **Pet limit**: `MAX_PETS=3`. Pressing `n` at the last pet enters release mode. Keys 1/2/3 select pet to release. Cannot release your last pet.
 - **Daily limit**: `MAX_DAILY_ADOPTIONS=3`. User can adopt max 3 pets per day. Shows warning when exceeded.
-- **Action cooldowns**: feed/play = 1h, sleep = 3h. No cooldown when a stat is critical (zero).
+- **Action cooldowns**: feed/play/sleep rate-limited to 1 per minute (3 per minute when stat ≤ 10, unlimited when stat = 0).
 - **Hover petting**: Mouse hover gives +2 HAPPY, capped at 3 times per hour.
-- **Stat decay**: HUNGER decays after 4h offline, HAPPY after 2h, ENERGY after 6h.
+- **Stat decay**: HUNGER decays 8/hr after 3h, HAPPY 5/hr after 1.5h, ENERGY 6/hr after 4h.
 - **Death**: Pet dies only when all three stats (HUNGER/ENERGY/HAPPY) are zero for 1 hour. Single stat at zero shows a warning but does not cause death. Revivable only by Potion item.
 - **Leveling**: XP from actions. Level up at `level * 100` XP. Eye upgrades at level 5, evolves at level 10.
-- **Random events**: 5% chance per tick (500ms), 30s cooldown. 11 event types with stat effects.
+- **Random events**: 2% chance per tick (500ms), 60s cooldown, scaled by CHAOS (0.02 * (1 + chaos/100)). Includes positive/negative events.
 - **Pet interactions**: 30% chance when switching pets. Types: play_together, share_food, chat, race.
 - **Items/backpack**: 7 item types (apple, toy, bed, book, potion, crown, tophat). Max 20 items. Drops from events + daily bonus. Press 'u' to open inventory.
 - **Evolution chains**: 8 species evolve at specific levels (e.g., blob→slime lv5→elemental lv15). Changes species, keeps stats.
 - **Weather system**: OpenWeatherMap API (config/weather.json). Affects pet mood. Weather reminders for extreme conditions.
+- **Battle XP**: LAN challenges grant WIN 40 XP / LOSE 10 XP, max 5 challenges per day. Escaping grants 0 XP.
+- **CHAOS stat**: Affects random event probability (0.02 * (1 + chaos/100)) and battle crit/dodge (crit = 5% + chaos*0.3% capped at 35%, dodge = chaos*0.2% capped at 20%).
 - **LAN multiplayer**: UDP broadcast for peer discovery, TCP for visit requests. Pet snapshots shared during visits.
 
 ## Linux runtime deps

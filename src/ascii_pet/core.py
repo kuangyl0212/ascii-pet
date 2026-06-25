@@ -71,6 +71,7 @@ MOODS = {'happy':{'emoji':'♪'},'normal':{'emoji':'~'},
 SALT = 'ascii-pet-2026'
 MAX_PETS = 3
 MAX_DAILY_ADOPTIONS = 3
+MAX_DAILY_CHALLENGES = 5
 
 # RANDOM_EVENTS and PET_INTERACTIONS are sourced from the unified REGISTRY
 # in ascii_pet.events. Each entry is an Event object (not a tuple).
@@ -435,7 +436,7 @@ def feed_pet(state):
     state['stats']['HAPPY'] = min(100, state['stats']['HAPPY']+5)
     state['last_fed'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['feed_count'] = state.get('feed_count',0) + 1
-    state['xp'] += 10; evo = check_level_up(state)
+    state['xp'] += 2; evo = check_level_up(state)
     if evo: return evo, None
     return _('+25 Hunger, +5 Happy'), 'feed'
 
@@ -446,7 +447,7 @@ def play_pet(state):
     state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-10)
     state['last_played'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['play_count'] = state.get('play_count',0) + 1
-    state['xp'] += 15; evo = check_level_up(state)
+    state['xp'] += 3; evo = check_level_up(state)
     if evo: return evo, None
     return _('+30 Happy, -15 Energy'), 'play'
 
@@ -456,7 +457,7 @@ def sleep_pet(state):
     state['stats']['HUNGER'] = max(0, state['stats']['HUNGER']-5)
     state['last_slept'] = datetime.now().isoformat()
     state['total_interactions'] += 1; state['sleep_count'] = state.get('sleep_count',0) + 1
-    state['xp'] += 5; evo = check_level_up(state)
+    evo = check_level_up(state)
     if evo: return evo, None
     return _('+40 Energy'), 'sleep'
 
@@ -836,7 +837,7 @@ class PetGame:
         self.lan_submode = None
         self.lan_submode_data = None
         self.pending_trade_req = None
-        self.MAX_DAILY_CHALLENGES = 5
+        self.MAX_DAILY_CHALLENGES = MAX_DAILY_CHALLENGES
         self.CHALLENGE_TIMEOUT = 30  # seconds
         # Load username from save data
         self.lan_username = self.pets_data.get('username')
@@ -1747,9 +1748,9 @@ class PetGame:
             self.message = _("Heal cooldown, wait {min} min").format(min=remaining)
             self.message_time = time.time()
             return False
-        self.state['hp'] = 100
+        self.state['hp'] = min(100, self.state.get('hp', 0) + 20)
         self.last_heal_time = time.time()
-        self.message = _("Healed!")
+        self.message = _("Healed +20 HP!")
         self.message_time = time.time()
         self.save()
         return True
