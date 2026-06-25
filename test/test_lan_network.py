@@ -1151,12 +1151,11 @@ class TestSendBroadcastUsesSubnetAddr:
 class TestMasterReelectionOptimization:
     """_on_peer_hello 应仅在 peer 列表变化时触发 _reelect_master。"""
 
-    def test_known_peer_does_not_trigger_reelect(self):
-        """已知 peer 的 HELLO 不应触发 _reelect_master。"""
+    def test_known_peer_does_not_trigger_reelect_when_connected(self):
+        """已知 peer 的 HELLO 在 master socket 活跃时不应触发 _reelect_master。"""
         node = lan.LanNode("alice", _minimal_pet_state())
-        # 预先插入一个已知 peer
-        with node._peers_lock:
-            node._peers["node-x"] = {
+        # 预注册一个 peer
+        node._peers["node-x"] = {
                 "node_id": "node-x",
                 "username": "bob",
                 "pet_summary": {"name": "BobPet"},
@@ -1164,6 +1163,9 @@ class TestMasterReelectionOptimization:
                 "addr": ("192.168.1.50", 50007),
                 "ip": "192.168.1.50",
             }
+        # Simulate an active master connection
+        node._master_sock = object()
+        node._master_id = "node-x"
         # mock _reelect_master 计数
         original_reelect = node._reelect_master
         call_count = {"count": 0}
@@ -1179,6 +1181,45 @@ class TestMasterReelectionOptimization:
         }
         node._on_peer_hello(payload, ("192.168.1.50", 50007))
         assert call_count["count"] == 0, "已知 peer 的 HELLO 不应触发 _reelect_master"
+
+    def test_known_peer_triggers_reelect_when_master_sock_none(self):
+        """已知 peer 重新上线且 master socket 断开时应触发重选。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        # 预注册一个 peer（"000" < "alice"，所以 peer 仍是 master）
+        node._peers["000"] = {
+            "node_id": "000",
+            "username": "bob",
+            "pet_summary": {"name": "BobPet"},
+            "last_seen": time.time(),
+            "addr": ("192.168.1.50", 50007),
+            "ip": "192.168.1.50",
+        }
+        node._master_id = "000"
+        node.is_master = False
+        # 模拟 master socket 已断开
+        node._master_sock = None
+        # mock _reelect_master 和 _connect_to_master
+        original_reelect = node._reelect_master
+        original_connect = node._connect_to_master
+        reelect_count = {"count": 0}
+        connect_count = {"count": 0}
+        def counting_reelect():
+            reelect_count["count"] += 1
+            return original_reelect()
+        def counting_connect():
+            connect_count["count"] += 1
+        node._reelect_master = counting_reelect
+        node._connect_to_master = counting_connect
+        # 收到已知 peer 的 HELLO（peer 重新上线）
+        payload = {
+            "node_id": "000",
+            "username": "bob",
+            "pet_summary": {"name": "BobPet"},
+        }
+        node._on_peer_hello(payload, ("192.168.1.50", 50007))
+        assert reelect_count["count"] >= 1, "master socket 断开时已知 peer 的 HELLO 应触发重选"
+        # 重选后 peer 仍是 master，应触发重连
+        assert connect_count["count"] >= 1, "master socket 断开时已知 peer 的 HELLO 应触发重连"
 
     def test_new_peer_triggers_reelect_once(self):
         """新 peer 的 HELLO 应触发一次 _reelect_master。"""

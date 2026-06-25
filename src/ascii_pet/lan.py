@@ -769,13 +769,23 @@ class LanNode:
                     "ip": addr[0] if addr else None,
                 }
                 is_new_peer = True
-        # 仅新 peer 触发重选
+        # 新 peer 触发重选；已知 peer 回来且 master socket 断开时触发重连
         if is_new_peer:
             logger.info(f"Peer discovered: {payload.get('username', '')}")
             changed = self._reelect_master()
             if changed:
                 old_master, new_master = changed
                 self._on_master_change(old_master, new_master)
+        elif not self.is_master and self._master_sock is None:
+            # Known peer came back, but master connection is dead.
+            # Re-elect in case this peer is now master (or we became master).
+            changed = self._reelect_master()
+            if changed:
+                old_master, new_master = changed
+                self._on_master_change(old_master, new_master)
+            elif node_id == self._master_id:
+                # Same master — reconnect to it
+                self._connect_to_master()
 
     def _reelect_master(self):
         """Re-compute the master from the current peer set.
