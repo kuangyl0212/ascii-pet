@@ -186,8 +186,8 @@ msgstr "你的宠物死了..."
 msgid "CRITICAL! All stats at zero! ({remaining}min left)"
 msgstr "危险！所有属性为零！（剩余{remaining}分钟）"
 
-msgid "CRITICAL! A stat is at zero! ({remaining}min left)"
-msgstr "危险！有属性为零！（剩余{remaining}分钟）"
+msgid "CRITICAL! A stat is at zero!"
+msgstr "危险！有属性为零！"
 
 msgid "Your pet is starving!"
 msgstr "你的宠物快饿死了！"

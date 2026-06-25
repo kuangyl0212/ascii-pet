@@ -115,7 +115,7 @@ bin/ascii-pet-win.py     ← Windows wrapper
 - **Action cooldowns**: feed/play = 1h, sleep = 3h. No cooldown when a stat is critical (zero).
 - **Hover petting**: Mouse hover gives +2 HAPPY, capped at 3 times per hour.
 - **Stat decay**: HUNGER decays after 4h offline, HAPPY after 2h, ENERGY after 6h.
-- **Death**: Pet dies if any stat hits zero for 15min, or all stats zero for 5min. Revivable by feeding/playing/sleeping.
+- **Death**: Pet dies only when all three stats (HUNGER/ENERGY/HAPPY) are zero for 1 hour. Single stat at zero shows a warning but does not cause death. Revivable only by Potion item.
 - **Leveling**: XP from actions. Level up at `level * 100` XP. Eye upgrades at level 5, evolves at level 10.
 - **Random events**: 5% chance per tick (500ms), 30s cooldown. 11 event types with stat effects.
 - **Pet interactions**: 30% chance when switching pets. Types: play_together, share_food, chat, race.

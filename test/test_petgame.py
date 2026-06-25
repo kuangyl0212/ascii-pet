@@ -143,14 +143,14 @@ class TestTick:
         assert game.state['mood'] == 'hungry'
 
     def test_tick_single_stat_zero_critical(self, game):
-        """9.10: Single stat at zero triggers critical warning."""
+        """9.10: Single stat at zero triggers critical warning (no death countdown)."""
         game.state['stats']['HUNGER'] = 0
         game.state['stats']['ENERGY'] = 50
         game.state['stats']['HAPPY'] = 50
         game.state['critical_since'] = None
         game.last_event_time = time.time()  # prevent random event override
         msg, t = game.tick()
-        assert game.state.get('critical_since') is not None
+        assert game.state.get('critical_since') is None  # countdown only starts when all zero
         assert game.warning_active
         assert 'CRITICAL' in msg
 
@@ -164,22 +164,39 @@ class TestTick:
         msg, t = game.tick()
         assert 'All stats at zero' in msg
 
-    def test_tick_single_stat_zero_15min_death(self, game):
-        """9.12: Single stat zero for 900s causes death."""
+    def test_tick_single_stat_zero_15min_not_dead(self, game):
+        """9.12: Single stat zero no longer causes death (only all-zero kills)."""
         game.state['stats']['HUNGER'] = 0
         game.state['stats']['ENERGY'] = 50
         game.state['stats']['HAPPY'] = 50
         game.state['critical_since'] = (datetime.now() - timedelta(seconds=901)).isoformat()
         msg, t = game.tick()
-        assert game.state['is_dead']
-        assert msg == 'Your pet has died...'
+        assert not game.state['is_dead']
 
-    def test_tick_all_stats_zero_5min_death(self, game):
-        """9.13: All stats zero for 300s causes death."""
+    def test_tick_single_stat_zero_long_time_not_dead(self, game):
+        """Single stat zero for 24h does not cause death; only all-zero kills."""
+        game.state['stats']['HUNGER'] = 0
+        game.state['stats']['ENERGY'] = 50
+        game.state['stats']['HAPPY'] = 50
+        game.state['critical_since'] = (datetime.now() - timedelta(hours=24)).isoformat()
+        msg, t = game.tick()
+        assert not game.state['is_dead']
+
+    def test_tick_all_stats_zero_under_1hour_not_dead(self, game):
+        """All stats zero for 3599s does not cause death (1h rescue window)."""
         game.state['stats']['HUNGER'] = 0
         game.state['stats']['ENERGY'] = 0
         game.state['stats']['HAPPY'] = 0
-        game.state['critical_since'] = (datetime.now() - timedelta(seconds=301)).isoformat()
+        game.state['critical_since'] = (datetime.now() - timedelta(seconds=3599)).isoformat()
+        msg, t = game.tick()
+        assert not game.state['is_dead']
+
+    def test_tick_all_stats_zero_1hour_death(self, game):
+        """All stats zero for 3600s causes death (1h rescue window expired)."""
+        game.state['stats']['HUNGER'] = 0
+        game.state['stats']['ENERGY'] = 0
+        game.state['stats']['HAPPY'] = 0
+        game.state['critical_since'] = (datetime.now() - timedelta(seconds=3600)).isoformat()
         msg, t = game.tick()
         assert game.state['is_dead']
         assert msg == 'Your pet has died...'
@@ -270,9 +287,8 @@ class TestHandleAction:
         assert 'Wait a moment' in msg2
 
     def test_handle_action_no_cooldown_when_critical(self, game):
-        """9.22: Critical state bypasses cooldown."""
-        game.state['critical_since'] = datetime.now().isoformat()
-        game.state['stats']['HUNGER'] = 50
+        """9.22: Critical state (stat at zero) bypasses cooldown."""
+        game.state['stats']['HUNGER'] = 0  # critical: stat at zero bypasses cooldown
         msg1, _ = game.handle_action('feed')
         msg2, _ = game.handle_action('feed')
         # Both should succeed (not cooldown message)
@@ -282,11 +298,12 @@ class TestHandleAction:
     def test_handle_action_low_stat_allows_3_per_minute(self, game):
         """9.23: When stat <= 10, limit is 3 per minute.
 
-        Use 'play' with HAPPY<=10 and ENERGY<10 so play_pet fails ('Too tired')
-        but the cooldown count still increments, allowing 3 attempts before cooldown.
+        Use 'play' with HAPPY<=10 and ENERGY<10 (but >0) so play_pet fails
+        ('Too tired') but the cooldown count still increments, allowing 3
+        attempts before cooldown. ENERGY must be >0 to avoid critical bypass.
         """
         game.state['stats']['HAPPY'] = 5  # <= 10, limit=3
-        game.state['stats']['ENERGY'] = 0  # play_pet will fail 'Too tired'
+        game.state['stats']['ENERGY'] = 5  # <10 so play_pet fails, >0 so not critical
         # First 3 should pass cooldown check (even though play_pet fails)
         for i in range(3):
             msg, _ = game.handle_action('play')
@@ -340,8 +357,8 @@ class TestHandlePet:
         assert game.state['stats']['HAPPY'] == 52
 
     def test_handle_pet_critical_no_cooldown(self, game):
-        """9.29: Critical state bypasses pet cooldown but still adds HAPPY."""
-        game.state['critical_since'] = datetime.now().isoformat()
+        """9.29: Critical state (stat at zero) bypasses pet cooldown but still adds HAPPY."""
+        game.state['stats']['HUNGER'] = 0  # critical: stat at zero bypasses cooldown
         game.state['pet_count_hour'] = 3
         game.state['pet_hour_start'] = datetime.now().isoformat()
         game.state['stats']['HAPPY'] = 50

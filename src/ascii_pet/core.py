@@ -896,6 +896,9 @@ class PetGame:
         # compact -> other states (for direct key access)
         for sid in ['stats', 'achievements', 'items', 'lan']:
             sm.add_transition('compact', sid)
+        # Any state -> lan (for trade accept switching to community plaza)
+        for sid in ['compact', 'stats', 'achievements', 'items', 'rename', 'release']:
+            sm.add_transition(sid, 'lan')
 
     @property
     def mode(self):
@@ -1062,24 +1065,24 @@ class PetGame:
         critical = h == 0 or e == 0 or p == 0
         all_zero = h == 0 and e == 0 and p == 0
 
-        if critical:
+        if all_zero:
+            # All stats zero: 1-hour rescue window before death
             if self.state.get('critical_since') is None:
                 self.state['critical_since'] = datetime.now().isoformat()
             critical_secs = (datetime.now() - datetime.fromisoformat(self.state['critical_since'])).total_seconds()
-            if all_zero and critical_secs >= 300:
+            if critical_secs >= 3600:
                 self.state['is_dead'] = True
                 self.save()
                 return _('Your pet has died...'), now
-            elif critical_secs >= 900:
-                self.state['is_dead'] = True
+            remaining = int((3600 - critical_secs) / 60) + 1
+            msg = _('CRITICAL! All stats at zero! ({remaining}min left)').format(remaining=remaining); msg_time = now
+            self.warning_active = True
+        elif critical:
+            # Single stat zero: warning only, no death countdown
+            if self.state.get('critical_since'):
+                self.state['critical_since'] = None
                 self.save()
-                return _('Your pet has died...'), now
-            if all_zero:
-                remaining = int((300 - critical_secs) / 60) + 1
-                msg = _('CRITICAL! All stats at zero! ({remaining}min left)').format(remaining=remaining); msg_time = now
-            else:
-                remaining = int((900 - critical_secs) / 60) + 1
-                msg = _('CRITICAL! A stat is at zero! ({remaining}min left)').format(remaining=remaining); msg_time = now
+            msg = _('CRITICAL! A stat is at zero!'); msg_time = now
             self.warning_active = True
         else:
             if self.state.get('critical_since'):
@@ -1145,7 +1148,8 @@ class PetGame:
             return _('Your pet is dead...'), None
 
         now = datetime.now()
-        critical = self.state.get('critical_since') is not None
+        _stats = self.state['stats']
+        critical = _stats['HUNGER'] == 0 or _stats['ENERGY'] == 0 or _stats['HAPPY'] == 0
         if not critical and action in ('feed', 'play', 'sleep'):
             stat_map = {'feed': 'HUNGER', 'play': 'HAPPY', 'sleep': 'ENERGY'}
             stat_val = self.state['stats'][stat_map[action]]
@@ -1180,7 +1184,8 @@ class PetGame:
         if self.state.get('is_dead'):
             return None
         now = datetime.now()
-        critical = self.state.get('critical_since') is not None
+        _stats = self.state['stats']
+        critical = _stats['HUNGER'] == 0 or _stats['ENERGY'] == 0 or _stats['HAPPY'] == 0
         if not critical:
             hour_start = self.state.get('pet_hour_start')
             if hour_start is None or (now - datetime.fromisoformat(hour_start)).total_seconds() >= 3600:
@@ -1392,6 +1397,10 @@ class PetGame:
                     self.pending_trade_req['_accepting'] = True
                     self.message = _('Select pet to trade (1-3)')
                     self.message_time = now
+                    # Switch to lan mode so pet selection list is visible
+                    if self.mode != 'lan':
+                        from ascii_pet.states import LanState
+                        self.sm.transition_to(self, LanState())
                     return 'action', self.message
                 if key == 'n':
                     self.accept_trade(self.pending_trade_req, None, accepted=False)

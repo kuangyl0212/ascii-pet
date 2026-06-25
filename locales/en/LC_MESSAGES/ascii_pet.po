@@ -186,8 +186,8 @@ msgstr "Your pet has died..."
 msgid "CRITICAL! All stats at zero! ({remaining}min left)"
 msgstr "CRITICAL! All stats at zero! ({remaining}min left)"
 
-msgid "CRITICAL! A stat is at zero! ({remaining}min left)"
-msgstr "CRITICAL! A stat is at zero! ({remaining}min left)"
+msgid "CRITICAL! A stat is at zero!"
+msgstr "CRITICAL! A stat is at zero!"
 
 msgid "Your pet is starving!"
 msgstr "Your pet is starving!"
