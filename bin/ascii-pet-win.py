@@ -257,17 +257,9 @@ def render_lan_lines(game):
         elif game.lan_submode == 'gift_item':
             lines.append((_('Select item to gift:'), COLOR_MSG))
             inv_list = game.get_inventory_list()
-            # DEBUG: log inventory list to project log
-            try:
-                from ascii_pet.log import logger
-                logger.debug(f'gift_item render: inv_list type={type(inv_list).__name__} len={len(inv_list)}')
-                for _i, _item in enumerate(inv_list):
-                    logger.debug(f'  [{_i}] type={type(_item).__name__} value={_item!r}')
-            except Exception as _e:
-                pass
-            for i, (item_id, name, icon, count, desc) in enumerate(inv_list[:9]):
-                lines.append((f'[DEBUG] iid={item_id!r} name={name!r} icon={icon!r} count={count!r} desc={desc!r}', COLOR_MSG))
-                lines.append((f'[{i+1}] {icon} {name} x{count}', COLOR_WHITE))
+            for i, (item_id, name, icon, cnt, desc) in enumerate(inv_list[:9]):
+                lines.append((f'[{i+1!r}] {icon!r} {name!r} {str(cnt)!r}', COLOR_MSG))
+                #  lines.append((f'[{i+1}] {icon} {name} x{str(cnt)}', COLOR_WHITE))
             lines.append((_('[ESC]Cancel'), COLOR_DIM))
         elif game.lan_submode == 'trade':
             lines.append((_('Select trade target:'), COLOR_MSG))
