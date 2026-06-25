@@ -825,6 +825,7 @@ class PetGame:
         self.visitor_pets = {}
         self.active_visit = None
         self.being_visited = None
+        self._last_heartbeat_send = 0.0
         self.visit_event_cooldown = 0.0
         self.lan_page = 0
         self.active_challenge = None
@@ -1121,6 +1122,7 @@ class PetGame:
             try:
                 self.process_lan_queues()
                 self._tick_visit_timeout()
+                self._tick_visit_heartbeat()
                 self._tick_visit_events()
                 self._tick_challenge_timeout()
                 self.check_pending_trade_timeout()
@@ -1548,6 +1550,7 @@ class PetGame:
                 "target": peer_node_id,
                 "start_time": time.time(),
                 "pet_snapshot": snapshot,
+                "last_heartbeat": time.time(),
             }
             logger.info(f"Visit initiated: {self.lan_username} -> {peer_node_id}")
         else:
@@ -1981,6 +1984,53 @@ class PetGame:
             self.end_visit()
             self.message = _("Visit timed out, auto-ended")
             self.message_time = now
+
+    def _tick_visit_heartbeat(self):
+        """拜访期间定期发送心跳 + 检查对方心跳是否超时。
+
+        心跳间隔：5 秒
+        超时阈值：15 秒
+        """
+        from ascii_pet.protocol import MSG_VISIT_HEARTBEAT
+        HEARTBEAT_INTERVAL = 5  # 5秒
+        HEARTBEAT_TIMEOUT = 15  # 15秒
+        now = time.time()
+
+        # Determine peer node_id based on visit role
+        peer_id = None
+        if self.active_visit:
+            peer_id = self.active_visit.get("target", "")
+        elif self.being_visited:
+            peer_id = self.being_visited.get("from", "")
+
+        if not peer_id:
+            return
+
+        # Send heartbeat every HEARTBEAT_INTERVAL seconds
+        if now - self._last_heartbeat_send >= HEARTBEAT_INTERVAL:
+            if self.lan_node:
+                try:
+                    self.lan_node.send_to_peer(peer_id, MSG_VISIT_HEARTBEAT, {
+                        "from": self.lan_node.node_id,
+                        "ts": now,
+                    })
+                except Exception:
+                    pass
+            self._last_heartbeat_send = now
+
+        # Check for heartbeat timeout
+        if self.active_visit:
+            last_hb = self.active_visit.get("last_heartbeat", 0)
+            if now - last_hb > HEARTBEAT_TIMEOUT:
+                self.end_visit()
+                self.message = _("Visit ended (connection lost)")
+                self.message_time = now
+        elif self.being_visited:
+            last_hb = self.being_visited.get("last_heartbeat", 0)
+            if now - last_hb > HEARTBEAT_TIMEOUT:
+                self.end_visit()
+                self.message = _("Visit ended (connection lost)")
+                self.message_time = now
 
     def _tick_visit_events(self):
         """拜访期间随机触发互动事件。

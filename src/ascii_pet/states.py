@@ -206,6 +206,10 @@ class CompactState(GameState):
                 return 'mode_change', 'release'
             game.message = msg; game.message_time = now
             return 'action', msg
+        if key in ('t', 'a', 'u', 'l') and (game.active_visit or game.being_visited):
+            game.message = _("Please end the visit first (press 'e')")
+            game.message_time = now
+            return 'action', game.message
         if key == 't':
             game.sm.transition_to(game, StatsState())
             return 'mode_change', 'stats'
@@ -297,6 +301,10 @@ class ExpandedState(GameState):
             game.message = msg; game.message_time = now; game.action_message_time = now
             if anim: game.anim_end = now + 1.5; game.anim_frames = ANIMATIONS[anim]; game.anim_idx = 0
             return 'action', msg
+        if key in ('t', 'a', 'u', 'l') and (game.active_visit or game.being_visited):
+            game.message = _("Please end the visit first (press 'e')")
+            game.message_time = now
+            return 'action', game.message
         if key == 't':
             game.sm.transition_to(game, StatsState())
             return 'mode_change', 'stats'
@@ -571,6 +579,7 @@ class LanState(GameState):
         from ascii_pet.protocol import (
             MSG_VISIT_REQ, MSG_VISIT_DATA, MSG_VISIT_LEAVE,
             MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT, MSG_VISIT_END,
+            MSG_VISIT_HEARTBEAT,
             MSG_CHALLENGE_REQ, MSG_CHALLENGE_ACK, MSG_CHALLENGE_RESULT,
             MSG_GIFT_ITEM, MSG_GIFT_ACK,
             MSG_TRADE_REQ, MSG_TRADE_ACK, MSG_TRADE_CONFIRM,
@@ -585,7 +594,7 @@ class LanState(GameState):
             snapshot = payload.get("pet_snapshot", {})
             from_id = payload.get("from", "")
             from_username = payload.get("from_username", "?")
-            game.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot}
+            game.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot, "last_heartbeat": now}
             game.visitor_pets[from_id] = snapshot
             game.message = _("{username}'s pet {name} came to visit!").format(
                 username=from_username, name=snapshot.get('name', '?'))
@@ -680,6 +689,12 @@ class LanState(GameState):
                 game.being_visited = None
                 game.message = _("Visit ended")
                 game.message_time = now
+
+        elif msg_type == MSG_VISIT_HEARTBEAT:
+            if game.active_visit:
+                game.active_visit["last_heartbeat"] = now
+            if game.being_visited:
+                game.being_visited["last_heartbeat"] = now
 
         elif msg_type == MSG_VISIT_DATA:
             # 用 payload['from'] (node_id) 作为 key，确保存取删一致

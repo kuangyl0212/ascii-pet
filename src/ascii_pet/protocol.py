@@ -43,6 +43,7 @@ MSG_VISIT_FEED = "visit_feed"
 MSG_VISIT_PLAY = "visit_play"
 MSG_VISIT_EVENT = "visit_event"
 MSG_VISIT_END = "visit_end"
+MSG_VISIT_HEARTBEAT = "visit_heartbeat"
 MSG_NAME_CHECK = "name_check"
 
 # Battle / gift / trade message types (Task 6).
