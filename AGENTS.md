@@ -8,9 +8,13 @@ ASCII desktop pet: shared core logic + platform-specific rendering, no external 
 src/ascii_pet/        ← core package (importable as `ascii_pet`)
     __init__.py
     core.py           ← pet game logic (PetGame, actions, persistence, rendering data)
+    states.py         ← state machine (CompactState, ExpandedState, LanState, etc.)
+    events.py         ← random event registry and effects
+    battle.py         ← LAN battle/combat logic
     i18n.py           ← internationalization (en/zh), gettext-based
     lan.py            ← LAN P2P networking (UDP discovery + TCP messaging)
     protocol.py       ← LAN message protocol (framing, encode/decode, pure-data)
+    log.py            ← logging setup (loguru wrapper)
     weather.py        ← OpenWeatherMap API client
 bin/                  ← entry point scripts
     ascii-pet         ← Linux: ANSI terminal rendering, xdotool window control
@@ -134,3 +138,4 @@ Not pip — system packages: `xdotool`, `xprop`, `xterm`. `picom` optional for t
 
 - `.trae/` contains historical design specs; not needed for current work.
 - `build/`, `dist/`, `build-win7/`, `dist-win7/` are PyInstaller artifacts.
+- `scripts/*.pdf` and `scripts/generate_windows_guide.py` are user documentation artifacts.
