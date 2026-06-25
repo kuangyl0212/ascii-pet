@@ -849,34 +849,61 @@ class LanNode:
             self._tcp_socket = None
 
     def _connect_to_master(self):
-        """Slave connects to the master's TCP port."""
+        """Slave connects to the master's TCP port.
+
+        Spawns a background thread that retries with exponential backoff
+        (1s, 2s, 4s, ... up to 30s) until connected, shut down, or the
+        master changes.
+        """
         if self.is_master:
-            return  # master does not connect to itself
-        with self._peers_lock:
-            master_peer = self._peers.get(self._master_id)
-        if not master_peer:
             return
-        master_ip = master_peer.get("ip")
-        if not master_ip:
+        # Already have a connection or a retry is in progress
+        if self._master_sock is not None:
             return
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(3.0)
-            sock.connect((master_ip, self.tcp_port))
-            sock.settimeout(SOCKET_TIMEOUT)
-            # Send HELLO to register with master
-            snapshot = make_pet_snapshot(self.pet_state, self.username)
-            hello = make_hello(self.node_id, self.username, snapshot)
-            hello_payload = {k: v for k, v in hello.items() if k != "type"}
-            sock.sendall(encode_message(MSG_HELLO, hello_payload))
-            with self._client_sockets_lock:
-                self._master_sock = sock
-            # Start receive thread
-            t = threading.Thread(target=self._recv_master_loop, daemon=True, name="lan-master-recv")
-            self._threads.append(t)
-            t.start()
-        except Exception:
-            logger.exception("Failed to connect to master")
+        t = threading.Thread(target=self._connect_to_master_loop, daemon=True, name="lan-reconnect")
+        t.start()
+
+    def _connect_to_master_loop(self):
+        """Background retry loop for connecting to the master."""
+        delay = 1.0
+        max_delay = 30.0
+        while self._running and not self.is_master and self._master_sock is None:
+            with self._peers_lock:
+                master_peer = self._peers.get(self._master_id)
+            if not master_peer:
+                return
+            master_ip = master_peer.get("ip")
+            if not master_ip:
+                return
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3.0)
+                sock.connect((master_ip, self.tcp_port))
+                sock.settimeout(SOCKET_TIMEOUT)
+                # Send HELLO to register with master
+                snapshot = make_pet_snapshot(self.pet_state, self.username)
+                hello = make_hello(self.node_id, self.username, snapshot)
+                hello_payload = {k: v for k, v in hello.items() if k != "type"}
+                sock.sendall(encode_message(MSG_HELLO, hello_payload))
+                with self._client_sockets_lock:
+                    if self._master_sock is not None:
+                        # Another thread connected first — close ours
+                        try:
+                            sock.close()
+                        except Exception:
+                            pass
+                        return
+                    self._master_sock = sock
+                # Start receive thread
+                t = threading.Thread(target=self._recv_master_loop, daemon=True, name="lan-master-recv")
+                self._threads.append(t)
+                t.start()
+                logger.info(f"Connected to master {master_ip}:{self.tcp_port}")
+                return
+            except Exception:
+                logger.warning(f"Connect to master {master_ip}:{self.tcp_port} failed, retrying in {delay:.0f}s")
+                time.sleep(delay)
+                delay = min(delay * 2, max_delay)
 
     def _recv_master_loop(self):
         """Slave receive thread: read messages from the master."""

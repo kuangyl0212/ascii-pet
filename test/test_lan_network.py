@@ -666,6 +666,7 @@ class TestConnectToMaster:
         """Slave connects to master's TCP port."""
         node = lan.LanNode("bob", _minimal_pet_state())
         node.is_master = False
+        node._running = True  # Required for the retry loop to execute
         node._master_id = "master-id"
         with node._peers_lock:
             node._peers["master-id"] = {
@@ -677,15 +678,12 @@ class TestConnectToMaster:
                 "ip": "127.0.0.1",
             }
         node._connect_to_master()
+        # Wait for the background reconnect thread to establish the connection
+        deadline = time.time() + 5
+        while node._master_sock is None and time.time() < deadline:
+            time.sleep(0.05)
         assert node._master_sock is not None
-        # Clean up
-        with node._client_sockets_lock:
-            if node._master_sock:
-                try:
-                    node._master_sock.close()
-                except Exception:
-                    pass
-                node._master_sock = None
+        node.stop()
 
     def test_slave_no_master_peer_returns_early(self):
         """Slave returns early when master peer is unknown."""
@@ -711,6 +709,86 @@ class TestConnectToMaster:
             }
         node._connect_to_master()
         assert node._master_sock is None
+
+
+class TestConnectToMasterRetry:
+    """_connect_to_master retries with backoff on failure."""
+
+    def test_retries_on_connect_failure(self):
+        """Connection failure triggers retry instead of giving up."""
+        node = lan.LanNode("bob", _minimal_pet_state())
+        node.is_master = False
+        node._running = True
+        node._master_id = "master-id"
+        with node._peers_lock:
+            node._peers["master-id"] = {
+                "node_id": "master-id",
+                "username": "alice",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": ("127.0.0.1", 50007),
+                "ip": "127.0.0.1",
+            }
+        connect_count = {"n": 0}
+
+        def make_failing_socket(*args, **kwargs):
+            s = _FakeSocket()
+            original_connect = s.connect
+
+            def failing_connect(addr):
+                connect_count["n"] += 1
+                raise ConnectionRefusedError("simulated")
+
+            s.connect = failing_connect
+            return s
+
+        with patch('socket.socket', side_effect=make_failing_socket):
+            node._connect_to_master()
+            time.sleep(3.5)
+        node.stop()
+        # The reconnect thread sleeps between attempts; give it time to wake
+        # and observe _running=False before the conftest thread-leak check runs.
+        deadline = time.time() + 10
+        alive = [t for t in threading.enumerate() if t.name == "lan-reconnect"]
+        while alive and time.time() < deadline:
+            time.sleep(0.2)
+            alive = [t for t in threading.enumerate() if t.name == "lan-reconnect"]
+        assert connect_count["n"] >= 2, f"Expected >= 2 attempts, got {connect_count['n']}"
+        assert node._master_sock is None
+
+    def test_retries_stop_when_running_false(self):
+        """Retry loop exits when _running is set to False."""
+        node = lan.LanNode("bob", _minimal_pet_state())
+        node.is_master = False
+        node._running = True
+        node._master_id = "master-id"
+        with node._peers_lock:
+            node._peers["master-id"] = {
+                "node_id": "master-id",
+                "username": "alice",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": ("127.0.0.1", 50007),
+                "ip": "127.0.0.1",
+            }
+
+        def failing_connect(addr):
+            time.sleep(0.3)
+            raise ConnectionRefusedError("simulated")
+
+        with patch('socket.socket') as mock_sock_cls:
+            fake = _FakeSocket()
+            fake.connect = failing_connect
+            mock_sock_cls.return_value = fake
+            node._connect_to_master()
+            time.sleep(0.2)
+            node._running = False
+            deadline = time.time() + 5
+            alive_threads = [t for t in threading.enumerate() if t.name == "lan-reconnect"]
+            while alive_threads and time.time() < deadline:
+                time.sleep(0.1)
+                alive_threads = [t for t in threading.enumerate() if t.name == "lan-reconnect"]
+            assert len(alive_threads) == 0, "Reconnect thread should have exited"
 
 
 # ─── Star topology: failover ───────────────────────────────────────────────
