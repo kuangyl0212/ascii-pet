@@ -438,6 +438,53 @@ class TestHandleTcpMessage:
         node._handle_tcp_message(None)
         assert node.ui_queue.empty()
 
+    def test_visit_end_enqueued_to_ui_queue(self):
+        """VISIT_END message is put into ui_queue (not silently dropped)."""
+        from ascii_pet.protocol import MSG_VISIT_END
+        node = lan.LanNode("alice", _minimal_pet_state())
+        data = encode_message(MSG_VISIT_END, {"reason": "manual", "from": "peer-1"})
+        node._handle_tcp_message(data)
+        msg = node.ui_queue.get_nowait()
+        assert msg["type"] == MSG_VISIT_END
+        assert msg["payload"]["from"] == "peer-1"
+
+    def test_visit_heartbeat_enqueued_to_ui_queue(self):
+        """VISIT_HEARTBEAT message is put into ui_queue (not silently dropped)."""
+        from ascii_pet.protocol import MSG_VISIT_HEARTBEAT
+        node = lan.LanNode("alice", _minimal_pet_state())
+        data = encode_message(MSG_VISIT_HEARTBEAT, {"from": "peer-1", "ts": 123.456})
+        node._handle_tcp_message(data)
+        msg = node.ui_queue.get_nowait()
+        assert msg["type"] == MSG_VISIT_HEARTBEAT
+        assert msg["payload"]["from"] == "peer-1"
+
+    def test_visit_feed_enqueued_to_ui_queue(self):
+        """VISIT_FEED message is put into ui_queue (not silently dropped)."""
+        from ascii_pet.protocol import MSG_VISIT_FEED
+        node = lan.LanNode("alice", _minimal_pet_state())
+        data = encode_message(MSG_VISIT_FEED, {"from": "peer-1"})
+        node._handle_tcp_message(data)
+        msg = node.ui_queue.get_nowait()
+        assert msg["type"] == MSG_VISIT_FEED
+
+    def test_visit_play_enqueued_to_ui_queue(self):
+        """VISIT_PLAY message is put into ui_queue (not silently dropped)."""
+        from ascii_pet.protocol import MSG_VISIT_PLAY
+        node = lan.LanNode("alice", _minimal_pet_state())
+        data = encode_message(MSG_VISIT_PLAY, {"from": "peer-1"})
+        node._handle_tcp_message(data)
+        msg = node.ui_queue.get_nowait()
+        assert msg["type"] == MSG_VISIT_PLAY
+
+    def test_visit_event_enqueued_to_ui_queue(self):
+        """VISIT_EVENT message is put into ui_queue (not silently dropped)."""
+        from ascii_pet.protocol import MSG_VISIT_EVENT
+        node = lan.LanNode("alice", _minimal_pet_state())
+        data = encode_message(MSG_VISIT_EVENT, {"event_type": "play_together", "description": "x"})
+        node._handle_tcp_message(data)
+        msg = node.ui_queue.get_nowait()
+        assert msg["type"] == MSG_VISIT_EVENT
+
     def test_relay_message_forwards_to_target(self):
         """Master forwards relay message to target client socket."""
         node = lan.LanNode("alice", _minimal_pet_state())

@@ -20,7 +20,9 @@ from ascii_pet import protocol as lan_protocol
 from ascii_pet.protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
     MSG_VISIT_REQ, MSG_VISIT_ACK, MSG_VISIT_DATA,
-    MSG_VISIT_LEAVE, MSG_BYE,
+    MSG_VISIT_LEAVE, MSG_VISIT_END, MSG_VISIT_HEARTBEAT,
+    MSG_VISIT_FEED, MSG_VISIT_PLAY, MSG_VISIT_EVENT,
+    MSG_BYE,
     MSG_CHALLENGE_REQ, MSG_CHALLENGE_ACK, MSG_CHALLENGE_RESULT,
     MSG_GIFT_ITEM, MSG_GIFT_ACK,
     MSG_TRADE_REQ, MSG_TRADE_ACK, MSG_TRADE_CONFIRM,
@@ -587,6 +589,16 @@ class LanNode:
         elif msg_type == MSG_VISIT_DATA:
             self.ui_queue.put({"type": msg_type, "payload": payload})
         elif msg_type == MSG_VISIT_LEAVE:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_VISIT_END:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_VISIT_HEARTBEAT:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_VISIT_FEED:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_VISIT_PLAY:
+            self.ui_queue.put({"type": msg_type, "payload": payload})
+        elif msg_type == MSG_VISIT_EVENT:
             self.ui_queue.put({"type": msg_type, "payload": payload})
         elif msg_type == MSG_CHALLENGE_REQ:
             self.ui_queue.put({"type": msg_type, "payload": payload})
