@@ -670,6 +670,12 @@ msgstr "胜方: {} | 败方: {}"
 msgid "Winner HP: -{} | Loser HP: -{}"
 msgstr "胜方 HP: -{} | 败方 HP: -{}"
 
+msgid "XP +{}"
+msgstr "经验值 +{}"
+
+msgid "Level Up!"
+msgstr "升级！"
+
 #: ascii-pet-win.py - Trade confirmation panel
 msgid "═ Trade Request ═"
 msgstr "═ 交换请求 ═"

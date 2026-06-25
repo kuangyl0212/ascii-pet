@@ -348,6 +348,15 @@ def render_battle_log_lines(battle_result):
     hp_loss_winner = battle_result.get('hp_loss_winner', 0)
     hp_loss_loser = battle_result.get('hp_loss_loser', 0)
     lines.append((_('Winner HP: -{} | Loser HP: -{}').format(hp_loss_winner, hp_loss_loser), COLOR_DIM))
+    # Task 5: XP / level-up / evolution display (add-battle-xp-rewards spec)
+    xp_gained = battle_result.get('xp_gained', 0)
+    if xp_gained:
+        lines.append((_('XP +{}').format(xp_gained), COLOR_MSG))
+    if battle_result.get('leveled_up'):
+        lines.append((_('Level Up!'), COLOR_MSG))
+    evolved = battle_result.get('evolved')
+    if evolved:
+        lines.append((_('Evolved into {species}!').format(species=evolved), COLOR_MSG))
     return lines
 
 def render_trade_confirm_lines(trade_req):

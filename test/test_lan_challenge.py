@@ -431,6 +431,152 @@ class TestApplyBattleResult:
 
         assert game.state['hp'] == 75  # 100 - 25
 
+    # ─── Task 2: XP application (add-battle-xp-rewards spec) ─────────────
+
+    def test_apply_battle_result_winner_gains_xp_winner(self, game):
+        """When local pet wins, xp += result['xp_winner'] (30)."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['xp'] = 0
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        result = {
+            'winner': 'attacker', 'hp_loss_winner': 10, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        ret = game.apply_battle_result(result)
+        assert game.state['xp'] == 30
+        assert ret is not None
+        assert ret.get('xp_gained') == 30
+
+    def test_apply_battle_result_loser_gains_xp_loser(self, game):
+        """When local pet loses, xp += result['xp_loser'] (10)."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['xp'] = 0
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        result = {
+            'winner': 'defender', 'hp_loss_winner': 5, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        ret = game.apply_battle_result(result)
+        assert game.state['xp'] == 10
+        assert ret is not None
+        assert ret.get('xp_gained') == 10
+
+    def test_apply_battle_result_defender_role_xp(self, game):
+        """Defender role winner gains xp_winner; loser gains xp_loser."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['xp'] = 0
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'defender',
+        }
+        result = {
+            'winner': 'defender', 'hp_loss_winner': 0, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        ret = game.apply_battle_result(result)
+        # Defender won → gains xp_winner
+        assert game.state['xp'] == 30
+        assert ret.get('xp_gained') == 30
+
+    def test_apply_battle_result_triggers_level_up(self, game):
+        """When XP crosses level threshold, check_level_up runs; returns leveled_up=True."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['xp'] = 90  # 90 + 30 = 120 → level 1 needs 100 → level up
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        result = {
+            'winner': 'attacker', 'hp_loss_winner': 0, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        ret = game.apply_battle_result(result)
+        assert game.state['level'] == 2  # levelled up
+        assert game.state['xp'] == 20    # 120 - 100 = 20
+        assert ret.get('leveled_up') is True
+
+    def test_apply_battle_result_returns_evolved_on_evolution(self, game):
+        """When level up triggers evolution, return dict has 'evolved' set to species string."""
+        _enable_lan_with_fake(game, 'alice')
+        # Pick a species with evolution chain at level 10 (e.g., blob → slime lv5 → elemental lv15)
+        # Use blob at level 9 with enough XP to hit lv10 → evolves into slime
+        game.state['species'] = 'blob'
+        game.state['level'] = 9
+        game.state['xp'] = 80  # 80 + 30 = 110; needs 900 to level 9→10. Won't level up.
+        # To force evolution we need to actually hit level 10. Use level 4 with low XP need.
+        # Level 4 needs 400 XP. We can't get 400 from one battle.
+        # Instead: set level=4, xp=380, win (+30=410) → level 5 → blob evolves to slime.
+        game.state['level'] = 4
+        game.state['xp'] = 380
+        game.state['hp'] = 100
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        result = {
+            'winner': 'attacker', 'hp_loss_winner': 0, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        ret = game.apply_battle_result(result)
+        # Level 5 should trigger blob → slime evolution
+        assert game.state['level'] >= 5
+        assert game.state['species'] == 'slime'
+        assert ret.get('leveled_up') is True
+        assert ret.get('evolved') == 'slime'
+
+    def test_apply_battle_result_missing_xp_fields_defaults_to_zero(self, game):
+        """When result lacks xp_winner/xp_loser (old client), defaults to 0 — no error."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['xp'] = 5
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        # No xp_winner / xp_loser keys
+        result = {'winner': 'attacker', 'hp_loss_winner': 10, 'hp_loss_loser': 25}
+        ret = game.apply_battle_result(result)
+        # XP unchanged (gained 0)
+        assert game.state['xp'] == 5
+        assert ret is not None
+        assert ret.get('xp_gained') == 0
+        # HP still updated correctly
+        assert game.state['hp'] == 90
+
+    def test_apply_battle_result_preserves_hp_update_and_clears_challenge(self, game):
+        """XP application must not break HP update or active_challenge clearing."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['xp'] = 0
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        result = {
+            'winner': 'attacker', 'hp_loss_winner': 15, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        ret = game.apply_battle_result(result)
+        assert game.state['hp'] == 85  # 100 - 15
+        assert game.active_challenge is None
+        assert ret is not None
+
 
 # ─── Task 8: LanNode challenge message handling ─────────────────────────────
 
@@ -480,3 +626,163 @@ class TestLanNodeChallengeMessages:
         assert msg['type'] == MSG_CHALLENGE_RESULT
         assert msg['payload']['winner'] == 'attacker'
         assert msg['payload']['hp_loss_loser'] == 25
+
+
+# ─── Task 3: MSG_CHALLENGE_ACK XP passthrough (add-battle-xp-rewards spec) ─
+
+
+class TestChallengeAckXPPassthrough:
+    """MSG_CHALLENGE_ACK non-escaped branch must propagate xp_winner/xp_loser
+    in the MSG_CHALLENGE_RESULT payload sent to the defender, AND in the local
+    result dict passed to apply_battle_result on the attacker side.
+    """
+
+    def test_ack_non_escaped_result_includes_xp_fields_sent_to_peer(self, game):
+        """When CHALLENGE_ACK(escaped=False) is received, the CHALLENGE_RESULT
+        payload sent to the peer must include xp_winner and xp_loser."""
+        from ascii_pet.states import LanState, LanMessageEvent
+        from ascii_pet.protocol import MSG_CHALLENGE_ACK, MSG_CHALLENGE_RESULT
+        fake_node = _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['is_dead'] = False
+        # Set up an active challenge so the ACK handler has an attacker_snapshot
+        game.active_challenge = {
+            'target': 'peer-1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'AlicePet', 'level': 5, 'attack': 20, 'defense': 15,
+                'speed': 10, 'skills': ['tackle'], 'hp': 100,
+            },
+            'role': 'attacker',
+        }
+        defender_snapshot = {
+            'name': 'BobPet', 'level': 5, 'attack': 18, 'defense': 14,
+            'speed': 12, 'skills': ['tackle'], 'hp': 100,
+        }
+        ack_payload = {
+            'from': 'peer-1',
+            'from_username': 'bob',
+            'escaped': False,
+            'defender_snapshot': defender_snapshot,
+        }
+        event = LanMessageEvent(msg_type=MSG_CHALLENGE_ACK, payload=ack_payload)
+        # Force the state machine into LanState so handle_lan_message dispatches
+        game._state = LanState
+        # Patch simulate_battle to a controlled return value.
+        # NOTE: simulate_battle is imported function-locally in states.py via
+        # `from ascii_pet.battle import simulate_battle`, so we must patch the
+        # source module (ascii_pet.battle.simulate_battle), not states namespace.
+        fake_battle_result = {
+            'winner': 'AlicePet', 'loser': 'BobPet',
+            'log': ['AlicePet used Tackle!'],
+            'hp_loss_winner': 5, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        with patch('ascii_pet.battle.simulate_battle', return_value=fake_battle_result):
+            LanState().handle_lan_message(game, event)
+
+        # Verify the MSG_CHALLENGE_RESULT was sent to the peer with XP fields
+        result_calls = [c for c in fake_node.send_calls if c[1] == MSG_CHALLENGE_RESULT]
+        assert len(result_calls) == 1
+        peer_id, msg_type, sent_payload = result_calls[0]
+        assert sent_payload.get('xp_winner') == 30
+        assert sent_payload.get('xp_loser') == 10
+
+    def test_ack_non_escaped_local_apply_battle_result_receives_xp(self, game):
+        """When CHALLENGE_ACK(escaped=False) is received, apply_battle_result is
+        called locally with a result dict that includes xp_winner/xp_loser.
+        Verify by checking the attacker's state['xp'] increased."""
+        from ascii_pet.states import LanState, LanMessageEvent
+        from ascii_pet.protocol import MSG_CHALLENGE_ACK
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['is_dead'] = False
+        game.state['xp'] = 0
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1',
+            'start_time': time.time(),
+            'pet_snapshot': {
+                'name': 'AlicePet', 'level': 5, 'attack': 20, 'defense': 15,
+                'speed': 10, 'skills': ['tackle'], 'hp': 100,
+            },
+            'role': 'attacker',
+        }
+        defender_snapshot = {
+            'name': 'BobPet', 'level': 5, 'attack': 18, 'defense': 14,
+            'speed': 12, 'skills': ['tackle'], 'hp': 100,
+        }
+        ack_payload = {
+            'from': 'peer-1', 'from_username': 'bob',
+            'escaped': False, 'defender_snapshot': defender_snapshot,
+        }
+        event = LanMessageEvent(msg_type=MSG_CHALLENGE_ACK, payload=ack_payload)
+        fake_battle_result = {
+            'winner': 'AlicePet', 'loser': 'BobPet',
+            'log': ['AlicePet used Tackle!'],
+            'hp_loss_winner': 5, 'hp_loss_loser': 25,
+            'xp_winner': 30, 'xp_loser': 10,
+        }
+        with patch('ascii_pet.battle.simulate_battle', return_value=fake_battle_result):
+            LanState().handle_lan_message(game, event)
+        # Attacker won → +30 XP
+        assert game.state['xp'] == 30
+
+
+# ─── Task 4: Escape path grants no XP (add-battle-xp-rewards spec) ────────
+
+
+class TestEscapeNoXP:
+    """Regression: when defender escapes, neither side gains XP and
+    apply_battle_result is never called. This is enforced by the existing
+    escape path which clears active_challenge without calling
+    apply_battle_result.
+    """
+
+    def test_attacker_xp_unchanged_when_defender_escapes(self, game):
+        """When the defender escapes (CHALLENGE_ACK escaped=True received by
+        attacker), the attacker's state['xp'] must NOT change and
+        apply_battle_result must NOT be called."""
+        from ascii_pet.states import LanState, LanMessageEvent
+        from ascii_pet.protocol import MSG_CHALLENGE_ACK
+        fake_node = _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['is_dead'] = False
+        game.state['xp'] = 42  # sentinel value
+        game.state['level'] = 1
+        game.active_challenge = {
+            'target': 'peer-1', 'start_time': time.time(),
+            'pet_snapshot': {}, 'role': 'attacker',
+        }
+        ack_payload = {
+            'from': 'peer-1', 'from_username': 'bob',
+            'escaped': True,
+        }
+        event = LanMessageEvent(msg_type=MSG_CHALLENGE_ACK, payload=ack_payload)
+        # Patch apply_battle_result to detect any accidental call
+        with patch.object(game, 'apply_battle_result') as mock_apply:
+            LanState.handle_lan_message(LanState(), game, event)
+            assert mock_apply.call_count == 0
+        # XP unchanged
+        assert game.state['xp'] == 42
+        # active_challenge cleared
+        assert game.active_challenge is None
+
+    def test_defender_xp_unchanged_when_escape_succeeds(self, game):
+        """When accept_challenge returns escaped=True on the defender side,
+        the defender's state['xp'] must NOT change and apply_battle_result
+        must NOT be called."""
+        _enable_lan_with_fake(game, 'alice')
+        game.state['hp'] = 100
+        game.state['is_dead'] = False
+        game.state['xp'] = 7  # sentinel
+        game.state['level'] = 1
+        challenge_req = _make_challenge_req(level=5)
+        # Force escape success: random.random() returns 0.0 (< escape_chance)
+        with patch('random.random', return_value=0.0):
+            result = game.accept_challenge(challenge_req)
+        assert result == {'escaped': True}
+        # Defender's XP unchanged
+        assert game.state['xp'] == 7
+        # No active_challenge set (escape path doesn't set it)
+        assert game.active_challenge is None

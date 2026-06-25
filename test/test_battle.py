@@ -397,3 +397,61 @@ class TestBattleLogI18n:
             assert has_chinese, f'Expected Chinese characters in log: {result["log"]}'
         finally:
             set_language('en')
+
+
+# ─── Task 1 of add-battle-xp-rewards spec: XP return fields ─────────────────
+# Tests that simulate_battle exposes xp_winner / xp_loser fields and that
+# the module exposes WIN_XP / LOSE_XP constants. See spec tasks.md.
+
+
+class TestBattleXPRewards:
+    """Tests for XP reward fields returned by simulate_battle.
+
+    Implements Task 1 of the add-battle-xp-rewards spec: the battle result
+    dict must include `xp_winner` (winner's XP reward) and `xp_loser` (loser's
+    XP reward), backed by module-level constants WIN_XP / LOSE_XP.
+    """
+
+    def test_returns_xp_winner_field(self):
+        attacker = make_combatant(name='Attacker', speed=20)
+        defender = make_combatant(name='Defender', speed=10)
+        result = battle.simulate_battle(attacker, defender, seed=42)
+        assert 'xp_winner' in result
+
+    def test_returns_xp_loser_field(self):
+        attacker = make_combatant(name='Attacker', speed=20)
+        defender = make_combatant(name='Defender', speed=10)
+        result = battle.simulate_battle(attacker, defender, seed=42)
+        assert 'xp_loser' in result
+
+    def test_xp_winner_is_30(self):
+        attacker = make_combatant(name='Attacker', speed=20)
+        defender = make_combatant(name='Defender', speed=10)
+        result = battle.simulate_battle(attacker, defender, seed=42)
+        assert result['xp_winner'] == 30
+
+    def test_xp_loser_is_10(self):
+        attacker = make_combatant(name='Attacker', speed=20)
+        defender = make_combatant(name='Defender', speed=10)
+        result = battle.simulate_battle(attacker, defender, seed=42)
+        assert result['xp_loser'] == 10
+
+    def test_xp_fields_are_int(self):
+        attacker = make_combatant(name='Attacker', speed=20)
+        defender = make_combatant(name='Defender', speed=10)
+        result = battle.simulate_battle(attacker, defender, seed=42)
+        assert isinstance(result['xp_winner'], int)
+        assert isinstance(result['xp_loser'], int)
+
+    def test_xp_is_deterministic(self):
+        attacker = make_combatant(name='Attacker', speed=20)
+        defender = make_combatant(name='Defender', speed=10)
+        result1 = battle.simulate_battle(attacker, defender, seed=42)
+        result2 = battle.simulate_battle(attacker, defender, seed=42)
+        assert result1['xp_winner'] == result2['xp_winner']
+        assert result1['xp_loser'] == result2['xp_loser']
+
+    def test_constants_exposed(self):
+        from ascii_pet import battle as battle_mod
+        assert battle_mod.WIN_XP == 30
+        assert battle_mod.LOSE_XP == 10

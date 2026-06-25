@@ -5,6 +5,10 @@ from ascii_pet.i18n import _
 
 from ascii_pet.log import logger
 
+# Battle XP rewards (Task 1 of add-battle-xp-rewards spec)
+WIN_XP = 30
+LOSE_XP = 10
+
 
 def simulate_battle(attacker, defender, seed):
     """Simulate a battle between two pets.
@@ -57,6 +61,8 @@ def simulate_battle(attacker, defender, seed):
         'log': log,
         'hp_loss_winner': hp_loss_winner,
         'hp_loss_loser': hp_loss_loser,
+        'xp_winner': WIN_XP,
+        'xp_loser': LOSE_XP,
     }
 
 

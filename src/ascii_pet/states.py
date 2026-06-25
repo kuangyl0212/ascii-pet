@@ -766,13 +766,15 @@ class LanState(GameState):
                     "log": battle_result["log"],
                     "hp_loss_winner": battle_result["hp_loss_winner"],
                     "hp_loss_loser": battle_result["hp_loss_loser"],
+                    "xp_winner": battle_result["xp_winner"],
+                    "xp_loser": battle_result["xp_loser"],
                     "attacker_snapshot": attacker_snapshot,
                     "defender_snapshot": defender_snapshot,
                     "seed": seed,
                 }
                 game.lan_node.send_to_peer(payload.get("from", ""), MSG_CHALLENGE_RESULT, result)
-                game.apply_battle_result(result)
-                game.battle_result = battle_result
+                apply_ret = game.apply_battle_result(result)
+                game.battle_result = {**battle_result, **(apply_ret or {})}
                 game.active_challenge = None
                 attacker_name = attacker_snapshot.get("name", "?")
                 defender_name = defender_snapshot.get("name", "?")
@@ -791,11 +793,11 @@ class LanState(GameState):
             if attacker_snapshot and defender_snapshot and seed is not None:
                 from ascii_pet.battle import simulate_battle
                 battle_result = simulate_battle(attacker_snapshot, defender_snapshot, seed=seed)
-                game.apply_battle_result(payload)
-                game.battle_result = battle_result
+                apply_ret = game.apply_battle_result(payload)
+                game.battle_result = {**battle_result, **(apply_ret or {})}
             else:
-                game.apply_battle_result(payload)
-                game.battle_result = payload
+                apply_ret = game.apply_battle_result(payload)
+                game.battle_result = {**payload, **(apply_ret or {})}
             game.active_challenge = None
             attacker_name = attacker_snapshot.get("name", "?") if attacker_snapshot else "?"
             defender_name = defender_snapshot.get("name", "?") if defender_snapshot else "?"

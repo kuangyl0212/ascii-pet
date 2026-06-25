@@ -178,6 +178,8 @@ def test_challenge_e2e_attacker_wins(tmp_path):
             'log': ['Attacker won the battle!'],
             'hp_loss_winner': 10,
             'hp_loss_loser': 25,
+            'xp_winner': 30,
+            'xp_loser': 10,
         }
 
     with patch('ascii_pet.battle.simulate_battle', side_effect=fake_battle):

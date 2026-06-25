@@ -1691,21 +1691,44 @@ class PetGame:
         return {"escaped": False, "defender_snapshot": snapshot}
 
     def apply_battle_result(self, result):
-        """Apply battle result to current pet. Updates hp and clears active_challenge."""
+        """Apply battle result to current pet. Updates hp, applies XP, clears active_challenge.
+
+        Returns dict with keys: xp_gained (int), leveled_up (bool), evolved (str|None).
+        """
         role = self.active_challenge.get("role") if self.active_challenge else None
         if role == "attacker":
             if result.get("winner") == "attacker":
                 loss = result.get("hp_loss_winner", 0)
+                is_winner = True
             else:
                 loss = result.get("hp_loss_loser", 25)
+                is_winner = False
         else:
             if result.get("winner") == "defender":
                 loss = result.get("hp_loss_winner", 0)
+                is_winner = True
             else:
                 loss = result.get("hp_loss_loser", 25)
+                is_winner = False
         self.state['hp'] = max(0, self.state.get('hp', 100) - loss)
+
+        # Apply XP (Task 2 of add-battle-xp-rewards spec)
+        xp_gained = result.get("xp_winner" if is_winner else "xp_loser", 0)
+        self.state['xp'] = self.state.get('xp', 0) + xp_gained
+        level_before = self.state.get('level', 1)
+        species_before = self.state.get('species')
+        check_level_up(self.state)
+        leveled_up = self.state.get('level', level_before) > level_before
+        species_after = self.state.get('species')
+        evolved = species_after if (leveled_up and species_after != species_before) else None
+
         self.active_challenge = None
         self.save()
+        return {
+            'xp_gained': xp_gained,
+            'leveled_up': leveled_up,
+            'evolved': evolved,
+        }
 
     def heal_pet(self):
         """Heal current pet at the LAN healing center. Returns True on success."""
