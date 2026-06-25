@@ -371,6 +371,7 @@ class LanNode:
             True on success, False if not started, peer unknown, or send failed.
         """
         if not self.enabled:
+            logger.debug(f"send_to_peer failed: LAN not enabled (peer={peer_node_id}, msg={msg_type})")
             return False
         try:
             data = encode_message(msg_type, payload)
@@ -379,6 +380,11 @@ class LanNode:
                 with self._client_sockets_lock:
                     sock = self._client_sockets.get(peer_node_id)
                     if sock is None:
+                        known = list(self._client_sockets.keys())
+                        logger.warning(
+                            f"send_to_peer failed: peer socket not found "
+                            f"(peer={peer_node_id}, msg={msg_type}, known_sockets={known})"
+                        )
                         return False
                     sock.sendall(data)
                     return True
@@ -388,6 +394,10 @@ class LanNode:
                     # Send to master directly via _master_sock, no relay
                     with self._client_sockets_lock:
                         if self._master_sock is None:
+                            logger.warning(
+                                f"send_to_peer failed: master socket is None "
+                                f"(peer={peer_node_id}, msg={msg_type})"
+                            )
                             return False
                         self._master_sock.sendall(data)
                         return True
@@ -401,11 +411,18 @@ class LanNode:
                     relay_data = encode_message("relay", relay_payload)
                     with self._client_sockets_lock:
                         if self._master_sock is None:
+                            logger.warning(
+                                f"send_to_peer failed: master socket is None (relay) "
+                                f"(peer={peer_node_id}, msg={msg_type})"
+                            )
                             return False
                         self._master_sock.sendall(relay_data)
                     return True
         except Exception:
-            logger.warning("Failed to send message to peer")
+            logger.warning(
+                f"send_to_peer failed: exception during send "
+                f"(peer={peer_node_id}, msg={msg_type})"
+            )
             return False
 
     # ─── Worker threads ────────────────────────────────────────────────────

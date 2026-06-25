@@ -1528,6 +1528,7 @@ class PetGame:
         if not self.lan_enabled or not self.lan_node:
             self.message = _("LAN not enabled")
             self.message_time = time.time()
+            logger.warning(f"invite_visit failed: LAN not enabled (peer={peer_node_id})")
             return False
         # 拜访锁定检查
         if self.active_visit is not None:
@@ -1540,6 +1541,14 @@ class PetGame:
             return False
         from ascii_pet.protocol import MSG_VISIT_REQ, make_pet_snapshot
         snapshot = make_pet_snapshot(self.state, self.lan_username or self.uid)
+        # 诊断：记录发起拜访的上下文
+        status = self.lan_node.get_status()
+        peers = self.lan_node.get_peers()
+        peer_ids = [p.get("node_id", "") for p in peers]
+        logger.info(
+            f"invite_visit: peer={peer_node_id}, is_master={status.get('is_master')}, "
+            f"my_node_id={status.get('node_id')}, known_peers={peer_ids}"
+        )
         ok = self.lan_node.send_to_peer(peer_node_id, MSG_VISIT_REQ, {
             "from": self.lan_node.get_status().get("node_id", ""),
             "from_username": self.lan_username or self.uid,
@@ -1556,6 +1565,10 @@ class PetGame:
         else:
             self.message = _("Failed to send visit request")
             self.message_time = time.time()
+            logger.warning(
+                f"invite_visit failed: send_to_peer returned False "
+                f"(peer={peer_node_id}, is_master={status.get('is_master')})"
+            )
         return ok
 
     def end_visit(self):
@@ -2010,24 +2023,37 @@ class PetGame:
         if now - self._last_heartbeat_send >= HEARTBEAT_INTERVAL:
             if self.lan_node:
                 try:
-                    self.lan_node.send_to_peer(peer_id, MSG_VISIT_HEARTBEAT, {
+                    sent = self.lan_node.send_to_peer(peer_id, MSG_VISIT_HEARTBEAT, {
                         "from": self.lan_node.node_id,
                         "ts": now,
                     })
-                except Exception:
-                    pass
+                    if not sent:
+                        logger.warning(
+                            f"Visit heartbeat send failed: peer={peer_id}, "
+                            f"role={'active_visit' if self.active_visit else 'being_visited'}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Visit heartbeat send exception: peer={peer_id}, error={e}")
             self._last_heartbeat_send = now
 
         # Check for heartbeat timeout
         if self.active_visit:
             last_hb = self.active_visit.get("last_heartbeat", 0)
             if now - last_hb > HEARTBEAT_TIMEOUT:
+                logger.info(
+                    f"Visit heartbeat timeout (active_visit): peer={peer_id}, "
+                    f"last_hb={last_hb}, elapsed={now - last_hb:.1f}s"
+                )
                 self.end_visit()
                 self.message = _("Visit ended (connection lost)")
                 self.message_time = now
         elif self.being_visited:
             last_hb = self.being_visited.get("last_heartbeat", 0)
             if now - last_hb > HEARTBEAT_TIMEOUT:
+                logger.info(
+                    f"Visit heartbeat timeout (being_visited): peer={peer_id}, "
+                    f"last_hb={last_hb}, elapsed={now - last_hb:.1f}s"
+                )
                 self.end_visit()
                 self.message = _("Visit ended (connection lost)")
                 self.message_time = now

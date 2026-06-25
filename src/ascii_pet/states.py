@@ -594,6 +594,10 @@ class LanState(GameState):
             snapshot = payload.get("pet_snapshot", {})
             from_id = payload.get("from", "")
             from_username = payload.get("from_username", "?")
+            logger.info(
+                f"MSG_VISIT_REQ received: from={from_id}, from_username={from_username}, "
+                f"pet={snapshot.get('name', '?')}"
+            )
             game.being_visited = {"from": from_id, "start_time": now, "pet_snapshot": snapshot, "last_heartbeat": now}
             game.visitor_pets[from_id] = snapshot
             game.message = _("{username}'s pet {name} came to visit!").format(
@@ -610,9 +614,13 @@ class LanState(GameState):
                 # 包含受访方 node_id，让发起方用 node_id 作为 key 存储
                 own_snapshot["from"] = game.lan_node.node_id
                 try:
-                    game.lan_node.send_to_peer(from_id, MSG_VISIT_DATA, own_snapshot)
-                except Exception:
-                    pass
+                    sent = game.lan_node.send_to_peer(from_id, MSG_VISIT_DATA, own_snapshot)
+                    logger.info(
+                        f"MSG_VISIT_DATA reply sent: to={from_id}, success={sent}, "
+                        f"my_node_id={game.lan_node.node_id}"
+                    )
+                except Exception as e:
+                    logger.warning(f"MSG_VISIT_DATA reply failed: to={from_id}, error={e}")
             # 受访方切换到 ExpandedState，立即在屏幕上显示访客宠物
             game.sm.transition_to(game, ExpandedState())
 
@@ -691,10 +699,13 @@ class LanState(GameState):
                 game.message_time = now
 
         elif msg_type == MSG_VISIT_HEARTBEAT:
+            from_id_hb = payload.get("from", "")
             if game.active_visit:
                 game.active_visit["last_heartbeat"] = now
+                logger.debug(f"MSG_VISIT_HEARTBEAT received (active_visit): from={from_id_hb}")
             if game.being_visited:
                 game.being_visited["last_heartbeat"] = now
+                logger.debug(f"MSG_VISIT_HEARTBEAT received (being_visited): from={from_id_hb}")
 
         elif msg_type == MSG_VISIT_DATA:
             # 用 payload['from'] (node_id) 作为 key，确保存取删一致
