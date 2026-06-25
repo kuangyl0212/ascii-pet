@@ -466,6 +466,26 @@ class TestAdoptPet:
         action_type, detail = game.handle_key('w')
         assert game.mode == 'release'
 
+    def test_adopt_pet_max_pets_from_expanded_enters_release_mode(self, game):
+        """Regression: At MAX_PETS, pressing 'w' in expanded mode must enter release mode.
+
+        Previously the state transition `expanded -> release` was not registered,
+        so pressing 'w' in expanded mode at MAX_PETS raised InvalidTransition
+        inside ExpandedState.handle_key and the adoption/release flow silently
+        broke (only compact mode worked).
+        """
+        # Switch to expanded mode first (initial state is compact)
+        game.mode = 'expanded'
+        assert game.mode == 'expanded'
+        # Fill up to MAX_PETS
+        while len(game.pets_data['pets']) < MAX_PETS:
+            bones = generate_companion(game.uid + f'-{len(game.pets_data["pets"])}')
+            game.pets_data['pets'].append(init_state(_uid(), bones, f'Pet{len(game.pets_data["pets"])}'))
+        game.save()
+        action_type, detail = game.handle_key('w')
+        assert game.mode == 'release'
+        assert action_type == 'mode_change'
+
     def test_adopt_pet_daily_limit_rejected(self, game):
         """9.38: Daily adoption limit returns rejection message."""
         game.pets_data['adoption_log'] = [datetime.now().isoformat() for _ in range(MAX_DAILY_ADOPTIONS)]

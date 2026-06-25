@@ -890,6 +890,8 @@ class PetGame:
         sm.add_transition('release', 'expanded')
         # compact -> release (for adopt at MAX_PETS)
         sm.add_transition('compact', 'release')
+        # expanded -> release (for adopt at MAX_PETS from expanded mode)
+        sm.add_transition('expanded', 'release')
         # Any state -> compact (for 'c' key from any mode)
         for sid in ['expanded', 'stats', 'achievements', 'items', 'lan', 'rename', 'release']:
             sm.add_transition(sid, 'compact')
