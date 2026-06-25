@@ -100,7 +100,7 @@ bin/ascii-pet-win.py     ← Windows wrapper
 ## Conventions
 
 - **Core logic in `src/ascii_pet/core.py`** — all game state, constants, and pure functions live here. Platform files only handle rendering and I/O.
-- **Zero pip dependencies** at runtime (stdlib only). PyInstaller is build-time only.
+- **Runtime dependencies**: loguru (see requirements.txt). PyInstaller is build-time only.
 - **PetGame is the interface** — platform files call `game.tick()`, `game.handle_key()`, `game.handle_action()`. Never duplicate game logic in platform files.
 - **Rendering differs by design**: Linux returns ANSI strings, Windows returns `(text, (R,G,B))` tuples. Both call the same `ascii_pet.core` data functions.
 - **State path**: Linux → `~/.local/share/ascii-pet/`, Windows → `%APPDATA%\ascii-pet\`.

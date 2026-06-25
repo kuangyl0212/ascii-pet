@@ -6,7 +6,7 @@ and TCP (reliable messaging). Designed to degrade gracefully: all socket
 operations are wrapped in try/except, and network thread exceptions never
 propagate to the main thread.
 
-Zero pip dependencies (stdlib only).
+Runtime dependency: loguru.
 """
 
 import queue
@@ -15,6 +15,7 @@ import struct
 import threading
 import time
 
+from ascii_pet.log import logger
 from ascii_pet import protocol as lan_protocol
 from ascii_pet.protocol import (
     MSG_HELLO, MSG_PEER_LIST, MSG_HEARTBEAT,
@@ -116,6 +117,7 @@ def _get_local_ip():
         finally:
             s.close()
     except Exception:
+        logger.debug("Local IP detection failed, falling back to 127.0.0.1")
         return "127.0.0.1"
 
 
@@ -142,6 +144,7 @@ def _compute_broadcast_addr(local_ip):
         # /24 subnet: zero the host portion, set it to 255
         return ".".join(parts[:3]) + ".255"
     except Exception:
+        logger.debug("Broadcast address computation failed, using 255.255.255.255")
         return BROADCAST_ADDR
 
 
@@ -238,11 +241,13 @@ class LanNode:
 
             return True
         except socket.error as e:
+            logger.exception("Failed to create socket in LanNode.start()")
             self.error_msg = str(e)
             self.enabled = False
             self._cleanup_sockets()
             return False
         except Exception as e:
+            logger.exception("Failed to create socket in LanNode.start()")
             self.error_msg = str(e)
             self.enabled = False
             self._cleanup_sockets()
@@ -262,7 +267,7 @@ class LanNode:
             try:
                 self._send_broadcast_raw(MSG_BYE, {"node_id": self.node_id})
             except Exception:
-                pass
+                logger.debug("Failed to send BYE broadcast during stop()")
 
         self._cleanup_sockets()
 
@@ -282,19 +287,19 @@ class LanNode:
                 try:
                     sock.close()
                 except Exception:
-                    pass
+                    logger.debug("Error closing socket during cleanup")
         with self._client_sockets_lock:
             for sock in self._client_sockets.values():
                 try:
                     sock.close()
                 except Exception:
-                    pass
+                    logger.debug("Error closing client socket during cleanup")
             self._client_sockets = {}
             if self._master_sock is not None:
                 try:
                     self._master_sock.close()
                 except Exception:
-                    pass
+                    logger.debug("Error closing master socket during cleanup")
                 self._master_sock = None
         self._udp_socket = None
         self._tcp_socket = None
@@ -345,6 +350,7 @@ class LanNode:
             self._send_broadcast_raw(msg_type, payload)
             return True
         except Exception:
+            logger.warning("Failed to send broadcast message")
             return False
 
     def _send_broadcast_raw(self, msg_type, payload):
@@ -397,8 +403,9 @@ class LanNode:
                         if self._master_sock is None:
                             return False
                         self._master_sock.sendall(relay_data)
-                        return True
+                    return True
         except Exception:
+            logger.warning("Failed to send message to peer")
             return False
 
     # ─── Worker threads ────────────────────────────────────────────────────
@@ -415,6 +422,7 @@ class LanNode:
             except socket.error:
                 break  # socket closed
             except Exception as e:
+                logger.exception("Error in UDP loop")
                 self.ui_queue.put({"type": "error", "payload": {"msg": f"网络线程异常: {e}"}})
                 break  # unexpected error, exit gracefully
 
@@ -424,7 +432,7 @@ class LanNode:
                 try:
                     self._broadcast_hello()
                 except Exception:
-                    pass
+                    logger.debug("Failed to broadcast HELLO")
 
     def _tcp_accept_loop(self):
         """TCP thread: accept connections from other nodes (master mode)."""
@@ -445,6 +453,7 @@ class LanNode:
             except socket.error:
                 break  # socket closed
             except Exception as e:
+                logger.exception("Error in TCP accept loop")
                 self.ui_queue.put({"type": "error", "payload": {"msg": f"网络线程异常: {e}"}})
                 break  # unexpected error, exit gracefully
 
@@ -465,6 +474,7 @@ class LanNode:
             except socket.error:
                 break
             except Exception as e:
+                logger.exception("Error in TCP client loop")
                 self.ui_queue.put({"type": "error", "payload": {"msg": f"网络线程异常: {e}"}})
                 break  # unexpected error, exit gracefully
         # Clean up registered socket on disconnect
@@ -474,7 +484,7 @@ class LanNode:
         try:
             sock.close()
         except Exception:
-            pass
+            logger.debug("Error closing client socket")
 
     def _heartbeat_loop(self):
         """Heartbeat thread: send heartbeats and prune expired peers."""
@@ -488,7 +498,7 @@ class LanNode:
                         MSG_HEARTBEAT, {"node_id": self.node_id, "ts": now}
                     )
                 except Exception:
-                    pass
+                    logger.debug("Failed to send heartbeat")
             self._prune_expired_peers(now)
             time.sleep(HEARTBEAT_LOOP_SLEEP)
 
@@ -498,6 +508,7 @@ class LanNode:
         """Process a received UDP message."""
         result = decode_message(data)
         if result is None:
+            logger.warning(f"UDP message decode failed: {data[:100]!r}")
             return
         msg_type, payload = result
         if msg_type == MSG_HELLO:
@@ -594,6 +605,7 @@ class LanNode:
         """
         result = decode_message(data)
         if result is None:
+            logger.warning(f"TCP message decode failed: {(data[:100] if data else data)!r}")
             return None
         msg_type, payload = result
         return self._handle_decoded_message(msg_type, payload, sender_sock)
@@ -613,9 +625,9 @@ class LanNode:
                     try:
                         sock.sendall(inner_data)
                     except Exception:
-                        pass
+                        logger.debug("Failed to forward relay message to target")
         except Exception:
-            pass
+            logger.debug("Error in relay message handling")
 
     def _update_peer_from_tcp_hello(self, node_id, payload):
         """Update peer info in _peers from a TCP HELLO message.
@@ -675,7 +687,7 @@ class LanNode:
             data = encode_message(MSG_PEER_LIST, {"peers": peers})
             slave_sock.sendall(data)
         except Exception:
-            pass  # gradual degradation
+            logger.exception("Error sending peer list to slave")
 
     def _update_peers_from_list(self, peers):
         """Update peers from a list received from the master."""
@@ -730,6 +742,7 @@ class LanNode:
                 is_new_peer = True
         # 仅新 peer 触发重选
         if is_new_peer:
+            logger.info(f"Peer discovered: {payload.get('username', '')}")
             changed = self._reelect_master()
             if changed:
                 old_master, new_master = changed
@@ -752,6 +765,7 @@ class LanNode:
 
     def _on_master_change(self, old_master, new_master):
         """Handle a master change: connect to new master if slave."""
+        logger.info(f"Master node changed: {new_master}")
         try:
             # Close old master connection if any
             with self._client_sockets_lock:
@@ -759,7 +773,7 @@ class LanNode:
                     try:
                         self._master_sock.close()
                     except Exception:
-                        pass
+                        logger.debug("Error closing old master socket")
                     self._master_sock = None
             if self.is_master:
                 # Became master: ensure TCP listener is running
@@ -770,7 +784,7 @@ class LanNode:
                 self._close_tcp_listener()
                 self._connect_to_master()
         except Exception:
-            pass  # gradual degradation
+            logger.exception("Error in master change handling")
 
     def _start_tcp_listener(self):
         """Start the TCP listener socket (master role)."""
@@ -784,7 +798,7 @@ class LanNode:
             self._threads.append(t)
             t.start()
         except Exception:
-            pass  # gradual degradation
+            logger.exception("Failed to start TCP listener")
 
     def _close_tcp_listener(self):
         """Close the TCP listener (slaves don't need it)."""
@@ -792,7 +806,7 @@ class LanNode:
             try:
                 self._tcp_socket.close()
             except Exception:
-                pass
+                logger.debug("Error closing TCP listener socket")
             self._tcp_socket = None
 
     def _connect_to_master(self):
@@ -823,7 +837,7 @@ class LanNode:
             self._threads.append(t)
             t.start()
         except Exception:
-            pass  # gradual degradation
+            logger.exception("Failed to connect to master")
 
     def _recv_master_loop(self):
         """Slave receive thread: read messages from the master."""
@@ -838,9 +852,10 @@ class LanNode:
                 except socket.timeout:
                     continue
                 except Exception:
+                    logger.debug("Error receiving from master")
                     break
         except Exception:
-            pass
+            logger.exception("Error in master receive loop")
         finally:
             # Only trigger failover if we were running (not during shutdown)
             if self._running:
@@ -854,7 +869,7 @@ class LanNode:
                     try:
                         self._master_sock.close()
                     except Exception:
-                        pass
+                        logger.debug("Error closing master socket during disconnect")
                     self._master_sock = None
             # Mark old master as expired (set last_seen to 0) instead of deleting,
             # so _reelect_master still considers it for election consistency.
@@ -874,7 +889,7 @@ class LanNode:
                 "payload": {"new_master": new_master},
             })
         except Exception:
-            pass  # gradual degradation
+            logger.exception("Error in master disconnect handling")
 
     def _on_peer_heartbeat(self, payload, addr):
         """Update peer's last_seen from a heartbeat."""
@@ -892,7 +907,10 @@ class LanNode:
         if not node_id:
             return
         with self._peers_lock:
+            peer = self._peers.get(node_id)
+            peer_name = peer.get("username", "") if peer else ""
             self._peers.pop(node_id, None)
+        logger.info(f"Peer left: {peer_name}")
 
     def _prune_expired_peers(self, now):
         """Remove peers not seen within PEER_TIMEOUT."""

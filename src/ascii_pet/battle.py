@@ -3,6 +3,8 @@ import random
 from ascii_pet.core import SKILLS
 from ascii_pet.i18n import _
 
+from ascii_pet.log import logger
+
 
 def simulate_battle(attacker, defender, seed):
     """Simulate a battle between two pets.
@@ -15,6 +17,7 @@ def simulate_battle(attacker, defender, seed):
     Returns:
         dict with keys: winner, loser, log, hp_loss_winner, hp_loss_loser
     """
+    logger.info(f"Battle started: {attacker.get('name','?')} (lv{attacker.get('level',1)}) vs {defender.get('name','?')} (lv{defender.get('level',1)})")
     rng = random.Random(seed)
 
     # Copy combatants and initialise internal battle BP (separate from real hp)
@@ -47,6 +50,7 @@ def simulate_battle(attacker, defender, seed):
     if hp_loss_winner > 25:
         hp_loss_winner = 25
 
+    logger.info(f"Battle ended: winner={winner['name']}, rounds={len(log)}")
     return {
         'winner': winner['name'],
         'loser': loser['name'],

@@ -35,6 +35,8 @@ def build(python_exe, name_suffix="", workpath_suffix=""):
     # 结束正在运行的旧进程
     subprocess.run(['taskkill', '/f', '/im', 'ascii-pet-win.exe'],
                    capture_output=True, check=False)
+    subprocess.run(['taskkill', '/f', '/im', 'ascii-pet-win-win7.exe'],
+                   capture_output=True, check=False)
 
     # 检查 PyInstaller
     try:
@@ -62,6 +64,12 @@ def build(python_exe, name_suffix="", workpath_suffix=""):
         '--hidden-import', 'ascii_pet.i18n',
         '--hidden-import', 'ascii_pet.lan',
         '--hidden-import', 'ascii_pet.protocol',
+        '--hidden-import', 'ascii_pet.log',
+        '--hidden-import', 'ascii_pet.battle',
+        '--hidden-import', 'ascii_pet.events',
+        '--hidden-import', 'ascii_pet.states',
+        '--hidden-import', 'ascii_pet.weather',
+        '--hidden-import', 'loguru',
     ]
     if LOCALES_DIR.exists():
         cmd.extend(['--add-data', f'{LOCALES_DIR};locales'])

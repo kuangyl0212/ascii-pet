@@ -12,6 +12,7 @@ from ascii_pet.states import (
     ItemsState, RenameState, ReleaseState, LanState, LanNameEditState,
     DeadOverlayState,
 )
+from ascii_pet.log import logger, setup_logging
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -650,9 +651,12 @@ def load_pets_with_fallback(uid, data_dir=None):
     # Corrupt — try to restore from backup
     backups = list_backups(uid, data_dir)
     if backups:
+        backup_path = _get_backup_dir(uid, data_dir) / backups[0][0]
         restore_from_backup(uid, backups[0][0], data_dir)
         data = load_pets(uid, data_dir)
+        logger.warning(f"Main save corrupted, restored from backup: {backup_path}")
         return data, 'restored'
+    logger.error(f"Both main save and backup corrupted: {save_path}")
     return None, 'corrupt_no_backup'
 
 def load_pets(uid, data_dir=None):
@@ -748,6 +752,7 @@ class PetGame:
         init_language(data_dir)
         self.uid = uid
         self.data_dir = data_dir
+        setup_logging(self.data_dir)
         self.frame_idx = 0
         self._sm = StateMachine(CompactState())
         self._register_transitions()
@@ -1093,6 +1098,7 @@ class PetGame:
         if now - self.last_event_time > 60 and random.random() < event_chance:
             evt = random.choice(RANDOM_EVENTS)
             msg = _(evt.description); msg_time = now; self.last_event_time = now
+            logger.debug(f"Random event triggered: {evt.event_id} on pet {self.state.get('name', '?')}")
             # Delegate stat-gate / CHAOS bump / item drop / xp to apply_event().
             def _drop_random_item():
                 item_id = random.choice(list(ITEMS.keys()))
@@ -1119,7 +1125,7 @@ class PetGame:
                 self._tick_challenge_timeout()
                 self.check_pending_trade_timeout()
             except Exception:
-                pass
+                logger.exception("Error in LAN tick processing")
 
         # Don't let tick warnings overwrite recent visit or action messages (2s grace)
         if msg and now - self.visit_message_time < 5:
@@ -1455,6 +1461,7 @@ class PetGame:
                 self.lan_node = None
                 return False
         except Exception:
+            logger.exception("Failed to enable LAN")
             self.lan_node = None
             self.lan_enabled = False
             return False
@@ -1463,7 +1470,8 @@ class PetGame:
         """禁用联机，清空状态。"""
         if self.lan_node:
             try: self.lan_node.stop()
-            except Exception: pass
+            except Exception:
+                logger.exception("Error stopping LAN node")
         self.lan_node = None
         self.lan_enabled = False
         self.lan_peers = []
@@ -1541,6 +1549,7 @@ class PetGame:
                 "start_time": time.time(),
                 "pet_snapshot": snapshot,
             }
+            logger.info(f"Visit initiated: {self.lan_username} -> {peer_node_id}")
         else:
             self.message = _("Failed to send visit request")
             self.message_time = time.time()
@@ -1560,6 +1569,7 @@ class PetGame:
             # 清除 visitor_pets 中该目标的条目
             if target in self.visitor_pets:
                 del self.visitor_pets[target]
+            logger.info(f"Visit ended (manual): {my_id} <-> {target}")
             self.active_visit = None
             return True
         if self.being_visited:
@@ -1571,6 +1581,7 @@ class PetGame:
                     pass
             # 从 visitor_pets 中按 node_id 移除对应访客
             self.visitor_pets.pop(sender, None)
+            logger.info(f"Visit ended (manual): {my_id} <-> {sender}")
             self.being_visited = None
             return True
         return False
@@ -1861,6 +1872,8 @@ class PetGame:
         if not start_time:
             return False
         if time.time() - start_time > 30:
+            peer = self.pending_trade_req.get("from_username", "?")
+            logger.info(f"Trade request timed out with peer: {peer}")
             self.message = _("Trade request timed out")
             self.message_time = time.time()
             self.pending_trade_req = None
@@ -1916,10 +1929,26 @@ class PetGame:
     def _handle_lan_message(self, msg):
         """Handle a single LAN message. Delegates to LanState.handle_lan_message()."""
         from ascii_pet.states import LanState, LanMessageEvent
+        from ascii_pet.protocol import MSG_VISIT_END, MSG_VISIT_LEAVE, MSG_CHALLENGE_RESULT
+        msg_type = msg.get('type', '')
+        payload = msg.get('payload', {})
         event = LanMessageEvent(
-            msg_type=msg.get('type', ''),
-            payload=msg.get('payload', {}),
+            msg_type=msg_type,
+            payload=payload,
         )
+        # Log visit end and challenge result events
+        my_id = self.lan_node.node_id if self.lan_node else ""
+        if msg_type == MSG_VISIT_END:
+            peer = payload.get("from", "")
+            logger.info(f"Visit ended (manual): {my_id} <-> {peer}")
+        elif msg_type == MSG_VISIT_LEAVE:
+            peer = payload.get("from", "")
+            logger.info(f"Visit ended (visitor_left): {my_id} <-> {peer}")
+        elif msg_type == MSG_CHALLENGE_RESULT:
+            attacker = payload.get("attacker_snapshot", {}) or {}
+            defender = payload.get("defender_snapshot", {}) or {}
+            winner = payload.get("winner", "?")
+            logger.info(f"Challenge result: {attacker.get('name', '?')} vs {defender.get('name', '?')}, winner: {winner}")
         # Use the current LanState instance from the state machine if available
         inner = self._inner_state()
         if isinstance(inner, LanState):
@@ -1941,10 +1970,14 @@ class PetGame:
         VISIT_TIMEOUT = 600  # 10分钟
         now = time.time()
         if self.active_visit and now - self.active_visit.get("start_time", 0) > VISIT_TIMEOUT:
+            peer = self.active_visit.get("target", "")
+            logger.info(f"Visit ended (timeout): {self.lan_node.node_id if self.lan_node else ''} <-> {peer}")
             self.end_visit()
             self.message = _("Visit timed out, auto-ended")
             self.message_time = now
         elif self.being_visited and now - self.being_visited.get("start_time", 0) > VISIT_TIMEOUT:
+            peer = self.being_visited.get("from", "")
+            logger.info(f"Visit ended (timeout): {self.lan_node.node_id if self.lan_node else ''} <-> {peer}")
             self.end_visit()
             self.message = _("Visit timed out, auto-ended")
             self.message_time = now

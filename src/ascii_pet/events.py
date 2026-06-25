@@ -6,7 +6,7 @@ Provides:
   - REGISTRY: module-level singleton EventRegistry (empty in Task 1;
     events are registered in Task 4).
 
-Zero pip dependencies — stdlib only (dataclasses, random).
+Runtime dependency: loguru (transitive).
 
 This module is intentionally side-effect free beyond constructing the
 empty REGISTRY singleton. No events are registered here.
@@ -16,6 +16,8 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+
+from ascii_pet.log import logger
 
 
 @dataclass(frozen=True)
@@ -232,6 +234,10 @@ def apply_event(
         - xp_gained is the XP added to the *current* state only.
     """
     result: dict = {'message': None, 'item_dropped': None, 'xp_gained': 0}
+
+    logger.debug(
+        f"Event applied: {event.event_id} on pet {state.get('name', '?')}"
+    )
 
     # 1. Resolve which pets receive stat effects based on target.
     target_pets = _resolve_target_pets(state, event.target, pets_data)

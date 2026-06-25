@@ -2,7 +2,7 @@
 """LAN multiplayer message protocol for ASCII pet.
 
 Pure-data module: framing, encode/decode, snapshot extraction, hello builder.
-Zero pip dependencies (stdlib only).
+Runtime dependency: loguru (transitive).
 
 Wire format
 -----------

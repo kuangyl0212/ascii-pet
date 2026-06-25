@@ -9,7 +9,7 @@ Covers:
 - make_visit_event (visit event builder)
 - VISIT_EVENTS (preset visit event catalog)
 
-Zero pip dependencies; stdlib only.
+Runtime dependency: loguru (transitive).
 """
 
 import json

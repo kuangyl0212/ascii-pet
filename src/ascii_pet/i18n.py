@@ -10,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 
+from ascii_pet.log import logger
+
 SUPPORTED_LANGUAGES = ['en', 'zh']
 _current_translation = gettext.NullTranslations()
 _current_language = 'en'
@@ -74,10 +76,10 @@ def set_language(lang):
         )
         _current_translation = translation
     except FileNotFoundError:
-        print(f"[i18n] WARNING: Translation file not found for '{lang}' in {locales_dir}", file=sys.stderr)
+        logger.warning(f"Translation file not found for '{lang}' in {locales_dir}")
         _current_translation = gettext.NullTranslations()
     except Exception as e:
-        print(f"[i18n] WARNING: Failed to load translation for '{lang}': {e}", file=sys.stderr)
+        logger.warning(f"Failed to load translation for '{lang}': {e}")
         _current_translation = gettext.NullTranslations()
 
 

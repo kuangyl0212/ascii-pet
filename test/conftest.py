@@ -33,6 +33,29 @@ def _set_english_language():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_logging():
+    """Prevent setup_logging() from opening log files in test temp directories.
+
+    PetGame.__init__ calls setup_logging(data_dir), which opens a log file in
+    data_dir/logs/. In tests using tempfile.TemporaryDirectory(), this open
+    file handle prevents Windows from deleting the temp dir. Patch the
+    setup_logging reference in core.py to a no-op so logging uses loguru's
+    default stderr sink. test_log.py imports setup_logging directly from
+    ascii_pet.log, so it is unaffected.
+    """
+    from ascii_pet import core
+    from ascii_pet.log import logger as _logger
+    _logger.remove()  # Clean up sinks from previous tests
+    original = core.setup_logging
+    core.setup_logging = lambda *a, **kw: None
+    try:
+        yield
+    finally:
+        core.setup_logging = original
+        _logger.remove()  # Clean up any sinks created during this test
+
+
+@pytest.fixture(autouse=True)
 def _prevent_real_lan(request):
     """Prevent PetGame.__init__ from starting real LanNode during tests.
 

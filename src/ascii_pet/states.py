@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ascii_pet.i18n import _
+from ascii_pet.log import logger
 
 
 # ─── GameEvent hierarchy ─────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ class StateMachine:
 
         # Validate transition
         if to_id not in self._transitions.get(from_id, set()):
+            logger.warning(f"Invalid state transition: {from_id} -> {to_id}")
             raise InvalidTransition(
                 f"Invalid transition: {from_id} -> {to_id}"
             )

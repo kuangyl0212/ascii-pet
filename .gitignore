@@ -4,7 +4,9 @@ __pycache__/
 .env
 *.log
 build/
+build-win7/
 dist/
+dist-win7/
 .trae/
 .coverage
 .pytest_cache/

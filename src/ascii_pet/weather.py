@@ -3,6 +3,8 @@
 import json, time, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 
+from ascii_pet.log import logger
+
 CONFIG_PATH = Path(__file__).parent / 'config' / 'weather.json'
 CACHE_SECONDS = 1800  # 30 minutes
 
@@ -19,7 +21,8 @@ def _get_ip_city():
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             return data.get('city', '')
-    except Exception:
+    except Exception as e:
+        logger.debug(f"IP city lookup failed: {e}")
         return ''
 
 def get_weather():
@@ -59,7 +62,8 @@ def get_weather():
         _cache['data'] = result
         _cache['time'] = now
         return result
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Weather API failed for city '{city}': {e}")
         return _cache.get('data')
 
 def format_weather_line(weather):
