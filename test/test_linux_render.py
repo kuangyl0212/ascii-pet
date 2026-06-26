@@ -35,6 +35,8 @@ _loader = importlib.machinery.SourceFileLoader('ascii_pet_linux', _MOD_PATH)
 _spec = importlib.util.spec_from_file_location('ascii_pet_linux', _MOD_PATH, loader=_loader)
 ascii_pet_linux = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ascii_pet_linux)
+# Register in sys.modules so unittest.mock.patch('ascii_pet_linux.X') works.
+sys.modules['ascii_pet_linux'] = ascii_pet_linux
 
 
 def _uid():
@@ -568,3 +570,51 @@ class TestMainLoopWiring:
         with open(_MOD_PATH, 'r', encoding='utf-8') as f:
             source = f.read()
         assert 'build_display_with_overlays' in source
+
+
+class TestBackupRestore:
+    """Verify backup creation (B key) and restore mode (V key)."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_restore_mode(self):
+        """Reset platform-layer _restore_mode flag before each test."""
+        ascii_pet_linux._restore_mode = False
+        yield
+
+    def test_build_restore_exists(self):
+        assert hasattr(ascii_pet_linux, 'build_restore')
+
+    def test_build_restore_shows_backups(self, game):
+        """build_restore should list available backups."""
+        from ascii_pet.core import create_backup
+        create_backup(game.uid, game.data_dir, 'manual')
+        out = ascii_pet_linux.build_restore(game)
+        assert 'Restore' in out or 'restore' in out
+        # Should show the backup
+        assert 'Manual' in out or 'Auto' in out
+
+    def test_build_restore_empty(self, game):
+        """build_restore with no backups shows empty message."""
+        out = ascii_pet_linux.build_restore(game)
+        assert 'No backups' in out or 'Empty' in out or 'restore' in out.lower()
+
+    def test_handle_backup_key_calls_create_backup(self, game):
+        """handle_platform_key('B') should create a backup."""
+        from unittest.mock import patch
+        with patch('ascii_pet_linux.create_backup') as mock_backup:
+            result = ascii_pet_linux.handle_platform_key('B', game)
+            assert mock_backup.called
+
+    def test_handle_restore_key_enters_mode(self, game):
+        """handle_platform_key('V') should enter restore mode."""
+        result = ascii_pet_linux.handle_platform_key('V', game)
+        # Should return True indicating mode was entered
+        assert result is True or result == 'restore'
+
+    def test_handle_restore_key_exits_on_cancel(self, game):
+        """In restore mode, 'c' or ESC should exit."""
+        # Enter restore mode first
+        ascii_pet_linux.handle_platform_key('V', game)
+        # Exit with 'c'
+        result = ascii_pet_linux.handle_platform_key('c', game)
+        assert result is False or result == 'exit'

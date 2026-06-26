@@ -19,6 +19,7 @@ from ascii_pet.core import (
     THEMES, DEFAULT_THEME,
     render_sprite, render_face, render_frame, export_text,
     PetGame,
+    create_backup, list_backups, restore_from_backup, load_pets_with_fallback,
 )
 from ascii_pet.i18n import _, get_language, set_language, save_settings
 from ascii_pet.i18n import get_theme, set_theme, save_theme, init_theme
@@ -541,6 +542,93 @@ def build_display_with_overlays(game, base_display):
         display += build_trade_confirm(game.pending_trade_req)
 
     return display
+
+
+def build_restore(game):
+    """Render backup restore selection panel. Returns ANSI string."""
+    RST = '\033[0m'
+    DIM = COLOR_DIM
+    MSG = COLOR_MSG
+    WHITE = COLOR_WHITE
+    BOLD = '\033[1m'
+
+    lines = []
+    lines.append(f'{MSG}═ {_("Restore Save")} ═{RST}')
+    lines.append('')
+    backups = list_backups(game.uid, game.data_dir)
+    if not backups:
+        lines.append(f'{DIM}{_("No backups available")}{RST}')
+    else:
+        lines.append(f'{DIM}{_("Select backup to restore:")}{RST}')
+        lines.append('')
+        for i, (filename, dt, backup_type) in enumerate(backups[:9]):
+            label = f'[{i+1}] [{backup_type.capitalize()}] {dt.strftime("%Y-%m-%d %H:%M:%S")}'
+            lines.append(f'{WHITE}{label}{RST}')
+    lines.append('')
+    lines.append(f'{DIM}{_("[1-9]restore [c]cancel")}{RST}')
+    return '\n'.join(lines)
+
+
+# ─── Platform-layer state (not part of state machine) ────────────────────────
+
+_restore_mode = False
+
+
+def handle_platform_key(key, game):
+    """Handle platform-layer keys (B/V/;/'/A) before game.handle_key().
+
+    Returns:
+        True if key was consumed (and restore mode was entered),
+        False if key was consumed (and restore mode was exited),
+        'restore' if currently in restore mode and key was a restore selection,
+        None if key was not a platform key (fall through to game.handle_key).
+    """
+    global _restore_mode
+
+    # If in restore mode, handle restore keys
+    if _restore_mode:
+        if key == 'c' or key == '\x1b':  # ESC
+            _restore_mode = False
+            return False
+        if key in '123456789':
+            backups = list_backups(game.uid, game.data_dir)
+            idx = int(key) - 1
+            if 0 <= idx < len(backups):
+                filename = backups[idx][0]
+                try:
+                    if restore_from_backup(game.uid, filename, game.data_dir):
+                        # Reload game state
+                        data, status = load_pets_with_fallback(game.uid, game.data_dir)
+                        game.pets_data = data
+                        game.pet_idx = data.get('current', 0)
+                        game.state = game.pets_data['pets'][game.pet_idx]
+                        game.bones = {k: game.state[k] for k in ('species', 'eye', 'hat', 'shiny', 'rarity')}
+                        game.save()
+                        game.message = _("Restored from backup")
+                        game.message_time = time.time()
+                except Exception:
+                    game.message = _("Restore failed")
+                    game.message_time = time.time()
+            _restore_mode = False
+            return 'restore'
+        # Any other key in restore mode: exit
+        _restore_mode = False
+        return False
+
+    # Platform-layer shortcuts (only when not in restore mode)
+    if key == 'B':
+        try:
+            create_backup(game.uid, game.data_dir, 'manual')
+            game.message = _("Backup successful")
+            game.message_time = time.time()
+        except Exception:
+            game.message = _("Backup failed")
+            game.message_time = time.time()
+        return None
+    if key == 'V':
+        _restore_mode = True
+        return True
+    return None
 
 # ─── Layout ───────────────────────────────────────────────────────────────────
 
