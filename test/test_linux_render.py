@@ -139,3 +139,55 @@ class TestAnimationCursorBug:
         # The fixed pattern should exist
         assert '\\033[{n};1H\\033[K' in source or '\\033[{len(display' in source, \
             "Expected fixed animation cursor escape with row;1H"
+
+
+class TestThemeSystem:
+    """Verify the Linux version supports theme switching (green/orange)."""
+
+    def test_theme_imports_present(self):
+        """Module should import THEMES, DEFAULT_THEME from core."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'from ascii_pet.core import' in source
+        assert 'THEMES' in source
+        assert 'DEFAULT_THEME' in source
+
+    def test_theme_functions_imported(self):
+        """Module should import get_theme, set_theme, save_theme, init_theme."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'get_theme' in source
+        assert 'set_theme' in source
+        assert 'save_theme' in source
+        assert 'init_theme' in source
+
+    def test_refresh_theme_function_exists(self):
+        """_refresh_theme() should exist and set module-level color vars."""
+        assert hasattr(ascii_pet_linux, '_refresh_theme')
+        assert hasattr(ascii_pet_linux, 'COLOR_DIM')
+        assert hasattr(ascii_pet_linux, 'COLOR_MSG')
+        assert hasattr(ascii_pet_linux, 'COLOR_WHITE')
+        assert hasattr(ascii_pet_linux, 'COLOR_BAR_FILL')
+        assert hasattr(ascii_pet_linux, 'COLOR_BAR_EMPTY')
+
+    def test_refresh_theme_green(self, game):
+        """_refresh_theme() with green theme sets expected ANSI codes."""
+        from ascii_pet.core import THEMES
+        i18n.set_theme('green')
+        ascii_pet_linux._refresh_theme()
+        green = THEMES['green']
+        assert ascii_pet_linux.COLOR_DIM == green['ansi_dim']
+        assert ascii_pet_linux.COLOR_WHITE == green['ansi_white']
+        assert ascii_pet_linux.COLOR_BAR_FILL == green['ansi_bar_fill']
+
+    def test_refresh_theme_orange(self, game):
+        """_refresh_theme() with orange theme sets orange ANSI codes."""
+        from ascii_pet.core import THEMES
+        i18n.set_theme('orange')
+        ascii_pet_linux._refresh_theme()
+        orange = THEMES['orange']
+        assert ascii_pet_linux.COLOR_DIM == orange['ansi_dim']
+        assert ascii_pet_linux.COLOR_BAR_FILL == orange['ansi_bar_fill']
+        # Reset to green for other tests
+        i18n.set_theme('green')
+        ascii_pet_linux._refresh_theme()

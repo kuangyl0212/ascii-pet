@@ -16,14 +16,41 @@ else:
 
 from ascii_pet.core import (
     SPECIES, RARITY_STARS, STAT_NAMES, MOODS, ANIMATIONS, ACHIEVEMENTS, MAX_PETS,
+    THEMES, DEFAULT_THEME,
     render_sprite, render_face, render_frame, export_text,
     PetGame,
 )
+from ascii_pet.i18n import _, get_language, set_language, save_settings
+from ascii_pet.i18n import get_theme, set_theme, save_theme, init_theme
 
 # ─── ANSI colors ──────────────────────────────────────────────────────────────
 
 RARITY_COLORS = {'common':'\033[90m','uncommon':'\033[32m','rare':'\033[36m','epic':'\033[35m','legendary':'\033[33m'}
 MOOD_COLORS = {'happy':'\033[33m','normal':'\033[0m','sleepy':'\033[90m','hungry':'\033[31m','excited':'\033[35m'}
+
+# ─── Theme-driven colors (refreshed by _refresh_theme) ───────────────────────
+
+COLOR_DIM = '\033[2m'
+COLOR_MSG = '\033[33m'
+COLOR_WHITE = '\033[37m'
+COLOR_BAR_FILL = '\033[32m'
+COLOR_BAR_EMPTY = '\033[90m'
+
+
+def _refresh_theme():
+    """Update module-level color vars from current theme.
+
+    Reads ansi_dim, ansi_white, ansi_bar_fill from THEMES[get_theme()].
+    Called on startup and after theme switching.
+    """
+    global COLOR_DIM, COLOR_MSG, COLOR_WHITE, COLOR_BAR_FILL, COLOR_BAR_EMPTY
+    theme_name = get_theme()
+    t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
+    COLOR_DIM = t.get('ansi_dim', '\033[2m')
+    COLOR_WHITE = t.get('ansi_white', '\033[37m')
+    COLOR_BAR_FILL = t.get('ansi_bar_fill', '\033[32m')
+    COLOR_MSG = t.get('ansi_msg', '\033[33m')
+    COLOR_BAR_EMPTY = t.get('ansi_bar_empty', '\033[90m')
 
 # ─── Window control via xdotool ───────────────────────────────────────────────
 
