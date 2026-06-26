@@ -255,3 +255,133 @@ class TestDirectionKeys:
             "Expected left arrow key handling"
         assert "\\x1b[C" in source or "'\\x1b[C'" in source, \
             "Expected right arrow key handling"
+
+
+class TestBuildLanPanel:
+    """Verify build_lan_panel renders community plaza UI."""
+
+    def test_build_lan_panel_exists(self):
+        assert hasattr(ascii_pet_linux, 'build_lan_panel')
+
+    def test_disconnected_state(self, game):
+        """When LAN is disabled, shows 'Status: Disconnected'."""
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Disconnected' in out
+        assert 'Community Plaza' in out
+
+    def test_connected_state(self, game):
+        """When LAN is enabled, shows Username and Players online."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Username: alice' in out
+        assert 'Players online' in out
+
+    def test_pet_info_line(self, game):
+        """Connected state shows pet info line: name | species | Lv.X | HP:X/100."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Lv.' in out
+        assert 'HP:' in out
+        assert '/100' in out
+
+    def test_visit_status_active(self, game):
+        """When active_visit is set, shows 'Visiting' timer."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.active_visit = {
+            'target': 'peer-1',
+            'start_time': time.time() - 65,
+            'pet_snapshot': {},
+            'last_heartbeat': time.time(),
+        }
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Visiting' in out
+        assert '1m' in out
+
+    def test_being_visited_status(self, game):
+        """When being_visited is set, shows 'is visiting you' timer."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.being_visited = {
+            'from': 'peer-1',
+            'start_time': time.time() - 30,
+            'pet_snapshot': {'name': 'BobPet'},
+            'last_heartbeat': time.time(),
+        }
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'visiting you' in out
+
+    def test_peer_list(self, game):
+        """Connected state shows online players list."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Bob' in out
+        assert 'BobPet' in out
+
+    def test_submode_visit(self, game):
+        """In visit submode, shows 'Select visit target'."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = 'visit'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Select visit target' in out
+
+    def test_submode_challenge(self, game):
+        """In challenge submode, shows 'Select challenge target'."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = 'challenge'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Select challenge target' in out
+
+    def test_submode_gift(self, game):
+        """In gift submode, shows 'Select gift target'."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = 'gift'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Select gift target' in out
+
+    def test_submode_gift_item(self, game):
+        """In gift_item submode, shows 'Select item to gift'."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = 'gift_item'
+        game.add_item('apple')
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Select item to gift' in out
+
+    def test_submode_trade(self, game):
+        """In trade submode, shows 'Select trade target'."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = 'trade'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Select trade target' in out
+
+    def test_submode_trade_pet(self, game):
+        """In trade_pet submode, shows 'Select pet to trade'."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = 'trade_pet'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert 'Select pet to trade' in out
+
+    def test_idle_action_hints(self, game):
+        """In idle submode with peers, shows action hints."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        game.lan_submode = None
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert '[v]Visit' in out or '[v]' in out
+        assert '[c]Challenge' in out or '[c]' in out
+
+    def test_back_hint(self, game):
+        """Panel should show [l]Back hint."""
+        _enable_lan_with_fake(game, 'alice')
+        game.mode = 'lan'
+        out = ascii_pet_linux.build_lan_panel(game)
+        assert '[l]Back' in out or '[l]' in out
