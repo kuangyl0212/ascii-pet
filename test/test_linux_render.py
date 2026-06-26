@@ -191,3 +191,21 @@ class TestThemeSystem:
         # Reset to green for other tests
         i18n.set_theme('green')
         ascii_pet_linux._refresh_theme()
+
+
+class TestLanMessageLoop:
+    """Verify process_lan_queues is called in tick and disable_lan on exit."""
+
+    def test_process_lan_queues_called_in_source(self):
+        """Main loop source should call game.process_lan_queues()."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'process_lan_queues' in source, \
+            "Expected game.process_lan_queues() call in main loop"
+
+    def test_disable_lan_called_on_exit(self):
+        """Exit cleanup should call game.disable_lan()."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'disable_lan' in source, \
+            "Expected game.disable_lan() call in finally block"

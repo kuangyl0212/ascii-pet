@@ -418,6 +418,7 @@ def main():
             if now - last_tick >= 0.5:
                 msg, msg_time = game.tick()
                 if msg: game.message = msg; game.message_time = msg_time
+                game.process_lan_queues()
                 last_tick = now; need_redraw = True
 
             if game.mode != prev_mode:
@@ -548,6 +549,10 @@ def main():
             elif atype in ('action', 'pet_switch'):
                 need_redraw = True
     finally:
+        try:
+            game.disable_lan()
+        except Exception:
+            pass
         show_cursor(); clear_screen()
         print(f'\n  {render_face(game.bones)}  Bye!\n')
 
