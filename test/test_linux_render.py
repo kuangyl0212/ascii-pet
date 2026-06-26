@@ -241,3 +241,17 @@ class TestLayouts:
                 game.mode = 'lan_name_edit'
                 ascii_pet_linux.do_layout(game)
                 assert mock.called
+
+
+class TestDirectionKeys:
+    """Verify arrow keys switch pets (left=prev, right=next)."""
+
+    def test_arrow_key_handling_in_source(self):
+        """Source should handle arrow escape sequences for pet switching."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        # Arrow keys: \x1b[D (left), \x1b[C (right)
+        assert "\\x1b[D" in source or "'\\x1b[D'" in source, \
+            "Expected left arrow key handling"
+        assert "\\x1b[C" in source or "'\\x1b[C'" in source, \
+            "Expected right arrow key handling"

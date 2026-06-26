@@ -580,6 +580,15 @@ def main():
                         subprocess.run(['xdotool', 'windowmove', wid, str(px), str(py)], timeout=1)
                 continue
 
+            # Direction keys: left/right arrows switch pets
+            if key == '\x1b[D' or key == '\x1b[C':
+                # Left arrow = previous pet (b), right arrow = next pet (n)
+                arrow_key = 'b' if key == '\x1b[D' else 'n'
+                atype, detail = game.handle_key(arrow_key)
+                if atype == 'pet_switch':
+                    need_redraw = True
+                continue
+
             atype, detail = game.handle_key(key)
             if atype == 'quit': break
             elif atype == 'mode_change':
