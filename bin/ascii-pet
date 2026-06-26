@@ -140,7 +140,7 @@ def build_expanded(game):
     if game.state.get('evolved'):
         lines.append(f'{DIM}★ Evolved{RST}')
     try:
-        from weather import format_weather_line
+        from ascii_pet.weather import format_weather_line
         weather_line = format_weather_line(game.state.get('weather'))
         if weather_line:
             lines.append(f'{DIM}{weather_line}{RST}')
