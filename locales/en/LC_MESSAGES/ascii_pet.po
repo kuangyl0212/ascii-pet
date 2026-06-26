@@ -501,6 +501,21 @@ msgstr "Backup successful"
 msgid "Restored from backup"
 msgstr "Restored from backup"
 
+msgid "No backups available"
+msgstr "No backups available"
+
+msgid "Select backup to restore:"
+msgstr "Select backup to restore:"
+
+msgid "[1-9]restore [c]cancel"
+msgstr "[1-9]restore [c]cancel"
+
+msgid "Restore failed"
+msgstr "Restore failed"
+
+msgid "Backup failed"
+msgstr "Backup failed"
+
 msgid "Copied to clipboard!"
 msgstr "Copied to clipboard!"
 

@@ -23,6 +23,7 @@ from ascii_pet.core import (
 )
 from ascii_pet.i18n import _, get_language, set_language, save_settings
 from ascii_pet.i18n import get_theme, set_theme, save_theme, init_theme
+from ascii_pet.log import logger
 
 # ─── ANSI colors ──────────────────────────────────────────────────────────────
 
@@ -550,7 +551,6 @@ def build_restore(game):
     DIM = COLOR_DIM
     MSG = COLOR_MSG
     WHITE = COLOR_WHITE
-    BOLD = '\033[1m'
 
     lines = []
     lines.append(f'{MSG}═ {_("Restore Save")} ═{RST}')
@@ -590,7 +590,7 @@ def handle_platform_key(key, game):
         if key == 'c' or key == '\x1b':  # ESC
             _restore_mode = False
             return False
-        if key in '123456789':
+        if key and key in '123456789':
             backups = list_backups(game.uid, game.data_dir)
             idx = int(key) - 1
             if 0 <= idx < len(backups):
@@ -599,14 +599,21 @@ def handle_platform_key(key, game):
                     if restore_from_backup(game.uid, filename, game.data_dir):
                         # Reload game state
                         data, status = load_pets_with_fallback(game.uid, game.data_dir)
-                        game.pets_data = data
-                        game.pet_idx = data.get('current', 0)
-                        game.state = game.pets_data['pets'][game.pet_idx]
-                        game.bones = {k: game.state[k] for k in ('species', 'eye', 'hat', 'shiny', 'rarity')}
-                        game.save()
-                        game.message = _("Restored from backup")
-                        game.message_time = time.time()
-                except Exception:
+                        if data is None or not data.get('pets'):
+                            game.message = _("Restore failed")
+                            game.message_time = time.time()
+                        else:
+                            game.pets_data = data
+                            game.pet_idx = data.get('current', 0)
+                            if game.pet_idx >= len(data['pets']):
+                                game.pet_idx = 0
+                            game.state = game.pets_data['pets'][game.pet_idx]
+                            game.bones = {k: game.state[k] for k in ('species', 'eye', 'hat', 'shiny', 'rarity')}
+                            game.save()
+                            game.message = _("Restored from backup")
+                            game.message_time = time.time()
+                except Exception as e:
+                    logger.warning(f'Restore failed: {e}')
                     game.message = _("Restore failed")
                     game.message_time = time.time()
             _restore_mode = False
@@ -621,7 +628,8 @@ def handle_platform_key(key, game):
             create_backup(game.uid, game.data_dir, 'manual')
             game.message = _("Backup successful")
             game.message_time = time.time()
-        except Exception:
+        except Exception as e:
+            logger.warning(f'Backup failed: {e}')
             game.message = _("Backup failed")
             game.message_time = time.time()
         return None

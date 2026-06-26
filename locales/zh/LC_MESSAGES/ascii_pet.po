@@ -497,6 +497,21 @@ msgstr "备份成功"
 msgid "Restored from backup"
 msgstr "已从备份恢复"
 
+msgid "No backups available"
+msgstr "暂无备份"
+
+msgid "Select backup to restore:"
+msgstr "选择要恢复的备份:"
+
+msgid "[1-9]restore [c]cancel"
+msgstr "[1-9]恢复 [c]取消"
+
+msgid "Restore failed"
+msgstr "恢复失败"
+
+msgid "Backup failed"
+msgstr "备份失败"
+
 msgid "Copied to clipboard!"
 msgstr "已复制到剪贴板！"
 
