@@ -618,3 +618,36 @@ class TestBackupRestore:
         # Exit with 'c'
         result = ascii_pet_linux.handle_platform_key('c', game)
         assert result is False or result == 'exit'
+
+
+class TestThemeLanguageToggle:
+    """Verify ; toggles theme and ' toggles language."""
+
+    def test_theme_toggle(self, game):
+        """handle_platform_key(';') should switch theme."""
+        i18n.set_theme('green')
+        ascii_pet_linux._refresh_theme()
+        result = ascii_pet_linux.handle_platform_key(';', game)
+        assert i18n.get_theme() == 'orange'
+        # Toggle back
+        ascii_pet_linux.handle_platform_key(';', game)
+        assert i18n.get_theme() == 'green'
+
+    def test_language_toggle(self, game):
+        """handle_platform_key("'") should switch language."""
+        i18n.set_language('en')
+        result = ascii_pet_linux.handle_platform_key("'", game)
+        assert i18n.get_language() == 'zh'
+        # Toggle back
+        ascii_pet_linux.handle_platform_key("'", game)
+        assert i18n.get_language() == 'en'
+
+    def test_theme_toggle_returns_none(self, game):
+        """Theme toggle should return None (no mode change)."""
+        result = ascii_pet_linux.handle_platform_key(';', game)
+        assert result is None
+
+    def test_language_toggle_returns_none(self, game):
+        """Language toggle should return None."""
+        result = ascii_pet_linux.handle_platform_key("'", game)
+        assert result is None

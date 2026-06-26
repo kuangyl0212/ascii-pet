@@ -636,6 +636,25 @@ def handle_platform_key(key, game):
     if key == 'V':
         _restore_mode = True
         return True
+    if key == ';':
+        # Toggle theme: green -> orange -> green
+        current = get_theme()
+        new_theme = 'orange' if current == 'green' else 'green'
+        set_theme(new_theme)
+        save_theme(new_theme, game.data_dir)
+        _refresh_theme()
+        game.message = _("Theme: {}").format(new_theme)
+        game.message_time = time.time()
+        return None
+    if key == "'":
+        # Toggle language: en -> zh -> en
+        current = get_language()
+        new_lang = 'zh' if current == 'en' else 'en'
+        set_language(new_lang)
+        save_settings(game.data_dir)
+        game.message = _("Language: {}").format(new_lang)
+        game.message_time = time.time()
+        return None
     return None
 
 # ─── Layout ───────────────────────────────────────────────────────────────────
