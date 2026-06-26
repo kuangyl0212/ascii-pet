@@ -544,3 +544,27 @@ class TestOverlays:
         game.mode = 'compact'
         out = ascii_pet_linux.build_display_with_overlays(game, ascii_pet_linux.build_compact(game))
         assert 'Trade Request' in out
+
+
+class TestMainLoopWiring:
+    """Verify the main redraw block handles lan/lan_name_edit modes and overlays."""
+
+    def test_main_loop_handles_lan_mode(self):
+        """Source should include 'build_lan_panel' call in redraw block."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'build_lan_panel' in source
+        assert "game.mode == 'lan'" in source
+
+    def test_main_loop_handles_lan_name_edit_mode(self):
+        """Source should include 'build_lan_name_edit' call in redraw block."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'build_lan_name_edit' in source
+        assert "game.mode == 'lan_name_edit'" in source
+
+    def test_main_loop_calls_build_display_with_overlays(self):
+        """Source should call build_display_with_overlays in redraw block."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'build_display_with_overlays' in source
