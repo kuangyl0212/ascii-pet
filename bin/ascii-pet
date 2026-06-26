@@ -574,6 +574,53 @@ def build_restore(game):
 _restore_mode = False
 
 
+def _autostart_path():
+    """Return path to autostart .desktop file."""
+    return os.path.expanduser('~/.config/autostart/ascii-pet.desktop')
+
+
+def _launcher_path():
+    """Return path to the launcher script."""
+    local = os.path.expanduser('~/.local/bin/ascii-pet-launcher')
+    if os.path.exists(local):
+        return local
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascii-pet-launcher')
+
+
+def _icon_path():
+    """Return path to the icon file."""
+    local = os.path.expanduser('~/.local/share/ascii-pet/icon.png')
+    if os.path.exists(local):
+        return local
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icon.png')
+
+
+def is_autostart_enabled():
+    """Check if autostart .desktop file exists."""
+    return os.path.exists(_autostart_path())
+
+
+def set_autostart(enable):
+    """Create or remove the autostart .desktop file."""
+    path = _autostart_path()
+    if enable:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        content = (
+            '[Desktop Entry]\n'
+            'Type=Application\n'
+            'Name=ASCII Pet\n'
+            f'Exec={_launcher_path()}\n'
+            f'Icon={_icon_path()}\n'
+            'Terminal=false\n'
+            'X-GNOME-Autostart-enabled=true\n'
+        )
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    else:
+        if os.path.exists(path):
+            os.remove(path)
+
+
 def handle_platform_key(key, game):
     """Handle platform-layer keys (B/V/;/'/A) before game.handle_key().
 
@@ -653,6 +700,13 @@ def handle_platform_key(key, game):
         set_language(new_lang)
         save_settings(game.data_dir)
         game.message = _("Language: {}").format(new_lang)
+        game.message_time = time.time()
+        return None
+    if key == 'A':
+        # Toggle autostart
+        enable = not is_autostart_enabled()
+        set_autostart(enable)
+        game.message = _("Autostart: {}").format(_("enabled") if enable else _("disabled"))
         game.message_time = time.time()
         return None
     return None

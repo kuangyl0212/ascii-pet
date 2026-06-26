@@ -651,3 +651,53 @@ class TestThemeLanguageToggle:
         """Language toggle should return None."""
         result = ascii_pet_linux.handle_platform_key("'", game)
         assert result is None
+
+
+class TestAutostart:
+    """Verify A key toggles autostart via .desktop file."""
+
+    def test_is_autostart_enabled_exists(self):
+        assert hasattr(ascii_pet_linux, 'is_autostart_enabled')
+
+    def test_set_autostart_exists(self):
+        assert hasattr(ascii_pet_linux, 'set_autostart')
+
+    def test_autostart_disabled_by_default(self, tmp_path):
+        """is_autostart_enabled should return False when no .desktop file exists."""
+        with patch.object(ascii_pet_linux, '_autostart_path', return_value=str(tmp_path / 'ascii-pet.desktop')):
+            assert ascii_pet_linux.is_autostart_enabled() is False
+
+    def test_set_autostart_true_creates_file(self, tmp_path):
+        """set_autostart(True) should create the .desktop file."""
+        desktop_path = str(tmp_path / 'ascii-pet.desktop')
+        with patch.object(ascii_pet_linux, '_autostart_path', return_value=desktop_path):
+            with patch.object(ascii_pet_linux, '_launcher_path', return_value='/usr/bin/ascii-pet-launcher'):
+                with patch.object(ascii_pet_linux, '_icon_path', return_value='/usr/share/icons/ascii-pet.png'):
+                    ascii_pet_linux.set_autostart(True)
+                    assert os.path.exists(desktop_path)
+                    with open(desktop_path, 'r') as f:
+                        content = f.read()
+                    assert 'Type=Application' in content
+                    assert 'ascii-pet-launcher' in content
+
+    def test_set_autostart_false_removes_file(self, tmp_path):
+        """set_autostart(False) should delete the .desktop file."""
+        desktop_path = str(tmp_path / 'ascii-pet.desktop')
+        with open(desktop_path, 'w') as f:
+            f.write('[Desktop Entry]')
+        with patch.object(ascii_pet_linux, '_autostart_path', return_value=desktop_path):
+            ascii_pet_linux.set_autostart(False)
+            assert not os.path.exists(desktop_path)
+
+    def test_handle_a_key_toggles_autostart(self, game, tmp_path):
+        """handle_platform_key('A') should toggle autostart."""
+        desktop_path = str(tmp_path / 'ascii-pet.desktop')
+        with patch.object(ascii_pet_linux, '_autostart_path', return_value=desktop_path):
+            with patch.object(ascii_pet_linux, '_launcher_path', return_value='/usr/bin/ascii-pet-launcher'):
+                with patch.object(ascii_pet_linux, '_icon_path', return_value='/usr/share/icons/ascii-pet.png'):
+                    # Initially disabled, A should enable
+                    result = ascii_pet_linux.handle_platform_key('A', game)
+                    assert os.path.exists(desktop_path)
+                    # A again should disable
+                    ascii_pet_linux.handle_platform_key('A', game)
+                    assert not os.path.exists(desktop_path)
