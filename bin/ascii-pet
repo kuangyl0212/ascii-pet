@@ -453,6 +453,52 @@ def build_lan_name_edit(game):
     lines.append(f'{DIM}{_("[Enter]Confirm [ESC]Cancel")}{RST}')
     return '\n'.join(lines)
 
+def build_battle_log(battle_result):
+    """Render battle log overlay. Returns ANSI string."""
+    RST = '\033[0m'
+    DIM = COLOR_DIM
+    MSG = COLOR_MSG
+    WHITE = COLOR_WHITE
+    BAR_FILL = COLOR_BAR_FILL
+
+    lines = []
+    lines.append(f'{MSG}{_("═ Battle Log ═")}{RST}')
+    for entry in battle_result.get('log', []):
+        lines.append(f'{WHITE}{entry}{RST}')
+    winner = battle_result.get('winner', '?')
+    loser = battle_result.get('loser', '?')
+    lines.append(f'{BAR_FILL}{_("Winner: {} | Loser: {}").format(winner, loser)}{RST}')
+    hp_loss_winner = battle_result.get('hp_loss_winner', 0)
+    hp_loss_loser = battle_result.get('hp_loss_loser', 0)
+    lines.append(f'{DIM}{_("Winner HP: -{} | Loser HP: -{}").format(hp_loss_winner, hp_loss_loser)}{RST}')
+    xp_gained = battle_result.get('xp_gained', 0)
+    if xp_gained:
+        lines.append(f'{MSG}{_("XP +{}").format(xp_gained)}{RST}')
+    if battle_result.get('leveled_up'):
+        lines.append(f'{MSG}{_("Level Up!")}{RST}')
+    evolved = battle_result.get('evolved')
+    if evolved:
+        lines.append(f'{MSG}{_("Evolved into {species}!").format(species=evolved)}{RST}')
+    return '\n'.join(lines)
+
+
+def build_trade_confirm(trade_req):
+    """Render trade confirmation dialog overlay. Returns ANSI string."""
+    RST = '\033[0m'
+    DIM = COLOR_DIM
+    MSG = COLOR_MSG
+    WHITE = COLOR_WHITE
+
+    lines = []
+    lines.append(f'{MSG}{_("═ Trade Request ═")}{RST}')
+    from_username = trade_req.get('from_username', '?')
+    pet_snapshot = trade_req.get('pet_snapshot', {})
+    pet_name = pet_snapshot.get('name', '?')
+    species = pet_snapshot.get('species', '?')
+    lines.append(f'{WHITE}{_("Player {username} wants to trade their {pet}({species})").format(username=from_username, pet=pet_name, species=species)}{RST}')
+    lines.append(f'{DIM}{_("[y]Accept [n]Reject")}{RST}')
+    return '\n'.join(lines)
+
 # ─── Layout ───────────────────────────────────────────────────────────────────
 
 def layout_compact():

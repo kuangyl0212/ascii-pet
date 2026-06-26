@@ -415,3 +415,63 @@ class TestBuildLanNameEdit:
         out = ascii_pet_linux.build_lan_name_edit(game)
         assert '[Enter]' in out
         assert '[ESC]' in out
+
+
+class TestBuildBattleLog:
+    """Verify build_battle_log renders battle result."""
+
+    def test_function_exists(self):
+        assert hasattr(ascii_pet_linux, 'build_battle_log')
+
+    def test_renders_title_and_entries(self):
+        battle_result = {
+            'log': ['Turn 1: A hits B', 'Turn 2: B hits A'],
+            'winner': 'AlicePet',
+            'loser': 'BobPet',
+            'hp_loss_winner': 10,
+            'hp_loss_loser': 50,
+            'xp_gained': 40,
+            'leveled_up': False,
+            'evolved': None,
+        }
+        out = ascii_pet_linux.build_battle_log(battle_result)
+        assert 'Battle Log' in out
+        assert 'Turn 1' in out
+        assert 'Winner: AlicePet' in out
+        assert 'Loser: BobPet' in out
+        assert 'XP +40' in out
+
+    def test_level_up_and_evolution(self):
+        battle_result = {
+            'log': [],
+            'winner': 'AlicePet',
+            'loser': 'BobPet',
+            'hp_loss_winner': 0,
+            'hp_loss_loser': 50,
+            'xp_gained': 40,
+            'leveled_up': True,
+            'evolved': 'dragon',
+        }
+        out = ascii_pet_linux.build_battle_log(battle_result)
+        assert 'Level Up' in out
+        assert 'Evolved into dragon' in out
+
+
+class TestBuildTradeConfirm:
+    """Verify build_trade_confirm renders trade request dialog."""
+
+    def test_function_exists(self):
+        assert hasattr(ascii_pet_linux, 'build_trade_confirm')
+
+    def test_renders_trade_request(self):
+        trade_req = {
+            'from_username': 'Bob',
+            'pet_snapshot': {'name': 'BobPet', 'species': 'cat'},
+        }
+        out = ascii_pet_linux.build_trade_confirm(trade_req)
+        assert 'Trade Request' in out
+        assert 'Bob' in out
+        assert 'BobPet' in out
+        assert 'cat' in out
+        assert '[y]Accept' in out
+        assert '[n]Reject' in out
