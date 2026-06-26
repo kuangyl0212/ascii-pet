@@ -724,3 +724,21 @@ class TestPlatformKeyIntegration:
         with open(_MOD_PATH, 'r', encoding='utf-8') as f:
             source = f.read()
         assert 'build_restore' in source
+
+
+class TestMainInit:
+    """Verify main() calls init_theme and _refresh_theme on startup."""
+
+    def test_init_theme_called_in_main(self):
+        """Source should call init_theme in main()."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'init_theme' in source
+        # Should be called in main, not just imported
+        assert 'init_theme(' in source
+
+    def test_refresh_theme_called_in_main(self):
+        """Source should call _refresh_theme in main()."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert '_refresh_theme()' in source

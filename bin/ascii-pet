@@ -885,6 +885,8 @@ def main():
             kernel32.SetConsoleMode(handle, mode)
 
     game = PetGame(uid)
+    init_theme(game.data_dir)
+    _refresh_theme()
     signal.signal(signal.SIGINT, lambda *_: (show_cursor(), clear_screen(), sys.exit(0)))
 
     clear_screen(); hide_cursor()
