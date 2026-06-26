@@ -434,6 +434,25 @@ def build_lan_panel(game):
 
     return '\n'.join(lines)
 
+def build_lan_name_edit(game):
+    """Render LAN username editing panel. Returns ANSI string."""
+    RST = '\033[0m'
+    DIM = COLOR_DIM
+    MSG = COLOR_MSG
+    WHITE = COLOR_WHITE
+    BAR_FILL = COLOR_BAR_FILL
+
+    lines = []
+    lines.append(f'{MSG}═ {_("Edit Name")} ═{RST}')
+    lines.append('')
+    lines.append(f'{BAR_FILL}{_("Current name: {}").format(game.lan_username or "?")}{RST}')
+    lines.append('')
+    current_input = getattr(game, '_name_input', '')
+    lines.append(f'{WHITE}{_("New name: {}_").format(current_input)}{RST}')
+    lines.append('')
+    lines.append(f'{DIM}{_("[Enter]Confirm [ESC]Cancel")}{RST}')
+    return '\n'.join(lines)
+
 # ─── Layout ───────────────────────────────────────────────────────────────────
 
 def layout_compact():

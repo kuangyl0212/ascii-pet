@@ -385,3 +385,33 @@ class TestBuildLanPanel:
         game.mode = 'lan'
         out = ascii_pet_linux.build_lan_panel(game)
         assert '[l]Back' in out or '[l]' in out
+
+
+class TestBuildLanNameEdit:
+    """Verify build_lan_name_edit renders username editing panel."""
+
+    def test_function_exists(self):
+        assert hasattr(ascii_pet_linux, 'build_lan_name_edit')
+
+    def test_renders_title(self, game):
+        _enable_lan_with_fake(game, 'alice')
+        out = ascii_pet_linux.build_lan_name_edit(game)
+        assert 'Edit Name' in out
+
+    def test_shows_current_name(self, game):
+        _enable_lan_with_fake(game, 'alice')
+        out = ascii_pet_linux.build_lan_name_edit(game)
+        assert 'alice' in out
+        assert 'Current name' in out
+
+    def test_shows_input_prompt(self, game):
+        _enable_lan_with_fake(game, 'alice')
+        out = ascii_pet_linux.build_lan_name_edit(game)
+        assert 'New name:' in out
+        assert '_' in out  # cursor
+
+    def test_shows_confirm_hint(self, game):
+        _enable_lan_with_fake(game, 'alice')
+        out = ascii_pet_linux.build_lan_name_edit(game)
+        assert '[Enter]' in out
+        assert '[ESC]' in out
