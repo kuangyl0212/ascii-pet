@@ -475,3 +475,72 @@ class TestBuildTradeConfirm:
         assert 'cat' in out
         assert '[y]Accept' in out
         assert '[n]Reject' in out
+
+
+class TestOverlays:
+    """Verify overlays are appended in the main redraw logic.
+
+    These tests check that a helper function build_display_with_overlays
+    exists and correctly appends visitor pets, visit hints, battle log,
+    and trade confirm to the base display.
+    """
+
+    def test_build_display_with_overlays_exists(self):
+        assert hasattr(ascii_pet_linux, 'build_display_with_overlays')
+
+    def test_visitor_pets_overlay(self, game):
+        """When visitor_pets is non-empty and mode is compact/expanded,
+        display includes visitor sprite and [Visitor] label."""
+        game.visitor_pets = {
+            'peer-1': {
+                'name': 'BobPet',
+                'species': 'cat',
+                'eye': '·',
+                'hat': 'none',
+                'shiny': False,
+                'rarity': 'common',
+                'owner': 'Bob',
+            },
+        }
+        game.mode = 'compact'
+        out = ascii_pet_linux.build_display_with_overlays(game, ascii_pet_linux.build_compact(game))
+        assert 'Visitor' in out
+        assert 'BobPet' in out
+
+    def test_visit_hint_overlay(self, game):
+        """When active_visit and mode is compact/expanded, display includes visit hint."""
+        game.active_visit = {
+            'target': 'peer-1',
+            'start_time': time.time(),
+            'pet_snapshot': {},
+            'last_heartbeat': time.time(),
+        }
+        game.mode = 'compact'
+        out = ascii_pet_linux.build_display_with_overlays(game, ascii_pet_linux.build_compact(game))
+        assert '[e]End Visit' in out
+
+    def test_battle_log_overlay(self, game):
+        """When battle_result is set and mode is expanded/lan, display includes battle log."""
+        game.battle_result = {
+            'log': ['Turn 1'],
+            'winner': 'A',
+            'loser': 'B',
+            'hp_loss_winner': 0,
+            'hp_loss_loser': 50,
+            'xp_gained': 10,
+            'leveled_up': False,
+            'evolved': None,
+        }
+        game.mode = 'expanded'
+        out = ascii_pet_linux.build_display_with_overlays(game, ascii_pet_linux.build_expanded(game))
+        assert 'Battle Log' in out
+
+    def test_trade_confirm_overlay(self, game):
+        """When pending_trade_req is set, display includes trade confirm (all modes)."""
+        game.pending_trade_req = {
+            'from_username': 'Bob',
+            'pet_snapshot': {'name': 'BobPet', 'species': 'cat'},
+        }
+        game.mode = 'compact'
+        out = ascii_pet_linux.build_display_with_overlays(game, ascii_pet_linux.build_compact(game))
+        assert 'Trade Request' in out

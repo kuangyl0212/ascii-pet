@@ -499,6 +499,48 @@ def build_trade_confirm(trade_req):
     lines.append(f'{DIM}{_("[y]Accept [n]Reject")}{RST}')
     return '\n'.join(lines)
 
+
+def build_display_with_overlays(game, base_display):
+    """Append overlays (visitor pets, visit hint, battle log, trade confirm)
+    to the base display string. Returns the combined ANSI string.
+
+    Called by the main redraw loop after build_<mode>(game).
+    """
+    RST = '\033[0m'
+    display = base_display
+    now = time.time()
+
+    # Visitor pets overlay (compact/expanded only)
+    if game.visitor_pets and game.mode in ('compact', 'expanded'):
+        for visitor in game.visitor_pets.values():
+            v_bones = {
+                'species': visitor.get('species', 'blob'),
+                'eye': visitor.get('eye', '·'),
+                'hat': visitor.get('hat', 'none'),
+                'shiny': visitor.get('shiny', False),
+                'rarity': visitor.get('rarity', 'common'),
+            }
+            v_frame = render_sprite(v_bones, game.frame_idx)
+            display += f'\n  {COLOR_MSG}{_("[Visitor] {} (from {})").format(visitor.get("name","?"), visitor.get("owner","?"))}{RST}'
+            for row in v_frame:
+                display += f'\n  {COLOR_DIM}{row}{RST}'
+
+    # Visit operation hint (compact/expanded only)
+    if (game.active_visit or game.being_visited) and game.mode in ('compact', 'expanded'):
+        display += f'\n{COLOR_DIM}{_("[e]End Visit [f]Feed [p]Play")}{RST}'
+
+    # Battle log overlay (expanded/lan only)
+    if game.battle_result and game.mode in ('expanded', 'lan'):
+        display += '\n'
+        display += build_battle_log(game.battle_result)
+
+    # Trade confirm overlay (all modes)
+    if game.pending_trade_req is not None:
+        display += '\n'
+        display += build_trade_confirm(game.pending_trade_req)
+
+    return display
+
 # ─── Layout ───────────────────────────────────────────────────────────────────
 
 def layout_compact():
