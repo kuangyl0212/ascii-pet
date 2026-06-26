@@ -296,7 +296,7 @@ def build_lan_panel(game):
     status = game.get_lan_status()
     enabled = status.get('enabled', False)
 
-    lines.append(f'{MSG}═ {_("Community Plaza")} ═{RST}')
+    lines.append(f'{MSG}{_("═ Community Plaza ═")}{RST}')
     if enabled:
         peer_count = status.get('peer_count', 0)
         lines.append(f'{BAR_FILL}{_("Username: {}  |  Players online: {}").format(game.lan_username or "?", peer_count)}{RST}')
@@ -443,7 +443,7 @@ def build_lan_name_edit(game):
     BAR_FILL = COLOR_BAR_FILL
 
     lines = []
-    lines.append(f'{MSG}═ {_("Edit Name")} ═{RST}')
+    lines.append(f'{MSG}{_("═ Edit Name ═")}{RST}')
     lines.append('')
     lines.append(f'{BAR_FILL}{_("Current name: {}").format(game.lan_username or "?")}{RST}')
     lines.append('')
