@@ -119,3 +119,23 @@ class TestImport:
             source = f.read()
         assert 'from ascii_pet.weather import' in source
         assert 'from weather import' not in source
+
+
+class TestAnimationCursorBug:
+    """Verify the animation cursor positioning ANSI escape is well-formed."""
+
+    def test_animation_cursor_escape_format(self):
+        """The animation redraw should position cursor with row;1H, not bare H.
+
+        Bug: f'\\033[H{n}\\033[K' emits '\\033[H1\\033[K' which moves to home
+        row and prints the digit '1' instead of positioning to row n.
+        Fix: f'\\033[{n};1H\\033[K' positions cursor to row n, column 1.
+        """
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        # The buggy pattern: \033[H{...}\033[K (missing [ and ;1)
+        assert '\\033[H{' not in source or '\\033[H{n}' not in source, \
+            "Found buggy animation cursor escape '\\033[H{n}\\033[K'"
+        # The fixed pattern should exist
+        assert '\\033[{n};1H\\033[K' in source or '\\033[{len(display' in source, \
+            "Expected fixed animation cursor escape with row;1H"

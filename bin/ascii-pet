@@ -422,7 +422,7 @@ def main():
 
             if game.anim_end and now < game.anim_end:
                 game.anim_idx = int((now * 6) % len(game.anim_frames))
-                sys.stdout.write(f'\033[H{len(display.splitlines())+1}\033[K')
+                sys.stdout.write(f'\033[{len(display.splitlines())+1};1H\033[K')
                 sys.stdout.write(f'  \033[33m{game.anim_frames[game.anim_idx]}\033[0m\n')
                 sys.stdout.flush()
             elif game.anim_end and now >= game.anim_end:
