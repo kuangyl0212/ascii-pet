@@ -209,3 +209,35 @@ class TestLanMessageLoop:
             source = f.read()
         assert 'disable_lan' in source, \
             "Expected game.disable_lan() call in finally block"
+
+
+class TestLayouts:
+    """Verify layout functions exist for lan, lan_name_edit, rename, restore."""
+
+    def test_layout_lan_exists(self):
+        assert hasattr(ascii_pet_linux, 'layout_lan')
+
+    def test_layout_lan_name_edit_exists(self):
+        assert hasattr(ascii_pet_linux, 'layout_lan_name_edit')
+
+    def test_layout_rename_exists(self):
+        assert hasattr(ascii_pet_linux, 'layout_rename')
+
+    def test_layout_restore_exists(self):
+        assert hasattr(ascii_pet_linux, 'layout_restore')
+
+    def test_do_layout_handles_lan(self, game):
+        """do_layout should dispatch 'lan' mode to layout_lan."""
+        with patch.object(ascii_pet_linux, 'set_window_geometry') as mock:
+            with patch.object(ascii_pet_linux, 'get_screen_size', return_value=(1920, 1080)):
+                game.mode = 'lan'
+                ascii_pet_linux.do_layout(game)
+                assert mock.called
+
+    def test_do_layout_handles_lan_name_edit(self, game):
+        """do_layout should dispatch 'lan_name_edit' mode."""
+        with patch.object(ascii_pet_linux, 'set_window_geometry') as mock:
+            with patch.object(ascii_pet_linux, 'get_screen_size', return_value=(1920, 1080)):
+                game.mode = 'lan_name_edit'
+                ascii_pet_linux.do_layout(game)
+                assert mock.called

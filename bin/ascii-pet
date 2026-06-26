@@ -363,6 +363,58 @@ def layout_release():
         py = sh - px_h - STATUS_BAR_HEIGHT
     set_window_geometry(cols, rows, px, py)
 
+def layout_lan():
+    global _window_pos
+    sw, sh = get_screen_size()
+    cols, rows = 50, 20
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
+def layout_lan_name_edit():
+    global _window_pos
+    sw, sh = get_screen_size()
+    cols, rows = 50, 12
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
+def layout_rename():
+    global _window_pos
+    sw, sh = get_screen_size()
+    cols, rows = 50, 12
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
+def layout_restore():
+    global _window_pos
+    sw, sh = get_screen_size()
+    cols, rows = 50, 14
+    px_w = cols * FONT_W + 20
+    px_h = rows * FONT_H + 10
+    if _window_pos:
+        px, py = _clamp_pos(_window_pos[0], _window_pos[1], px_w, px_h, sw, sh)
+    else:
+        px = sw - px_w - 20
+        py = sh - px_h - STATUS_BAR_HEIGHT
+    set_window_geometry(cols, rows, px, py)
+
 def do_layout(game):
     if game.mode == 'compact': layout_compact()
     elif game.mode == 'expanded': layout_expanded()
@@ -370,6 +422,9 @@ def do_layout(game):
     elif game.mode == 'achievements': layout_achievements()
     elif game.mode == 'items': layout_items()
     elif game.mode == 'release': layout_release()
+    elif game.mode == 'rename': layout_rename()
+    elif game.mode == 'lan': layout_lan()
+    elif game.mode == 'lan_name_edit': layout_lan_name_edit()
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
