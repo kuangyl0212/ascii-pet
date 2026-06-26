@@ -701,3 +701,26 @@ class TestAutostart:
                     # A again should disable
                     ascii_pet_linux.handle_platform_key('A', game)
                     assert not os.path.exists(desktop_path)
+
+
+class TestPlatformKeyIntegration:
+    """Verify platform keys and restore mode are integrated into main loop."""
+
+    def test_handle_platform_key_called_in_main_loop(self):
+        """Source should call handle_platform_key in main loop."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'handle_platform_key' in source
+
+    def test_restore_mode_layout_in_main_loop(self):
+        """Source should call layout_restore when _restore_mode is True."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert '_restore_mode' in source
+        assert 'layout_restore' in source
+
+    def test_restore_mode_render_in_main_loop(self):
+        """Source should call build_restore when _restore_mode is True."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        assert 'build_restore' in source

@@ -904,15 +904,20 @@ def main():
                 game.process_lan_queues()
                 last_tick = now; need_redraw = True
 
-            if game.mode != prev_mode:
+            if game.mode != prev_mode or _restore_mode:
                 cur = get_window_pos()
                 if cur: _window_pos = cur
-                do_layout(game)
+                if _restore_mode:
+                    layout_restore()
+                else:
+                    do_layout(game)
                 prev_mode = game.mode; need_redraw = True
                 time.sleep(0.15)
 
             if need_redraw:
-                if game.state.get('is_dead') and game.mode in ('compact', 'expanded'):
+                if _restore_mode:
+                    display = build_restore(game)
+                elif game.state.get('is_dead') and game.mode in ('compact', 'expanded'):
                     display = build_death(game)
                 elif game.mode == 'compact': display = build_compact(game)
                 elif game.mode == 'expanded': display = build_expanded(game)
@@ -1011,6 +1016,26 @@ def main():
                     if wid:
                         subprocess.run(['xdotool', 'windowmove', wid, str(px), str(py)], timeout=1)
                 continue
+
+            # Platform-layer shortcuts (B/V/;/'/A) and restore mode
+            if not move_mode:
+                platform_result = handle_platform_key(key, game)
+                if platform_result is True:
+                    # Entered restore mode
+                    need_redraw = True
+                    continue
+                elif platform_result is False:
+                    # Exited restore mode
+                    need_redraw = True
+                    continue
+                elif platform_result == 'restore':
+                    # Performed restore
+                    need_redraw = True
+                    continue
+                elif platform_result is None and key in ('B', 'V', ';', "'", 'A'):
+                    # Platform key was handled (backup/theme/lang/autostart)
+                    need_redraw = True
+                    continue
 
             # Direction keys: left/right arrows switch pets
             if key == '\x1b[D' or key == '\x1b[C':
