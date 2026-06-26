@@ -181,7 +181,7 @@ def build_expanded(game):
         v = game.state['stats'][s]
         lines.append(f'{DIM}{s[:4]}{RST}{stat_bar(v,15)}{v}')
     if game.show_help:
-        lines.append(f'{DIM}[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [e]export [m]move [Enter]compact [q]quit{RST}')
+        lines.append(f'{DIM}[f]feed [p]play [s]sleep [w]adopt [b]prev [n]next [t]stats [a]achieve [u]items [l]plaza [e]export [m]move [B]backup [V]restore [;]theme [\']lang [Enter]compact [q]quit{RST}')
     return '\n'.join(lines)
 
 def build_stats(game):

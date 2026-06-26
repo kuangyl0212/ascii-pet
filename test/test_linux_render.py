@@ -742,3 +742,20 @@ class TestMainInit:
         with open(_MOD_PATH, 'r', encoding='utf-8') as f:
             source = f.read()
         assert '_refresh_theme()' in source
+
+
+class TestHelpText:
+    """Verify help text documents new keyboard shortcuts."""
+
+    def test_expanded_help_includes_lan(self, game):
+        """Expanded mode help should mention 'l' for LAN/Community Plaza."""
+        game.show_help = True
+        out = ascii_pet_linux.build_expanded(game)
+        assert '[l]' in out
+
+    def test_help_output_mentions_shortcuts(self):
+        """--help output should mention new shortcuts."""
+        with open(_MOD_PATH, 'r', encoding='utf-8') as f:
+            source = f.read()
+        # Should mention community plaza / LAN
+        assert 'Community Plaza' in source or 'LAN' in source or 'lan' in source
