@@ -670,6 +670,8 @@ def load_pets(uid, data_dir=None):
     return data
 
 def save_pets(uid, data, data_dir=None):
+    # 记录最后一次保存的真实时间，用于加载时补偿离线时长
+    data['last_active'] = datetime.now().isoformat()
     json.dump(data, open(get_state_path(uid, data_dir), 'w', encoding='utf-8'), indent=2)
 
 def load_state(uid, data_dir=None):
@@ -682,6 +684,38 @@ def load_state(uid, data_dir=None):
 def save_state(uid, state, pets_data, idx, data_dir=None):
     pets_data['pets'][idx] = state
     save_pets(uid, pets_data, data_dir)
+
+def compensate_offline_time(pets_data):
+    """补偿离线时长：把每个 pet 的时间戳往后推离线时长，使衰减只反映程序运行时长。
+
+    修改 pets_data 原地。读取顶层 last_active（由 save_pets 写入），
+    计算 now - last_active 作为离线时长，加到每个 pet 的
+    last_fed / last_played / last_slept / critical_since 上。
+    这样 update_state_over_time 看到的相对时间差只反映程序实际运行时长。
+
+    优雅降级：last_active 缺失/损坏/在未来时不做任何操作，回退到旧逻辑。
+    """
+    last_active = pets_data.get('last_active')
+    if not last_active:
+        return
+    try:
+        last_active_dt = datetime.fromisoformat(last_active)
+    except (ValueError, TypeError):
+        return
+    now = datetime.now()
+    offline = now - last_active_dt
+    if offline.total_seconds() <= 0:
+        return
+    for pet in pets_data.get('pets', []):
+        for key in ('last_fed', 'last_played', 'last_slept', 'critical_since'):
+            val = pet.get(key)
+            if not val:
+                continue
+            try:
+                old = datetime.fromisoformat(val)
+                pet[key] = (old + offline).isoformat()
+            except (ValueError, TypeError):
+                pass
 
 # ─── Export text ──────────────────────────────────────────────────────────────
 
@@ -802,6 +836,11 @@ class PetGame:
         self.pets_data = pets_data
         self.pet_idx = pet_idx
         self.bones = {k: state[k] for k in ('species','eye','hat','shiny','rarity')}
+
+        # 补偿离线时长：程序未运行期间不衰减、死亡倒计时不推进
+        compensate_offline_time(self.pets_data)
+        # 补偿会修改 pets_data['pets'][pet_idx]，重新同步 self.state
+        self.state = self.pets_data['pets'][pet_idx]
 
         self.state = update_state_over_time(self.state)
         save_state(uid, self.state, pets_data, pet_idx, data_dir)
