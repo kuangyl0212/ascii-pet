@@ -1081,11 +1081,23 @@ class TestBug2DecodeAllMessages:
         assert msg["type"] == MSG_VISIT_ACK
 
 
-class TestBug3SlaveClosesTcpListener:
-    """Bug 3 fix: slave closes TCP listener on master change."""
+class TestBug3SlaveKeepsTcpListener:
+    """TCP listener lifecycle on master change.
+
+    Originally (Bug 3 fix) slaves closed their TCP listener on master change
+    to avoid port conflicts. This was reverted so that slaves KEEP their TCP
+    listener running, allowing the master to proactively reverse-connect to
+    them as a fallback when the slave cannot reach the master (e.g., master's
+    firewall blocks inbound TCP). See TestBidirectionalTcpConnection for the
+    full scenario.
+    """
 
     def test_close_tcp_listener_sets_socket_none(self):
-        """_close_tcp_listener closes and nullifies _tcp_socket."""
+        """_close_tcp_listener closes and nullifies _tcp_socket.
+
+        The method still exists (used during shutdown), it's just no longer
+        called from _on_master_change when demoting to slave.
+        """
         node = lan.LanNode("alice", _minimal_pet_state())
         fake_sock = _FakeSocket()
         node._tcp_socket = fake_sock
@@ -1101,13 +1113,18 @@ class TestBug3SlaveClosesTcpListener:
         assert node._tcp_socket is None
 
     @patch('socket.socket', side_effect=_fake_socket_factory())
-    def test_on_master_change_slave_closes_listener(self, mock_sock):
-        """When becoming slave, _on_master_change closes TCP listener."""
+    def test_on_master_change_slave_keeps_listener(self, mock_sock):
+        """When becoming slave, _on_master_change keeps TCP listener running.
+
+        This is the reverse of the original Bug 3 behavior: slaves now keep
+        their TCP listener so the master can reverse-connect as a fallback.
+        """
         node = lan.LanNode("zzz", _minimal_pet_state())
         node.node_id = "zzz-node"
         node.is_master = True
         node._master_id = "zzz-node"
-        node._tcp_socket = _FakeSocket()
+        fake_listener = _FakeSocket()
+        node._tcp_socket = fake_listener
         # Simulate demotion to slave
         with node._peers_lock:
             node._peers["aaa-master"] = {
@@ -1121,10 +1138,11 @@ class TestBug3SlaveClosesTcpListener:
         node._reelect_master()
         # After re-elect, node should be slave
         assert node.is_master is False
-        # _on_master_change should have been called via _on_peer_hello path
-        # but we call it directly to test
         node._on_master_change("zzz-node", "aaa-master")
-        assert node._tcp_socket is None
+        # TCP listener should remain open (key change from Bug 3)
+        assert node._tcp_socket is not None
+        assert node._tcp_socket is fake_listener
+        assert fake_listener._closed is False
 
     @patch('socket.socket', side_effect=_fake_socket_factory())
     def test_on_master_change_master_ensures_listener(self, mock_sock):
@@ -1452,4 +1470,273 @@ class TestHelloSnapshotSplit:
         node._on_peer_hello(payload, ("192.168.1.50", 50007))
         with node._peers_lock:
             assert node._peers["node-x"]["pet_summary"] == new_snapshot  # 更新为新快照
+
+
+# ─── Bidirectional TCP connection (master reverse-connect fallback) ────────
+
+
+class TestBidirectionalTcpConnection:
+    """双向 TCP 连接：当 slave 无法连接到 master 时，master 主动反向连接 slave。
+
+    Bug 描述：
+    - 当前架构为星型拓扑：slave 必须主动 TCP 连接到 master。
+    - 当 master 端防火墙阻止入站 TCP（如 Windows 防火墙默认阻止 50008 端口）时，
+      slave 无法建立 TCP 连接，导致 master 的 _client_sockets 为空，
+      send_to_peer 失败，拜访/挑战/赠礼/交易等操作全部不可用。
+    - UDP 发现正常（peer 在 known_peers 中），但 TCP 连接无法建立。
+
+    修复方案：
+    1. Slave 保留 TCP listener（不再在 master 变更时关闭），允许 master 反向连接。
+    2. Master 在 send_to_peer 发现无 socket 时，主动反向连接 peer。
+    3. Slave 在 _master_sock 为 None 时，回退使用 master 反向连接的 accepted socket。
+
+    BDD Scenarios:
+
+      Feature: 双向 TCP 连接回退
+
+        Scenario: Slave 在 master 变更时保留 TCP listener
+          Given Bob 节点从 master 降级为 slave
+          When _on_master_change 被调用
+          Then TCP listener 应保持开启
+          And _tcp_socket 不应为 None
+
+        Scenario: Master 主动反向连接 peer
+          Given Alice 是 master，且 _client_sockets 中没有 peer-bob 的 socket
+          When Alice 调用 send_to_peer 发送消息给 peer-bob
+          Then 应尝试主动连接 peer-bob
+          And 连接成功后消息应发送成功
+
+        Scenario: Slave 回退使用 master 反向连接的 socket
+          Given Bob 是 slave，_master_sock 为 None（无法连接 master）
+          And master 主动反向连接到 Bob，socket 存于 _client_sockets[master_id]
+          When Bob 调用 send_to_peer 发送消息给 master
+          Then 应使用 _client_sockets[master_id] 发送
+          And 返回 True
+    """
+
+    def test_slave_keeps_tcp_listener_on_master_change(self):
+        """Slave 在 master 变更时应保留 TCP listener，允许 master 反向连接。
+
+        Given Bob 节点从 master 降级为 slave
+        When _on_master_change 被调用
+        Then TCP listener 应保持开启
+        """
+        node = lan.LanNode("zzz", _minimal_pet_state())
+        node.node_id = "zzz-node"
+        node.is_master = True
+        node._master_id = "zzz-node"
+        fake_sock = _FakeSocket()
+        node._tcp_socket = fake_sock
+        # 模拟降级为 slave
+        with node._peers_lock:
+            node._peers["aaa-master"] = {
+                "node_id": "aaa-master",
+                "username": "alice",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": ("127.0.0.1", 50007),
+                "ip": "127.0.0.1",
+            }
+        node._reelect_master()
+        assert node.is_master is False
+        node._on_master_change("zzz-node", "aaa-master")
+        # TCP listener 应保持开启（关键修复点）
+        assert node._tcp_socket is not None, (
+            "Slave 应保留 TCP listener，允许 master 反向连接作为回退"
+        )
+        assert fake_sock._closed is False, (
+            "TCP listener socket 不应被关闭"
+        )
+
+    def test_slave_uses_accepted_socket_for_master_when_master_sock_none(self):
+        """Slave 在 _master_sock 为 None 时应回退使用 master 反向连接的 socket。
+
+        Given Bob 是 slave，_master_sock 为 None（无法连接 master）
+        And master 主动反向连接到 Bob，socket 存于 _client_sockets[master_id]
+        When Bob 调用 send_to_peer 发送消息给 master
+        Then 应使用 _client_sockets[master_id] 发送
+        And 返回 True
+        """
+        node = lan.LanNode("bob", _minimal_pet_state())
+        node.enabled = True
+        node.is_master = False
+        node._master_id = "master-id"
+        node._master_sock = None  # slave 无法连接 master
+        # 模拟 master 反向连接到 slave，socket 存于 _client_sockets
+        fake_sock = _FakeSocket()
+        with node._client_sockets_lock:
+            node._client_sockets["master-id"] = fake_sock
+        result = node.send_to_peer("master-id", MSG_VISIT_REQ, {"from": "bob"})
+        assert result is True, (
+            "Slave 在 _master_sock 为 None 时应回退使用 _client_sockets[master_id]"
+        )
+
+    def test_slave_uses_accepted_socket_for_relay_when_master_sock_none(self):
+        """Slave 在 relay 路径也应回退使用 master 反向连接的 socket。
+
+        Given Bob 是 slave，_master_sock 为 None
+        And master 反向连接的 socket 存于 _client_sockets[master_id]
+        When Bob 调用 send_to_peer 发送消息给另一个 slave（需 relay）
+        Then 应使用 _client_sockets[master_id] 发送 relay 消息
+        And 返回 True
+        """
+        node = lan.LanNode("bob", _minimal_pet_state())
+        node.enabled = True
+        node.is_master = False
+        node._master_id = "master-id"
+        node._master_sock = None
+        # 模拟 master 反向连接
+        fake_sock = _FakeSocket()
+        with node._client_sockets_lock:
+            node._client_sockets["master-id"] = fake_sock
+        # 发送给另一个 slave（非 master），走 relay 路径
+        result = node.send_to_peer("other-slave", MSG_VISIT_REQ, {"from": "bob"})
+        assert result is True, (
+            "Slave 在 relay 路径也应回退使用 _client_sockets[master_id]"
+        )
+
+    def test_slave_returns_false_when_no_socket_to_master_at_all(self):
+        """Slave 在 _master_sock 和 _client_sockets[master_id] 都为 None 时返回 False。
+
+        Given Bob 是 slave，_master_sock 为 None
+        And _client_sockets 中也没有 master 的 socket
+        When Bob 调用 send_to_peer 发送消息给 master
+        Then 返回 False
+        """
+        node = lan.LanNode("bob", _minimal_pet_state())
+        node.enabled = True
+        node.is_master = False
+        node._master_id = "master-id"
+        node._master_sock = None
+        # _client_sockets 为空
+        result = node.send_to_peer("master-id", MSG_VISIT_REQ, {})
+        assert result is False
+
+    def test_master_proactively_connects_when_no_socket(self):
+        """Master 在 send_to_peer 无 socket 时应主动反向连接 peer。
+
+        Given Alice 是 master，_client_sockets 中没有 peer-bob 的 socket
+        When Alice 调用 send_to_peer 发送消息给 peer-bob
+        Then 应调用 _proactive_connect_to_peer 尝试连接
+        And 连接成功后消息应发送成功
+        """
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.node_id = "alice-node"
+        node.enabled = True
+        node.is_master = True
+        # 添加 peer 信息（含 IP）
+        with node._peers_lock:
+            node._peers["peer-bob"] = {
+                "node_id": "peer-bob",
+                "username": "bob",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": ("127.0.0.1", 50007),
+                "ip": "127.0.0.1",
+            }
+        # mock _proactive_connect_to_peer 返回 fake socket
+        fake_sock = _FakeSocket()
+        with patch.object(node, '_proactive_connect_to_peer', return_value=fake_sock) as mock_connect:
+            result = node.send_to_peer("peer-bob", MSG_VISIT_REQ, {"from": "alice"})
+            assert result is True
+            mock_connect.assert_called_once_with("peer-bob")
+
+    def test_master_returns_false_when_proactive_connect_fails(self):
+        """Master 主动连接失败时应返回 False。
+
+        Given Alice 是 master，_client_sockets 中没有 peer-bob 的 socket
+        And _proactive_connect_to_peer 返回 None（连接失败）
+        When Alice 调用 send_to_peer 发送消息给 peer-bob
+        Then 返回 False
+        """
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.node_id = "alice-node"
+        node.enabled = True
+        node.is_master = True
+        with node._peers_lock:
+            node._peers["peer-bob"] = {
+                "node_id": "peer-bob",
+                "username": "bob",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": ("127.0.0.1", 50007),
+                "ip": "127.0.0.1",
+            }
+        with patch.object(node, '_proactive_connect_to_peer', return_value=None):
+            result = node.send_to_peer("peer-bob", MSG_VISIT_REQ, {})
+            assert result is False
+
+    def test_master_returns_false_when_peer_unknown(self):
+        """Master 对未知 peer（不在 _peers 中）应返回 False。
+
+        Given Alice 是 master
+        When Alice 调用 send_to_peer 发送消息给未知 peer
+        Then 返回 False（不尝试主动连接）
+        """
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.node_id = "alice-node"
+        node.enabled = True
+        node.is_master = True
+        # _peers 为空
+        with patch.object(node, '_proactive_connect_to_peer') as mock_connect:
+            result = node.send_to_peer("unknown-peer", MSG_VISIT_REQ, {})
+            assert result is False
+            mock_connect.assert_not_called()
+
+    @patch('socket.socket', side_effect=_fake_socket_factory())
+    def test_proactive_connect_to_peer_stores_socket_and_sends_hello(self, mock_sock):
+        """_proactive_connect_to_peer 应建立连接、发送 HELLO、存储 socket。
+
+        Given Alice 是 master，peer-bob 在 _peers 中
+        When 调用 _proactive_connect_to_peer("peer-bob")
+        Then 应建立 TCP 连接到 peer 的 IP:port
+        And 应发送 HELLO 消息（含 node_id, username, pet_summary）
+        And socket 应存入 _client_sockets["peer-bob"]
+        And 返回该 socket
+        """
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.node_id = "alice-node"
+        node.enabled = True
+        node.is_master = True
+        node._running = True
+        with node._peers_lock:
+            node._peers["peer-bob"] = {
+                "node_id": "peer-bob",
+                "username": "bob",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": ("127.0.0.1", 50007),
+                "ip": "127.0.0.1",
+            }
+        sock = node._proactive_connect_to_peer("peer-bob")
+        assert sock is not None
+        with node._client_sockets_lock:
+            assert "peer-bob" in node._client_sockets
+            assert node._client_sockets["peer-bob"] is sock
+        node.stop()
+
+    def test_proactive_connect_returns_none_when_peer_not_in_peers(self):
+        """_proactive_connect_to_peer 在 peer 不在 _peers 中时返回 None。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.enabled = True
+        node.is_master = True
+        result = node._proactive_connect_to_peer("unknown-peer")
+        assert result is None
+
+    def test_proactive_connect_returns_none_when_peer_has_no_ip(self):
+        """_proactive_connect_to_peer 在 peer 无 IP 时返回 None。"""
+        node = lan.LanNode("alice", _minimal_pet_state())
+        node.enabled = True
+        node.is_master = True
+        with node._peers_lock:
+            node._peers["peer-bob"] = {
+                "node_id": "peer-bob",
+                "username": "bob",
+                "pet_summary": {},
+                "last_seen": time.time(),
+                "addr": None,
+                "ip": None,
+            }
+        result = node._proactive_connect_to_peer("peer-bob")
+        assert result is None
 

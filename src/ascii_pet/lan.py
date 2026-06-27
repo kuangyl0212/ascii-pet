@@ -364,10 +364,18 @@ class LanNode:
         """Send a message to a specific peer via TCP.
 
         If this node is the master, the message is forwarded directly to the
-        target peer's TCP connection. If this node is a slave and the target
-        is the master, the message is sent directly via ``_master_sock``.
+        target peer's TCP connection. If no socket exists for the peer, the
+        master attempts a proactive reverse-connect to the peer as a fallback
+        (useful when the slave cannot reach the master due to firewall rules).
+
+        If this node is a slave and the target is the master, the message is
+        sent via ``_master_sock``, or — if that is None — via an accepted
+        socket from the master's reverse-connect (stored in
+        ``_client_sockets[master_id]``).
+
         If this node is a slave and the target is another slave, the message
-        is wrapped as a relay and sent to the master for forwarding.
+        is wrapped as a relay and sent to the master for forwarding (using
+        whichever master-side socket is available).
 
         Returns:
             True on success, False if not started, peer unknown, or send failed.
@@ -381,30 +389,57 @@ class LanNode:
                 # Master: send directly to target client socket
                 with self._client_sockets_lock:
                     sock = self._client_sockets.get(peer_node_id)
-                    if sock is None:
-                        known = list(self._client_sockets.keys())
-                        logger.warning(
-                            f"send_to_peer failed: peer socket not found "
-                            f"(peer={peer_node_id}, msg={msg_type}, known_sockets={known})"
-                        )
-                        return False
+                if sock is not None:
                     sock.sendall(data)
                     return True
+                # No socket — verify peer is known before attempting a
+                # proactive reverse-connect (avoids needless attempts and
+                # log noise for peers we've never heard of).
+                with self._peers_lock:
+                    peer_known = peer_node_id in self._peers
+                if not peer_known:
+                    known = list(self._client_sockets.keys())
+                    logger.warning(
+                        f"send_to_peer failed: peer unknown "
+                        f"(peer={peer_node_id}, msg={msg_type}, known_sockets={known})"
+                    )
+                    return False
+                # Try proactive reverse-connect as a fallback.
+                # This handles the case where the slave couldn't reach us
+                # (e.g., our firewall blocks inbound TCP) but we can reach
+                # the slave outbound.
+                sock = self._proactive_connect_to_peer(peer_node_id)
+                if sock is None:
+                    known = list(self._client_sockets.keys())
+                    logger.warning(
+                        f"send_to_peer failed: peer socket not found and proactive connect failed "
+                        f"(peer={peer_node_id}, msg={msg_type}, known_sockets={known})"
+                    )
+                    return False
+                sock.sendall(data)
+                return True
             else:
                 # Slave
                 if peer_node_id == self._master_id:
-                    # Send to master directly via _master_sock, no relay
+                    # Send to master directly via _master_sock, no relay.
+                    # Fall back to accepted socket from master's reverse connect
+                    # if _master_sock is unavailable.
                     with self._client_sockets_lock:
-                        if self._master_sock is None:
+                        sock = self._master_sock
+                        if sock is None:
+                            sock = self._client_sockets.get(self._master_id)
+                        if sock is None:
                             logger.warning(
-                                f"send_to_peer failed: master socket is None "
+                                f"send_to_peer failed: no socket to master "
                                 f"(peer={peer_node_id}, msg={msg_type})"
                             )
                             return False
-                        self._master_sock.sendall(data)
+                        sock.sendall(data)
                         return True
                 else:
-                    # Send to another slave: relay through master
+                    # Send to another slave: relay through master.
+                    # Fall back to accepted socket from master's reverse connect
+                    # if _master_sock is unavailable.
                     relay_payload = {
                         "target": peer_node_id,
                         "msg_type": msg_type,
@@ -412,13 +447,16 @@ class LanNode:
                     }
                     relay_data = encode_message("relay", relay_payload)
                     with self._client_sockets_lock:
-                        if self._master_sock is None:
+                        sock = self._master_sock
+                        if sock is None:
+                            sock = self._client_sockets.get(self._master_id)
+                        if sock is None:
                             logger.warning(
-                                f"send_to_peer failed: master socket is None (relay) "
+                                f"send_to_peer failed: no socket to master (relay) "
                                 f"(peer={peer_node_id}, msg={msg_type})"
                             )
                             return False
-                        self._master_sock.sendall(relay_data)
+                        sock.sendall(relay_data)
                     return True
         except Exception:
             logger.warning(
@@ -803,7 +841,14 @@ class LanNode:
         return None
 
     def _on_master_change(self, old_master, new_master):
-        """Handle a master change: connect to new master if slave."""
+        """Handle a master change: connect to new master if slave.
+
+        Note: Slaves keep their TCP listener running so the master can
+        proactively reverse-connect to them as a fallback when the slave
+        cannot reach the master (e.g., master's firewall blocks inbound
+        TCP). This makes the topology robust to one-directional firewall
+        rules.
+        """
         logger.info(f"Master node changed: {new_master}")
         try:
             # Close old master connection if any
@@ -819,8 +864,9 @@ class LanNode:
                 if self._tcp_socket is None:
                     self._start_tcp_listener()
             else:
-                # Became slave: close TCP listener, connect to master
-                self._close_tcp_listener()
+                # Became slave: keep TCP listener running (so master can
+                # reverse-connect as a fallback) and connect to master.
+                # _close_tcp_listener is intentionally NOT called here.
                 self._connect_to_master()
         except Exception:
             logger.exception("Error in master change handling")
@@ -904,6 +950,108 @@ class LanNode:
                 logger.warning(f"Connect to master {master_ip}:{self.tcp_port} failed, retrying in {delay:.0f}s")
                 time.sleep(delay)
                 delay = min(delay * 2, max_delay)
+
+    def _proactive_connect_to_peer(self, peer_node_id):
+        """Master proactively connects to a peer's TCP port (reverse connect).
+
+        Used as a fallback when a slave cannot reach the master (e.g., the
+        master's firewall blocks inbound TCP). The master connects outbound
+        to the peer's TCP listener, sends a HELLO to register on the peer's
+        side, stores the socket in ``_client_sockets``, and spawns a receive
+        loop so messages from the peer are handled.
+
+        Args:
+            peer_node_id: The node_id of the peer to connect to.
+
+        Returns:
+            The connected socket on success, or None if the peer is unknown,
+            has no IP, or the connection fails.
+        """
+        # Look up peer's IP from the discovery cache
+        with self._peers_lock:
+            peer = self._peers.get(peer_node_id)
+            peer_ip = peer.get("ip") if peer else None
+        if not peer_ip:
+            logger.debug(
+                f"proactive_connect: peer unknown or no IP (peer={peer_node_id})"
+            )
+            return None
+        # Check if a socket already exists (another thread may have connected)
+        with self._client_sockets_lock:
+            existing = self._client_sockets.get(peer_node_id)
+            if existing is not None:
+                return existing
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3.0)
+            sock.connect((peer_ip, self.tcp_port))
+            sock.settimeout(SOCKET_TIMEOUT)
+            # Send HELLO so the peer registers this socket in its _client_sockets
+            snapshot = make_pet_snapshot(self.pet_state, self.username)
+            hello = make_hello(self.node_id, self.username, snapshot)
+            hello_payload = {k: v for k, v in hello.items() if k != "type"}
+            sock.sendall(encode_message(MSG_HELLO, hello_payload))
+            # Store the socket for future send_to_peer calls
+            with self._client_sockets_lock:
+                # If another thread connected in the meantime, close ours
+                if self._client_sockets.get(peer_node_id) is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                    return self._client_sockets[peer_node_id]
+                self._client_sockets[peer_node_id] = sock
+            # Spawn receive loop to handle replies from the peer
+            t = threading.Thread(
+                target=self._peer_recv_loop,
+                args=(sock, peer_node_id),
+                name=f"lan-peer-recv-{peer_node_id}",
+                daemon=True,
+            )
+            self._threads.append(t)
+            t.start()
+            logger.info(f"Proactively connected to peer {peer_node_id} ({peer_ip}:{self.tcp_port})")
+            return sock
+        except Exception:
+            logger.warning(
+                f"proactive_connect: failed to connect to peer "
+                f"{peer_node_id} ({peer_ip}:{self.tcp_port})"
+            )
+            return None
+
+    def _peer_recv_loop(self, sock, peer_node_id):
+        """Receive loop for a proactively connected peer socket (master side).
+
+        Reads messages from the peer and dispatches them via
+        ``_handle_decoded_message``. On disconnect, removes the socket from
+        ``_client_sockets`` (only if it is still the same socket, to avoid
+        clobbering a newer connection).
+        """
+        try:
+            while self._running:
+                try:
+                    data = sock.recv(4096)
+                    if not data:
+                        break  # connection closed by peer
+                    for msg_type, payload in self._decode_all_messages(data):
+                        self._handle_decoded_message(msg_type, payload, sock)
+                except socket.timeout:
+                    continue
+                except socket.error:
+                    break
+                except Exception:
+                    logger.exception("Error in peer receive loop")
+                    break
+        finally:
+            with self._client_sockets_lock:
+                # Only remove if it's the same socket (might have been replaced)
+                if self._client_sockets.get(peer_node_id) is sock:
+                    del self._client_sockets[peer_node_id]
+            try:
+                sock.close()
+            except Exception:
+                logger.debug("Error closing peer socket during disconnect")
+            logger.info(f"Peer socket disconnected: {peer_node_id}")
 
     def _recv_master_loop(self):
         """Slave receive thread: read messages from the master."""
